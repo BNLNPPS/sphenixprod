@@ -1,3 +1,35 @@
+
+
+# For MacOS:
+.DS_Store
+
+# ignore RVM configuration
+.rvmrc
+
+# For TextMate
+*.tmproj
+tmtags
+
+# For emacs:
+*~
+\#*
+.\#*
+
+# For vim:
+*.swp
+
+#for vscode
+.vscode
+._*
+
+# For redcar:
+.redcar
+
+# For rubinius:
+*.rbc
+
+#### Python preset from github
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
