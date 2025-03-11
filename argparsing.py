@@ -1,7 +1,7 @@
 import argparse
 
 # ============================================================================
-def submit_args():
+def submission_args():
     """Handle command line tedium for submitting jobs."""
 
     arg_parser = argparse.ArgumentParser( prog='tester.py',
@@ -23,8 +23,10 @@ def submit_args():
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()
     exclusive_vgroup.add_argument( '-v', '--verbose', help="Prints more information", action="store_true")
     exclusive_vgroup.add_argument( '-d', '--debug', help="Prints even more information", action="store_true")
-    exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO', help="Specific logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)" ) # These enums are valued 10, 20, ..., so a number would be ok too
-    # arg_parser.add_argument( '--logdir', dest='logdir', default=None, help="Directory for kaedama logging (defaults under /tmp)" )
+    # later switch default to WARN
+    exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO', help="Specific logging level (DEBUG, INFO, WARN, ERROR, CRITICAL)" ) # These enums are valued 10, 20, ..., so a number would be ok too
+    
+    arg_parser.add_argument( '--logdir', dest='logdir', default=None, help="Directory for submission script logging (defaults under /tmp)" )
     # arg_parser.add_argument( '--log', dest='log', default=None, help="Log file name (defaults to stdout)" )
     # arg_parser.add_argument( "--batch", default=False, action="store_true",help="Batch mode...")
 
@@ -32,10 +34,13 @@ def submit_args():
     arg_parser.add_argument( '--config', dest='config', help="Name of the YAML file containing production rules.", default="DST_STREAMING_run3auau_new_2024p012.yaml")
     arg_parser.add_argument( '--rule',   dest='rule',   help="Name of submission rule", default="DST_EVENT" )
 
-    arg_parser.add_argument( '--runs', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=['26022'] )
-    arg_parser.add_argument( '--runlist', help="Flat text file containing list of runs to process, separated by whitespace / newlines.", default=None )
+    rgroup = arg_parser.add_argument_group('Run selection')
+    exclusive_rgroup = rgroup.add_mutually_exclusive_group()
+    exclusive_rgroup.add_argument( '--runs', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=['26022'] )
+    exclusive_rgroup.add_argument( '--runlist', help="Flat text file containing list of runs to process, separated by whitespace / newlines.", default=None )
     arg_parser.add_argument( '--segments', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=[] )
     arg_parser.add_argument( '--experiment-mode',dest="mode",help="Specifies the experiment mode (commissioning or physics) for direct lookup of input files.",default="physics")
+
     arg_parser.add_argument( '-N', '--nevents', '-n', default=0, dest='nevents', help='Number of events to process.  0=all.', type=int)
     ## sPHENIX files have specific names and locations. Overridde for testing or special purposes.
     arg_parser.add_argument( '--mangle-dstname',dest='mangle_dstname',help="Replaces 'DST' with the specified name.", default=None )
@@ -60,6 +65,13 @@ def submit_args():
     
     
     # args, userargs = arg_parser.parse_known_args()
-    return arg_parser.parse_args()
+
+    args = arg_parser.parse_args()
+    if ( args.verbose ) :
+        args.loglevel = 'INFO'
+    if ( args.debug ) :
+        args.loglevel = 'DEBUG'
+    
+    return args
 
 # ============================================================================
