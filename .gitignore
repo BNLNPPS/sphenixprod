@@ -2,7 +2,9 @@
 odbc.ini
 odbc_prod.ini
 odbc_test.ini
-condor
+.slurp
+.yaml
+*.list
 
 
 # For MacOS:
