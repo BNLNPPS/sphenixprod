@@ -3,7 +3,7 @@ odbc.ini
 odbc_prod.ini
 odbc_test.ini
 .slurp
-.yaml
+*.yaml
 *.list
 
 
