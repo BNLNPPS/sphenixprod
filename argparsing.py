@@ -11,7 +11,6 @@ def submission_args():
 
     arg_parser = argparse.ArgumentParser()
 
-
     # General arguments
     arg_parser.add_argument( '--dry-run', '--no-submit', help="Job will not be submitted, DBs notupdated. Just print things", dest="submit", action="store_false")     # would be nice to allow -n for dry run but that's currently occupied by nevents
     arg_parser.add_argument( '--test-mode',dest="test_mode",default=False,help="Sets testing mode, which will mangle DST names and directory paths.",action="store_true")
@@ -23,7 +22,6 @@ def submission_args():
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()
     exclusive_vgroup.add_argument( '-v', '--verbose', help="Prints more information", action="store_true")
     exclusive_vgroup.add_argument( '-d', '--debug', help="Prints even more information", action="store_true")
-    # later switch default to WARN
     exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO', help="Specific logging level (DEBUG, INFO, WARN, ERROR, CRITICAL)" ) # These enums are valued 10, 20, ..., so a number would be ok too
     
     arg_parser.add_argument( '--logdir', dest='logdir', default=None, help="Directory for submission script logging (defaults under /tmp)" )
@@ -56,13 +54,12 @@ def submission_args():
 
     # Queue-related constraints
     arg_parser.add_argument( '--maxjobs',dest="maxjobs",help="Maximum number of jobs to pass to condor", default=None )
-    # arg_parser.add_argument( '--limit', help="Limit for db queries", default=0, type=int )
+    arg_parser.add_argument( '--limit', help="Limit for db queries", default=0, type=int )
     # arg_parser.add_argument( '-u', '--unblock-state', nargs='*', dest='unblock',  choices=["submitting","submitted","started","running","evicted","failed","finished"] )
     # arg_parser.add_argument( '-r', '--resubmit', dest='resubmit', default=False, action='store_true', help='Existing filecatalog entry does not block a job')
     # arg_parser.add_argument( '--docstring',default=None,help="Appends a documentation string to the log entry")
     # batch_name should be set in JobConfig <-=- ALLOW OVERRIDE?
     # arg_parser.add_argument( "--batch-name", dest="batch_name", default=None ) #default="$(name)_$(build)_$(tag)_$(version)"
-    
     
     # args, userargs = arg_parser.parse_known_args()
 
