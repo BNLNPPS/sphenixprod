@@ -5,6 +5,7 @@ import cProfile
 
 from logging.handlers import RotatingFileHandler
 from dataclasses import fields
+import pprint
 
 from simpleLogger import slogger, CustomFormatter, ERROR, WARN, INFO, DEBUG
 from ruleclasses import RuleConfig
@@ -12,12 +13,6 @@ from utils import extract_numbers_to_commastring
 from utils import list_to_condition
 
 from argparsing import submission_args
-
-# ============================================================================================
-# Format strings for run and segment numbers.  n.b. that the "rungroup" which defines the logfile and output file directory structure
-# hardcodes "08d" as the run format...  
-RUNFMT = "%08i"
-SEGFMT = "%05i"
 
 # ============================================================================================
 
@@ -163,15 +158,26 @@ def main():
 
     # KK:  args.mangle_dirpath handled later
 
-    # Just format strings, RUNFMT and SEGFMT from the top
-    for base in [rule.outbase, rule.logbase]:
-        base=base.format( **globals( ) )
+    # Just format strings
+    rule.logbase=rule.logbase.format( RUNFMT = '%08i', SEGFMT = '%05i' )
+    rule.outbase=rule.outbase.format( RUNFMT = '%08i', SEGFMT = '%05i' )
 
-    # Locations. KK, Delme: 
     rule_job=rule.job
+    # Locations. Have to keep leafdir to-be-substituted later. 
+    for k,v in rule_job.filesystem.items():
+        rule_job.filesystem[k] = v.format(**locals(), leafdir='{leafdir}')
 
+    # Fill remaining substitutables. The self-reference to job.filesystem is a quirk to be fixed later
     for field in fields(rule_job):
-        print(f'{field.name}: {getattr(rule_job, field.name)}')
+        subsval = getattr(rule_job, field.name)
+        if isinstance(subsval, str): # don't touch None or the filesystem dictionary
+            subsval = subsval.format( 
+                  **rule.dict()
+                , PWD=pathlib.Path(".").absolute()
+                , **rule_job.filesystem
+        )
+        setattr(rule_job, field.name, subsval)
+        DEBUG (f'Job after substitution: {field.name}: {getattr(rule_job, field.name)}')
 
     ### Make sure ".slurp" and any custom files/directories are copied to the worker
     rsync = rule.rsync + ",.slurp/"
@@ -180,8 +186,13 @@ def main():
         rsync = rsync + "," + args.append2rsync
         DEBUG(f"Appending to rsync: {args.append2rsync}")
 
+    #################### Rule and its subfields for input and job details now have all the information needed fopr submittin jobs
+    INFO("Rule construction complete.")
+    prettyrule = pprint.pformat(rule)
+    DEBUG("[Print constructed rule]")
+    DEBUG(prettyrule)
+    DEBUG("[End of rule]")
 
-    
     INFO( "KTHXBYE!" )
 
 # ============================================================================================

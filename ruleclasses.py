@@ -1,5 +1,5 @@
 import yaml
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional
 
 # Explicitly marking the dataclasses as mutable (frozen=False) to allow for
