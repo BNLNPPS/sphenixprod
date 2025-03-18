@@ -148,7 +148,9 @@ def main():
             )
     
     if args.printquery:
-        slogger.log(100, rule_input.query) # 100 is the highest log level, it should always print
+         # 100 is the highest log level, it should always print
+        slogger.log(100, "[Print constructed query]")
+        prettyquery = pprint.pformat(rule.input.query)
         return 0
 
     # Rest of the rule.input parameters, i.e. database name and direct path
