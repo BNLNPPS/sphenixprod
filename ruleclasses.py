@@ -2,6 +2,10 @@ import yaml
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional
 
+from simpleLogger import ERROR, DEBUG
+
+# import math
+
 # Explicitly marking the dataclasses as mutable (frozen=False) to allow for
 # modification of the attributes after instantiation. 
 # After construction from a YAML file, the RuleConfig object may be modified
@@ -24,6 +28,9 @@ _default_filesystem = {
     ,   'histdir' :        "/sphenix/data/data02/sphnxpro/production/$(runname)/$(runtype)/$(build)_$(tag)_$(version)/{leafdir}/run_$(rungroup)/hist"
     ,   'condor'  :                                 "/tmp/production/$(runname)/$(runtype)/$(build)_$(tag)_$(version)/{leafdir}/run_$(rungroup)/log"    
 }
+
+# ============================================================================
+
 @dataclass( frozen = False )
 class JobConfig:
     """Represents the job configuration block in the YAML."""
@@ -46,7 +53,7 @@ class RuleConfig:
 
     name: str
     build: str
-    build_name: str
+    # build_name: str ## KK: deprecated --> deleted
     dbtag: str
     version: int
     logbase: str
@@ -63,6 +70,7 @@ class RuleConfig:
     mxrun: Optional[int] = None
     dstin: Optional[str] = None
     dataset: Optional[str] = None
+    resubmit: bool = False
 
     def dict(self) -> Dict[str, Any]:
         """Convert to a dictionary, handling nested dataclasses."""
@@ -90,7 +98,7 @@ class RuleConfig:
 
         # Extract and validate params
         params_data = rule_data.get("params", {})
-        required_params_fields = ["name", "build", "build_name", "dbtag", "version", "logbase", "outbase", "script",
+        required_params_fields = ["name", "build", "dbtag", "version", "logbase", "outbase", "script",
                                   "payload", "neventsper", "comment", "rsync", "mem"]
         for f in required_params_fields:
             if f not in params_data:
@@ -127,7 +135,6 @@ class RuleConfig:
         return cls(
             name=params_data["name"],
             build=params_data["build"],
-            build_name=params_data["build_name"],
             dbtag=params_data["dbtag"],
             version=params_data["version"],
             logbase=params_data["logbase"],
@@ -154,6 +161,7 @@ class RuleConfig:
             mxrun=params_data.get("mxrun"),
             dstin=params_data.get("dstin"),  # dstin and dataset are optional
             dataset=params_data.get("dataset"),
+            resubmit=params_data.get("resubmit", False),  # Get resubmit from params, default to False
         )
 
     @classmethod
@@ -181,6 +189,90 @@ class RuleConfig:
         return rules
 
 # ============================================================================
+
+@dataclass( frozen = True )
+class MatchConfig:
+    # From RuleConfig
+    name:     str = None         # Name of the matching rule
+    script:   str = None         # The run script
+    build:    str = None         # Build
+    tag:      str = None         # DB tag
+    payload:  str = None         # Payload directory (condor transfers inputs from)
+    mem:      str = None         # Required memory
+    version:  str = None
+
+    # Inferred, in __post_init__
+    buildarg: str = None
+
+    lfn:      str = None         # Logical filename that matches
+    dst:      str = None         # Transformed output
+    run:      str = None         # Run #
+    seg:      str = None         # Seg #
+    disk:     str = None         # Required disk space
+
+    db:        str = None # used to be filesdb and not in this class
+    filequery: str = None # used to be files and not in this class
+
+    inputs:   str = None
+    ranges:   str = None
+    firstevent: str = None
+    lastevent: str = None
+
+
+    stdout:   str = None 
+    stderr:   str = None 
+    condor:   str = None
+    rungroup: str = None
+    runs_last_event: str = None
+    neventsper : str = None
+    streamname : str = None
+    streamfile : str = None
+
+    # def __eq__( self, that ):
+    #     return self.run==that.run and self.seg==that.seg
+
+    def __post_init__(self):
+        if self.buildarg is not None:
+            ERROR("buildarg is internal, do not set it")
+            exit(1)
+        b = self.build.replace(".","")
+        object.__setattr__(self, 'buildarg', b)
+        DEBUG(f"buildarg: {self.buildarg}")
+
+
+    #     run = int(self.run)
+    #     object.__setattr__(self, 'rungroup', f'{100*math.floor(run/100):08d}_{100*math.ceil((run+1)/100):08d}')
+
+    def dict(self):
+        return { k: str(v) for k, v in asdict(self).items() if v is not None }
+
+    @classmethod
+    def from_rule_config(cls, rule_config: RuleConfig):
+        """
+        Constructs a MatchConfig object partially from a RuleConfig object.
+
+        Args:
+            rule_config: The RuleConfig object to extract data from.
+
+        Returns:
+            A MatchConfig object with fields pre-populated from the RuleConfig.
+        """
+    
+        return cls(
+            name=rule_config.name,
+            script=rule_config.script,
+            build=rule_config.build,
+            tag=rule_config.dbtag,
+            payload=rule_config.payload,
+            mem=rule_config.mem,
+            version=rule_config.version,
+            db = rule_config.input.db,
+            filequery = rule_config.input.query,
+        )
+
+# ============================================================================
+
+
 # Example usage:
 if __name__ == "__main__":
     try:
@@ -190,6 +282,12 @@ if __name__ == "__main__":
         for rule_name, rule_config in all_rules.items():
             print(f"Successfully loaded rule configuration: {rule_name}")
             print(rule_config.dict())
+            print("---------------------------------------")
+
+            # Create a MatchConfig from the RuleConfig
+            match_config = MatchConfig.from_rule_config(rule_config)
+            print(f"MatchConfig from RuleConfig {rule_name}:")
+            print(match_config.dict())
             print("---------------------------------------")
 
     except (ValueError, FileNotFoundError) as e:
