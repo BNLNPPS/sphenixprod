@@ -43,7 +43,6 @@ class JobConfig:
     priority: str
     request_xferslots: str
     batch_name: Optional[str] = None
-    filesystem: Optional[dict] = None
 
 
 # ============================================================================
@@ -66,6 +65,7 @@ class RuleConfig:
     mem: str
     input: InputConfig
     job: JobConfig
+    filesystem: Optional[dict] = None # base filesystem paths
     mnrun: Optional[int] = None  # Adding mnrun and mxrun as optional
     mxrun: Optional[int] = None
     dstin: Optional[str] = None
@@ -128,7 +128,7 @@ class RuleConfig:
             if f not in job_data:
                 raise ValueError(f"Missing required field '{f} in job for rule '{rule_name}'.")
 
-        filesystem = job_data.get("filesystem")
+        filesystem = rule_data.get("filesystem")
         if filesystem is None:
             filesystem = _default_filesystem
 
@@ -146,6 +146,7 @@ class RuleConfig:
             rsync=params_data["rsync"],
             mem=params_data["mem"],
             input=InputConfig(db=input_data["db"], query=input_data["query"], direct_path=input_data.get("direct_path")),
+            filesystem=filesystem,
             job=JobConfig(
                 batch_name=job_data.get("batch_name"),  # batch_name is optional
                 arguments=job_data["arguments"],
@@ -155,7 +156,6 @@ class RuleConfig:
                 accounting_group_user=job_data["accounting_group_user"],
                 priority=job_data["priority"],
                 request_xferslots=job_data["request_xferslots"],
-                filesystem=filesystem
             ),
             mnrun=params_data.get("mnrun"),  # mnrun and mxrun are optional
             mxrun=params_data.get("mxrun"),
@@ -196,10 +196,11 @@ class MatchConfig:
     name:     str = None         # Name of the matching rule
     script:   str = None         # The run script
     build:    str = None         # Build
-    tag:      str = None         # DB tag
+    # tag:      str = None         # DB tag
+    dbtag:    str = None         # DB tag
     payload:  str = None         # Payload directory (condor transfers inputs from)
     mem:      str = None         # Required memory
-    version:  str = None
+    version_string:  str = None      # e.g. "v001"
 
     # Inferred, in __post_init__
     buildarg: str = None
@@ -257,15 +258,16 @@ class MatchConfig:
         Returns:
             A MatchConfig object with fields pre-populated from the RuleConfig.
         """
-    
+        # Formatted version number, needed to identify repeated new_nocdb productions, 0 otherwise
+        version_string = f"v{rule_config.version:03d}"
         return cls(
             name=rule_config.name,
             script=rule_config.script,
             build=rule_config.build,
-            tag=rule_config.dbtag,
+            dbtag=rule_config.dbtag,
             payload=rule_config.payload,
             mem=rule_config.mem,
-            version=rule_config.version,
+            version_string=version_string,
             db = rule_config.input.db,
             filequery = rule_config.input.query,
         )

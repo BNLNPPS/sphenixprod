@@ -15,6 +15,12 @@ from sphenixdbutils import cnxn_string_map, dbQuery, test_mode as dbutils_test_m
 
 from argparsing import submission_args
 
+# =============================================================================================
+RUNFMT = '%08i'
+SEGFMT = '%05i'
+DSTFMT = "%s_%s_%s-" + RUNFMT + "-" + SEGFMT + ".root"
+DSTFMTv = "%s_%s_%s_%s-" + RUNFMT + "-" + SEGFMT + ".root"
+
 # ============================================================================================
 
 def main():
@@ -107,7 +113,7 @@ def main():
     #################### InputConfig
     ### rule_input has a big SQL query template that needs to be filled in
     ### from command line arguments and parameters
-    rule_input   = rule.input 
+    rule_input = rule.input 
 
     ### Which runs to process?
     if args.runlist:
@@ -150,8 +156,11 @@ def main():
     if args.printquery:
          # 100 is the highest log level, it should always print
         slogger.log(100, "[Print constructed query]")
-        prettyquery = pprint.pformat(rule.input.query)
-        return 0
+        # prettyquery = pprint.pformat(rule.input.query)
+        # slogger.log(100, prettyquery)
+        slogger.log(100, rule.input.query)
+        slogger.log(100, "[End of query]")
+        exit(0)
 
     # Rest of the rule.input parameters, i.e. database name and direct path
     DEBUG (f"Using database {rule_input.db}")
@@ -169,44 +178,54 @@ def main():
     #            Note that $(streamname) does exist, but that's populated differently and later
 
     if args.mangle_dstname:
-        rule.name = rule.name.replace('DST',args.mangle_dstname)            
+        rule.name = rule.name.replace('DST',args.mangle_dstname)
         WARN(f"DST name is mangled to {rule.name}")
 
-    # KK: TODO: args.mangle_dirpath handled later
-
     # Just format strings
-    rule.logbase=rule.logbase.format( RUNFMT = '%08i', SEGFMT = '%05i' )
-    rule.outbase=rule.outbase.format( RUNFMT = '%08i', SEGFMT = '%05i' )
+    rule.logbase=rule.logbase.format( RUNFMT=RUNFMT, SEGFMT=SEGFMT )
+    rule.outbase=rule.outbase.format( RUNFMT=RUNFMT, SEGFMT=SEGFMT )
+
+    # Note: rule.filesystem can be changed via yaml file, but existing files that do that 
+    #       are not compatible with the current code because a lot of params would have to be made optional.
+    #       Seems to be historical only and not worth the effort atm.
 
     #################### JobConfig
     rule_job=rule.job
-    # Locations. Have to keep {leafdir} to-be-substituted later (historical reasons; should use a different placeholder)
-    for k,v in rule_job.filesystem.items():
-        rule_job.filesystem[k] = v.format(**locals(), leafdir='{leafdir}')
 
-    # Fill remaining substitutables. The self-reference to job.filesystem is a quirk to be fixed later
+    # filesystem is the base for all output, allow mangling here
+    # "production" (in the default filesystem) is replaced
+    if args.mangle_dirpath:
+        print(args.mangle_dirpath)
+        for key,val in rule.filesystem.items():
+            rule.filesystem[key]=rule.filesystem[key].replace("production",args.mangle_dirpath)
+            DEBUG(f"Filesystem: {key} is mangled to {rule.filesystem[key]}")
+
+    # Fill remaining substitutables. Most importanly, fill in base paths
     for field in fields(rule_job):
         subsval = getattr(rule_job, field.name)
-        if isinstance(subsval, str): # don't touch None or the filesystem dictionary
+        if isinstance(subsval, str): # don't try changing None or dictionaries
             subsval = subsval.format( 
                   **rule.dict()
                 , PWD=pathlib.Path(".").absolute()
-                , **rule_job.filesystem
+                , **rule.filesystem
         )
         setattr(rule_job, field.name, subsval)
         DEBUG (f'Job after substitution: {field.name}: {getattr(rule_job, field.name)}')
 
+    
+    # TODO: add to sanity checks:
+    # if rev==0 and build != 'new':
+    #     logging.error( f'production version must be nonzero for fixed builds' )
+    #     result = False
+
+    # if rev!=0 and build == 'new':
+    #     logging.error( 'production version must be zero for new build' )
+    #     result = False
+
+
+
     #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
     INFO("Rule construction complete.")
-    prettyrule = pprint.pformat(rule)
-    DEBUG("[Print constructed rule]")
-    DEBUG(prettyrule)
-    DEBUG("[End of rule]")
-    DEBUG("[Print constructed query]")
-    prettyquery = pprint.pformat(rule.input.query)
-    DEBUG(prettyquery)
-    DEBUG("[End of query]")
-    exit(0)
 
     ## KK: Breaking open slurp's
     #dispatched = slurp.submit (rule, args.maxjobs, nevents=args.nevents, **submitkw, **filesystem )     
@@ -258,11 +277,65 @@ def main():
 
     # Create a match configuration from the rule
     match_config = MatchConfig.from_rule_config(rule)
-    print()
-    print(f"MatchConfig from RuleConfig {rule.name}:")
-    pprint.pprint(match_config.dict())
 
-    inputquery = dbQuery( cnxn_string_map[ rule.input.db ], rule.input.query )
+    # Formatted version number, needed to identify repeated new_nocdb productions, 0 otherwise
+    DEBUG(f"Version string: {match_config.version_string}")
+
+    # print()
+    # print(f"MatchConfig from RuleConfig {rule.name}:")
+    # pprint.pprint(match_config.dict())
+
+    DEBUG("[Print cnxn_string]")
+    DEBUG(pprint.pformat(cnxn_string_map[ rule.input.db ]))
+    DEBUG("[End of cnxn_string]")
+    DEBUG("[Print constructed query]")
+    prettyquery = pprint.pformat(rule.input.query)
+    DEBUG(prettyquery)
+    DEBUG("[End of query]")
+
+    dbresult = dbQuery( cnxn_string_map[ rule.input.db ], rule.input.query )
+
+    for line in dbresult:
+        # run     = line.runnumber
+        # segment = line.segment
+        run     = line[1]
+        segment = line[2]
+        runsegkey = f"{run}-{segment}"
+
+        #streamname = getattr( line, 'streamname', None )
+        #streamname = line[4]
+        #print(runsegkey, streamname)
+        streamname = None
+
+        if streamname:
+            rule.name = rule.name.replace( '$(streamname)',streamname ) # hack in condor replacement
+            runsegkey = f"{run}-{segment}-{streamname}"
+
+        # Build output name
+        # e.g. DST_TRKR_CLUSTER_run3auau_ana.472_2024p012-00057655-00003.root
+        
+        ## A version string is now mandatory, the following is deprecated
+        # if match_config.version_string is None:
+        #     output_ = DSTFMT % (  match_config.name, match_config.buildarg, match_config.dbtag
+        #                         , int(run), int(segment)) 
+        # else:
+        #     output_ = DSTFMTv % (  match_config.name, match_config.buildarg, match_config.dbtag, match_config.version
+        #                         , int(run), int(segment))              
+
+        output_ = DSTFMTv % (  match_config.name, match_config.buildarg
+                            , match_config.dbtag, match_config.version_string
+                            , int(run), int(segment))              
+        print(output_)
+
+
+    # # Do not submit if we fail sanity check on definition file
+    # if not sanity_checks( params, input_ ):
+    #     ERROR( "Sanity check failed. Exiting." )
+    #     exit(1)
+        
+
+
+    exit(0)
 
     INFO( "KTHXBYE!" )
 
