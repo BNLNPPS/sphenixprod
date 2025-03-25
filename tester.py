@@ -16,10 +16,7 @@ from sphenixdbutils import cnxn_string_map, dbQuery, test_mode as dbutils_test_m
 from argparsing import submission_args
 
 # =============================================================================================
-RUNFMT = '%08i'
-SEGFMT = '%05i'
-DSTFMT = "%s_%s_%s-" + RUNFMT + "-" + SEGFMT + ".root"
-DSTFMTv = "%s_%s_%s_%s-" + RUNFMT + "-" + SEGFMT + ".root"
+from ruleclasses import DSTFMTv, RUNFMT, SEGFMT
 
 # ============================================================================================
 
@@ -326,6 +323,10 @@ def main():
                             , match_config.dbtag, match_config.version_string
                             , int(run), int(segment))              
         print(output_)
+
+        print(match_config.base_string + RUNFMT + "-" + SEGFMT + ".root")
+        print(match_config.buildarg)
+
 
 
     # # Do not submit if we fail sanity check on definition file

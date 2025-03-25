@@ -12,6 +12,15 @@ from simpleLogger import ERROR, DEBUG
 # to add additional attributes, change existing ones, replace placeholders.
 
 # ============================================================================
+# shared format strings
+RUNFMT = '%08i'
+SEGFMT = '%05i'
+DSTFMT = "%s_%s_%s-" + RUNFMT + "-" + SEGFMT + ".root"
+DSTFMTv = "%s_%s_%s_%s-" + RUNFMT + "-" + SEGFMT + ".root"
+bDSTFMTv = "%s_%s_%s_%s"
+
+
+# ============================================================================
 @dataclass( frozen = False )
 class InputConfig:
     """Represents the input configuration block in the YAML."""
@@ -201,6 +210,7 @@ class MatchConfig:
     payload:  str = None         # Payload directory (condor transfers inputs from)
     mem:      str = None         # Required memory
     version_string:  str = None      # e.g. "v001"
+    base_string: str = None      # e.g. "run3auau_new_2024p012_v001"; should replace individual fields above
 
     # Inferred, in __post_init__
     buildarg: str = None
@@ -232,13 +242,13 @@ class MatchConfig:
     # def __eq__( self, that ):
     #     return self.run==that.run and self.seg==that.seg
 
-    def __post_init__(self):
-        if self.buildarg is not None:
-            ERROR("buildarg is internal, do not set it")
-            exit(1)
-        b = self.build.replace(".","")
-        object.__setattr__(self, 'buildarg', b)
-        DEBUG(f"buildarg: {self.buildarg}")
+    # def __post_init__(self):
+    #     if self.buildarg is not None:
+    #         ERROR("buildarg is internal, do not set it")
+    #         exit(1)
+    #     b = self.build.replace(".","")
+    #     object.__setattr__(self, 'buildarg', b)
+    #     DEBUG(f"buildarg: {self.buildarg}")
 
 
     #     run = int(self.run)
@@ -258,6 +268,12 @@ class MatchConfig:
         Returns:
             A MatchConfig object with fields pre-populated from the RuleConfig.
         """
+
+        RUNFMT = '%08i'
+        SEGFMT = '%05i'
+        bDSTFMTv = "%s_%s_%s_%s-"
+        buildarg = rule_config.build.replace(".","")
+     
         # Formatted version number, needed to identify repeated new_nocdb productions, 0 otherwise
         version_string = f"v{rule_config.version:03d}"
         return cls(
@@ -270,6 +286,9 @@ class MatchConfig:
             version_string=version_string,
             db = rule_config.input.db,
             filequery = rule_config.input.query,
+            buildarg = buildarg,
+            base_string = bDSTFMTv % (  rule_config.name, buildarg
+                            , rule_config.dbtag, version_string)
         )
 
 # ============================================================================
