@@ -179,7 +179,7 @@ class RuleConfig:
         
         ### Fill derived data fields
         build_string=build.replace(".","")
-        version_string = f"v{params_data["version"]:{VERFMT}}"
+        version_string = f'v{params_data["version"]:{VERFMT}}'
         lfnsnippet = f"{build_string}_{dbtag}_{version_string}" # internal variable
         outbase    = f"{name}_{lfnsnippet}"
         logbase    = outbase+f"-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})".format(RUNFMT=RUNFMT,SEGFMT=SEGFMT)
