@@ -531,21 +531,17 @@ class MatchConfig:
         
         # What do we already have?
         outTemplate = self.outbase.replace( '$(streamname)', '%' )
-        DEBUG(f"outTemplate is {outTemplate}")
-        query = f"""select filename from datasets where filename like '{outTemplate}%' 
-        """
-            # and runnumber>={self.runMin} and runnumber<={self.runMax}
-        
+        # outTemplate='DST_CALOFITTING_run2auau_new_2024p007%'
+        query = f"""select filename from datasets where filename like '{outTemplate}%'"""
+        # Despite the "like" clause, this is a very fast query. Extra cuts or sibstitute cuts like
+        # and runnumber>={self.runMin} and runnumber<={self.runMax}
+        # can be added if the need arises.
         alreadyHave = [ c.filename for c in dbQuery( cnxn_string_map['fccro'], query ) ]
+
         INFO(f"Already have {len(alreadyHave)} files")
         exit(0)
 
-        
-
-
-
 # ============================================================================
-
 
 # Example usage:
 if __name__ == "__main__":
