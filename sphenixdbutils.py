@@ -1,7 +1,10 @@
 import pyodbc
 import pathlib
-from simpleLogger import DEBUG
 import pprint # noqa: F401
+
+import time
+
+from simpleLogger import DEBUG
 
 """
 This module provides an interface to the sPHENIX databases.
@@ -63,8 +66,6 @@ cnxn_string_map = {
 
 # ============================================================================================
 def printDbInfo( cnxn, title ):
-    # name=cnxn.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
-    # serv=cnxn.getinfo(pyodbc.SQL_SERVER_NAME)
     name=cnxn.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
     serv=cnxn.getinfo(pyodbc.SQL_SERVER_NAME)
     print(f"Connected {name} from {serv} as {title}")
@@ -78,37 +79,33 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     #assert( 'update' not in query.lower() )    
     #assert( 'select'     in query.lower() )
 
-    lastException = None    
-    # Attempt to connect up to ntries
-    # for itry in range(0,ntries):
-    #     try:
-    #         conn = pyodbc.connect( cnxn_string )
-
-    #         if itry>0:
-    #             printDbInfo( conn, f"Connected {cnxn_string} attempt {itry}" )
-    #         curs = conn.cursor()
-    #         curs.execute( query )
-    #         return curs
-                
-    #     except Exception as E:
-    #         lastException = E
-    #         delay = (itry + 1 ) * random.random()
-    #         time.sleep(delay)
-    # print(cnxn_string)
-    # pprint.pprint(query)
-    # exit(0)
-
     DEBUG(f"[Print cnxn_string] {cnxn_string}")
-    # DEBUG("[Print constructed query]")
-    # prettyquery = pprint.pformat(query)
-    # DEBUG(prettyquery)
-    # DEBUG("[End of query]")
-    DEBUG(f"lastException: {lastException}")
+    DEBUG(f"[Print query      ] {query}")
 
+    # Hack to test on Mac
+    import os
+    if os.uname().sysname=='Darwin' :
+        from simple import sqres
+        from cmplx import cqres
+        if 'daq' in cnxn_string :
+            return cqres
+        return sqres
 
-    from simple import sqres
-    from cmplx import cqres
-    if 'daq' in cnxn_string :
-        return cqres
-    
-    return sqres
+    # Proper db access
+    lastException = None
+    ntries = 1
+    curs=None
+    # Attempt to connect up to ntries
+    for itry in range(0,ntries):
+        try:
+            conn = pyodbc.connect( cnxn_string )
+            curs = conn.cursor()
+            curs.execute( query )
+            break
+        except Exception as E:
+            ntries = ntries + 1
+            lastException = str(E)
+            delay = (itry + 1 ) * random.random()
+            time.sleep(delay)
+    #TODO: Handle connection failure more gracefully
+    return curs
