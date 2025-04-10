@@ -520,50 +520,26 @@ class MatchConfig:
 
         DEBUG(f'Checking for existing files satisfying {args.rulename}')
         
+        ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # Despite the "like" clause, this is a very fast query. Extra cuts or substitute cuts like
         # 'and runnumber>={self.runMin} and runnumber<={self.runMax}'
         # can be added if the need arises.
         # Note: If the file database is not up to date, this can be replaced by
         # a filesystem search in the output directory
+        # Note: db in the yaml is for input, all output gets logged to the FileCatalog
         outTemplate = self.outbase.replace( 'STREAMNAME', '%' )
         query = f"""select filename from datasets where filename like '{outTemplate}%'"""
-
-        ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
+        DEBUG (f'Existing files query is {query}')
         if os.uname().sysname=='Darwin' :
-            alreadyHave = [ c[3] for c in dbQuery( cnxn_string_map[self.db], query ) ]
+            alreadyHave = [ c[3] for c in dbQuery( cnxn_string_map['fccro'], query ) ]
         else:
-            alreadyHave = [ c.filename for c in dbQuery( cnxn_string_map[self.db], query ) ]
+            alreadyHave = [ c.filename for c in dbQuery( cnxn_string_map['fccro'], query ) ]
         
         INFO(f"Already produced {len(alreadyHave)} output files like {outTemplate}*")
-        print(alreadyHave[0])
-        pprint.pprint(f"{alreadyHave}")
 
-        exit(0)
-
-        
         InputStem = InputsFromOutput[self.rulestem]
         DEBUG( 'Input files are of the form:')
         DEBUG( f'\n{pprint.pformat(InputStem)}')
-
-        exit(0)
-
-        ### What do we already have?
-        outTemplate = self.outbase.replace( '$(streamname)', '%' )
-        # outTemplate='DST_CALOFITTING_run2auau_new_2024p007%'
-        query = f"""select filename from datasets where filename like '{outTemplate}%'"""
-        # Despite the "like" clause, this is a very fast query. Extra cuts or substitute cuts like
-        # 'and runnumber>={self.runMin} and runnumber<={self.runMax}'
-        # can be added if the need arises.
-        # Note: If the file database is not up to date, this can be replaced by
-        # a filesystem search in the output directory
-
-        if os.uname().sysname=='Darwin' :
-            alreadyHave = [ c.filename for c in dbQuery( cnxn_string_map['fccro'], query ) ]
-            INFO(f"Already produced {len(alreadyHave)} output files like {outTemplate}*")
-
-            # What can we produce?
-
-
 
         exit(0)
 
