@@ -4,6 +4,7 @@ from dataclasses import dataclass, asdict
 import os
 import pathlib
 import pprint # noqa: F401
+import time
 
 from sphenixdbutils import cnxn_string_map, dbQuery
 from simpleLogger import WARN, DEBUG, ERROR, INFO, CRITICAL  # noqa: F401
@@ -528,13 +529,15 @@ class MatchConfig:
         # a filesystem search in the output directory
         # Note: db in the yaml is for input, all output gets logged to the FileCatalog
         outTemplate = self.outbase.replace( 'STREAMNAME', '%' )
+        now = time.time()
         query = f"""select filename from datasets where filename like '{outTemplate}%'"""
         DEBUG (f'Existing files query is {query}')
         if os.uname().sysname=='Darwin' :
             alreadyHave = [ c[3] for c in dbQuery( cnxn_string_map['fccro'], query ) ]
         else:
             alreadyHave = [ c.filename for c in dbQuery( cnxn_string_map['fccro'], query ) ]
-        
+        DEBUG( f'Query took {time.time() - now:.2g} seconds' )
+        exit(0)
         INFO(f"Already produced {len(alreadyHave)} output files like {outTemplate}*")
 
         InputStem = InputsFromOutput[self.rulestem]
