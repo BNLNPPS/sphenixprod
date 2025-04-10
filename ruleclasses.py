@@ -24,7 +24,7 @@ from sphenixjobdicts import InputsFromOutput
 """
 
 # Striving to keep Dataclasses immutable (frozen=True)
-# All modifications and substitutions should be done in the constructor
+# All modifications and utions should be done in the constructor
 
 # ============================================================================
 # shared format strings and default filesystem paths
@@ -68,7 +68,11 @@ class InputConfig:
     """Represents the input configuration block in the YAML."""
 
     db: str
+    table: str
+    prodIdentifier: Optional[str] = None # run3auau, run3cosmics
+
     # query: str
+    query_constraints: Optional[str] = None  # Additional constraints for the query
     direct_path: Optional[str] = None  # Make direct_path optional
 
 # ============================================================================
@@ -201,12 +205,8 @@ class RuleConfig:
         ### Extract and validate input
         input_data = rule_data.get("input", {})
         check_params(input_data
-                    , required=["db"]
+                    , required=["db", "table"]
                     , optional=["direct_path"] )
-
-        # Substitute rule_substitions into the query
-        #input_query  = input_data["query"].format(**rule_substitions, **params_data)
-        #input_query  = input_data["query"]
 
         # Rest of the input substitutions, like database name and direct path
         # DEBUG (f"Using database {rule.inputConfig.db}")
@@ -214,6 +214,12 @@ class RuleConfig:
         if input_direct_path is not None and "mode" in rule_substitions:
             input_direct_path = input_direct_path.format(**rule_substitions)
             DEBUG (f"Using direct path {input_direct_path}")
+
+        if input_data.get("prodIdentifier") is None:
+            prodIdentifier = outstub
+
+        input_query_constraints = input_data.get("query_constraints", "")
+        input_query_constraints += rule_substitions.get("input_query_constraints")        
 
         ### Extract and validate job
         job_data = rule_data.get("job", {})
@@ -263,8 +269,10 @@ class RuleConfig:
             mem=params_data["mem"],
             inputConfig=InputConfig(
                     db=input_data["db"],
-                    #query=input_query,
+                    table=input_data["table"],
                     direct_path=input_direct_path,
+                    prodIdentifier= prodIdentifier,
+                    query_constraints=input_query_constraints,
             ),
             filesystem=filesystem,
             jobConfig=JobConfig(
@@ -325,6 +333,7 @@ class MatchConfig:
     version_string: str = None      # e.g. "v001"
     build_string:   str = None
     outbase:        str = None         # Name base of the output file (e.g. DST_STREAMING_EVENT_TPC20)
+    inputConfig: InputConfig = None
 
     # Created
     lfn:       str = None         # Logical filename that matches
@@ -332,9 +341,6 @@ class MatchConfig:
     run:       str = None         # Run #
     seg:       str = None         # Seg #
     diskspace: str = "10GB"         # Required disk space
-
-    db:        str = None # used to be filesdb and not in this class
-    filequery: str = None # used to be files and not in this class
 
     inputs:   str = None
     ranges:   str = None
@@ -378,7 +384,7 @@ class MatchConfig:
             payload=rule_config.payload,
             mem=rule_config.mem,
             version_string=rule_config.version_string,
-            db = rule_config.inputConfig.db,
+            inputConfig = rule_config.inputConfig,
             #filequery = rule_config.inputConfig.query,
             outbase = rule_config.outbase,
         )
@@ -529,6 +535,9 @@ class MatchConfig:
         # a filesystem search in the output directory
         # Note: db in the yaml is for input, all output gets logged to the FileCatalog
         outTemplate = self.outbase.replace( 'STREAMNAME', '%' )
+        #outTemplate = 'DST_STREAMING_EVENT' # DEBUG
+        #outTemplate = 'DST_STREAMING_EVENT_%_run3' # DEBUG
+        #outTemplate = 'DST_TRKR_CLUSTER_run3' # DEBUG
         now = time.time()
         query = f"""select filename from datasets where filename like '{outTemplate}%'"""
         DEBUG (f'Existing files query is {query}')
@@ -537,12 +546,37 @@ class MatchConfig:
         else:
             alreadyHave = [ c.filename for c in dbQuery( cnxn_string_map['fccro'], query ) ]
         DEBUG( f'Query took {time.time() - now:.2g} seconds' )
-        exit(0)
         INFO(f"Already produced {len(alreadyHave)} output files like {outTemplate}*")
 
+        INFO("Building candidate inputs...")
         InputStem = InputsFromOutput[self.rulestem]
         DEBUG( 'Input files are of the form:')
         DEBUG( f'\n{pprint.pformat(InputStem)}')
+          
+        if isinstance(InputStem, dict):
+            # Transform value list to ('<v1>','<v2>', ...) format
+            inTypes = InputStem.values()
+        else :
+            inTypes = InputStem
+
+        # Manipulate the input types to match the database
+        if 'DST_TRKR' in self.rulestem :
+            inTypes = [ f'{t}_{self.inputConfig.prodIdentifier}' for t in inTypes ]
+            descriminator='dsttype'
+        elif 'DST_STREAMING' in self.rulestem :
+            descriminator='hostname'
+        
+        # Transform list to ('<v1>','<v2>', ...) format
+        inTypes = (f'( \'{"\',\'".join(inTypes)}\' )')
+        query = f'select * from {self.inputConfig.table} where \n\t{descriminator} in {inTypes}\n'
+        query += self.inputConfig.query_constraints        
+        DEBUG(f"Input file query is:\n{query}")
+
+        
+        
+        # if "DST_STREAMING_EVENT" in self.rulestem:
+        #     query = f"""select * from {self.inputConfig.table} where hostname in {hosts} """
+        #     print(f"Query is:\n{query}")
 
         exit(0)
 

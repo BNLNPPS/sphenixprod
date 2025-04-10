@@ -108,5 +108,6 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             lastException = str(E)
             delay = (itry + 1 ) * random.random()
             time.sleep(delay)
+            DEBUG(f"Attempt {itry} failed: {lastException}")
     #TODO: Handle connection failure more gracefully
     return curs

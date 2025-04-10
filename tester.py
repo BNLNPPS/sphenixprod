@@ -84,13 +84,6 @@ def main():
     DEBUG(f"Addtional resources to be copied to the worker: {append2rsync}")
     rule_substitions["append2rsync"] = append2rsync
 
-    # Limit the number of results from the query?
-    limit_condition = ""
-    if args.limit:
-        limit_condition = f"limit {args.limit}"
-        DEBUG(f"Limiting input query to {args.limit} entries.")
-    rule_substitions["limit_condition"] = limit_condition
-
     ### Which runs to process?
     if args.runlist:
         INFO(f"Processing runs from file: {args.runlist}")
@@ -102,7 +95,8 @@ def main():
         ERROR("No runs specified.")
         exit(1)
     DEBUG(f'Run condition is "{run_condition}"')
-    rule_substitions["run_condition"] = run_condition
+    rule_substitions["input_query_constraints"] = ""
+    # rule_substitions["run_condition"] = run_condition
 
     ### Which segments to process?
     seg_condition = ""
@@ -111,13 +105,28 @@ def main():
         DEBUG(f'Segment condition is "{seg_condition}"')
     else:
         DEBUG("No segment condition specified.")
-    rule_substitions["seg_condition"] = seg_condition
+    # rule_substitions["seg_condition"] = seg_condition
+
+    # Limit the number of results from the query?
+    limit_condition = ""
+    if args.limit:
+        limit_condition = f"limit {args.limit}"
+        DEBUG(f"Limiting input query to {args.limit} entries.")
+    rule_substitions["limit_condition"] = limit_condition
+
+    # TODO: this is where the run cursor pickup logic should go, if kept
 
     DEBUG( f"Run condition is {run_condition}" )
     DEBUG( f"Segment condition is {seg_condition}" )
     DEBUG( f"Limit condition is {limit_condition}" )
 
-    # TODO: this is where Jason added the cursor pickup
+    if run_condition != "":
+        run_condition = f"\t{run_condition}\n"
+    if seg_condition != "":
+        seg_condition = f"\t{seg_condition}\n"
+    if limit_condition != "":
+        limit_condition = f"\t{limit_condition}\n"
+    rule_substitions["input_query_constraints"] = f"""{run_condition}{seg_condition}{limit_condition}"""
 
     # Rest of the input substitutions
     if args.mode is not None:

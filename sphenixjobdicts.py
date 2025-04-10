@@ -4,7 +4,7 @@
 InputsFromOutput={
     'DST_STREAMING_EVENT' : { f'DST_STREAMING_EVENT_INTT{n}'    : f'intt{n}'    for n in range(0,8) }
                         |   { f'DST_STREAMING_EVENT_MVTX{n}'    : f'mvtx{n}'    for n in range(0,6) } 
-                        |   { f'DST_STREAMING_EVENT_TPC{n:02}'  : f'ebdc{n}:02' for n in range(0,24) } 
+                        |   { f'DST_STREAMING_EVENT_TPC{n:02}'  : f'ebdc{n:02}' for n in range(0,24) } 
                         |   {  'DST_STREAMING_EVENT_TPOT'       :  'ebdc39' }
 }
 

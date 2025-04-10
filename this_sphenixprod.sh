@@ -1,3 +1,8 @@
+if ! [[ "$SHELL" =~ "bash" ]]; then
+   echo "This script must be run in bash"
+   return 1
+fi
+
 OS=$( hostnamectl | awk '/Operating System/{ print $3" "$4 }' )
 echo "Setting up sPHNIX Production for ${OS}"
 

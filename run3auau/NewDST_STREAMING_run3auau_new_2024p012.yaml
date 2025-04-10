@@ -15,6 +15,7 @@ DST_STREAMING_EVENT_run3auau_streams:
 
    input:
       db: daqdb
+      table: filelist
       direct_path: /sphenix/lustre01/sphnxpro/{mode}/*/cosmics/
       query: |-
          with run2pp as (
@@ -120,6 +121,7 @@ DST_TRKR_CLUSTER_run3auau_streams:
 
    input:
       db: fc
+      table: datasets
       query: |-
          with allruns as (
          select
@@ -130,7 +132,7 @@ DST_TRKR_CLUSTER_run3auau_streams:
                 'NA'  as fileranges,
                 count(distinct filename) as ninputs
          from
-                datasets
+                ts
          where
                 dsttype like '{dstin}' and dataset='{dataset}'
                 {run_condition}
