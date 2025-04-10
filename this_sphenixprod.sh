@@ -49,4 +49,12 @@ parse_git_branch() {
 #PS1="\[\e[36m\]\u\[\e[33m\]\$(parse_git_branch)\[\e[32m\]\[\e[34m\][\W/]> \[\e[0m\]"
 PS1="\[\e[36m\]me@\h\[\e[33m\]\[\e[1:34m\][\W/]> \[\e[0m\]"
 
+# Specialized settings for individual users of sphnxbuild
+# Identified from ssh agent forwarding
+if [[ `ssh-add -l` =~ "kolja" ]] ; then
+    echo "Hello Kolja"    
+    git config --global user.name "Kolja Kauder"
+    git config --global user.email "kkauder@gmail.com"    
+    #git config --global push.default simple    
+fi
 
