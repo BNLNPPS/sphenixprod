@@ -32,13 +32,15 @@ def main():
     if test_mode:
         pathlib.Path('.testbed').touch()
 
-    #################### Set up logging before going any further
+    #################### Set up submission logging before going any further
     if args.sublogdir:
         sublogdir=args.sublogdir
-    elif test_mode:
-        sublogdir=f"/tmp/testbed/sphenixprod/{args.rulename}"
     else:
-        sublogdir=f"/tmp/sphenixprod/sphenixprod/{args.rulename}"
+        if test_mode:
+            sublogdir='/tmp/testbed/sphenixprod/'
+        else:
+            sublogdir='/tmp/sphenixprod/sphenixprod/'
+    sublogdir += f"{args.rulename}".replace('.yaml','')
         
     pathlib.Path(sublogdir).mkdir( parents=True, exist_ok=True )
     RotFileHandler = RotatingFileHandler(
@@ -52,8 +54,8 @@ def main():
     RotFileHandler.setFormatter(CustomFormatter())
     slogger.addHandler(RotFileHandler)
     slogger.setLevel(args.loglevel)
-    # stdout is already added by default
-    # If one cares, logging to stdout and logfile can be at different levels and using different formats
+    # stdout is already added to slogger by default
+    INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if test_mode:
         INFO("Running in testbed mode.")
@@ -61,24 +63,16 @@ def main():
     else:
         INFO("Running in production mode.")
 
-    DEBUG(f"Logging to {sublogdir}")
-    DEBUG(f"Log level: {args.loglevel}")
-
     #################### Rule has steering parameters and two subclasses for input and job specifics
-    # KK: Delme: params = config.get('params') is no longer a thing. Instead, RuleConfig has all the parameters
-    # Note that slurp does a lot of essentially copy/pasting from the config file into the rule object
-    # This is now done in the RuleConfig class yaml reader. Command line arguments to override the yaml file are passed to the ctor
+    # Rule is instantiated via the yaml reader.
 
-    ### Override fields from command line arguments
-    # Also fill in placeholders, e.g in the rule query
-    # Note: this could all be hidden in the RuleConfig ctor by passing the args directly
-    # but this way CLI arguments are used by the function that received them and 
+    ### Parse command line arguments into a substitution dictionary 
+    # This dictionary is passed to the ctor to override/customize yaml file parameters
+    # Note: this could all be hidden away in the RuleConfig ctor 
+    # but this way, CLI arguments are used by the function that received them and 
     # constraint constructions are capsulated away from the RuleConfig class
     rule_substitions = {}
-
-    ### Tweak existing command line arguments
-    # Can only come from the command line
-    rule_substitions ["resubmit"] = args.resubmit
+    # rule_substitions ["resubmit"] = args.resubmit
 
     #  Force copy our own files to the worker:
     # .testbed, .slurp (deprecated) indicate test mode
@@ -90,7 +84,6 @@ def main():
     DEBUG(f"Addtional resources to be copied to the worker: {append2rsync}")
     rule_substitions["append2rsync"] = append2rsync
 
-    ### Parse the command line arguments into placeholders in the rule objects
     # Limit the number of results from the query?
     limit_condition = ""
     if args.limit:
@@ -120,7 +113,9 @@ def main():
         DEBUG("No segment condition specified.")
     rule_substitions["seg_condition"] = seg_condition
 
-    INFO( f"Basic constraints are \" where ... {run_condition} {seg_condition} {limit_condition}\"" )
+    DEBUG( f"Run condition is {run_condition}" )
+    DEBUG( f"Segment condition is {seg_condition}" )
+    DEBUG( f"Limit condition is {limit_condition}" )
 
     # TODO: this is where Jason added the cursor pickup
 
@@ -132,7 +127,7 @@ def main():
         DEBUG("Mangling DST name")
         rule_substitions['DST']=args.mangle_dstname
 
-    # filesystem is the base for all output, allow mangling here
+    # filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
     rule_substitions["prodmode"] = "production"
     if args.mangle_dirpath:
@@ -141,11 +136,12 @@ def main():
     WARN("Don't forget other override_args")
     ## TODO dbinput, mem, docstring, unblock, batch_name
 
+    DEBUG(f"Rule substitutions: {rule_substitions}")
+    DEBUG("Now loading and building rule configuration.")
+
     #################### Load specific rule from the given yaml file.
     try:
-        # We could do rule = RuleConfig.from_yaml_file(args) and move everything to the RuleConfig ctor
-        all_rules = RuleConfig.from_yaml_file(args.config, rule_substitions)
-        rule = all_rules[args.rulename]
+        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, rule_substitions=rule_substitions )
         INFO(f"Successfully loaded rule configuration: {args.rulename}")
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
@@ -157,13 +153,13 @@ def main():
     DEBUG("Rule configuration:")
     DEBUG(yaml.dump(rule.dict))
 
-    if args.printquery:
-        # prettyquery = pprint.pformat(rule.inputConfig.query)
-        # 100 is the highest log level, it should always print
-        slogger.log(100, "[Print constructed query]")
-        slogger.log(100, rule.inputConfig.query)
-        slogger.log(100, "[End of query]")
-        exit(0)
+    # if args.printquery:
+    #     # prettyquery = pprint.pformat(rule.inputConfig.query)
+    #     # 100 is the highest log level, it should always print
+    #     slogger.log(100, "[Print constructed query]")
+    #     slogger.log(100, rule.inputConfig.query)
+    #     slogger.log(100, "[End of query]")
+    #     exit(0)
  
     # TODO: add to sanity checks:
     # if rev==0 and build != 'new':
@@ -175,22 +171,9 @@ def main():
     #     result = False
 
 
-
     #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
-    INFO("Rule construction complete.")
+    INFO("Rule construction complete. Now constructing corresponding match configuration.")
 
-    ## KK: Breaking open slurp's
-    #dispatched = slurp.submit (rule, args.maxjobs, nevents=args.nevents, **submitkw, **filesystem )     
-    ## KK: First step is  
-    ## matching, setup, runlist = matches( rule, kwargs ) 
-    # where kwargs = submitkw = params["mem","disk","dump", "neventsper"]
-    # PLUS potentially "resubmit"
-    ## So let's dig into that. 
-    # Jason handover does seemingly nothing but add resubmit
-    #    or revert to "mem","disk","dump", "neventsper" from the yaml even if they were specified on the command line
-    # This seems to be leftover crud, if anything, allow args to override the yaml which isn't done this way
-    # In any case, we should have already fixed all rule overrides from the command line at this time
-    
     # Create a match configuration from the rule
     match_config = MatchConfig.from_rule_config(rule)  
     DEBUG("Match configuration:")

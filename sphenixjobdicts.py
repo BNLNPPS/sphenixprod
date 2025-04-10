@@ -19,6 +19,20 @@ InputsFromOutput['DST_TRKR_TRACKS']  = ['DST_TRKR_CLUSTER','DST_TRKR_SEED']
 # Physical detectors are triggered
 # Trigger file is %GL1%.evt; input files are /bbox%/{cosmics|physics|}'%emcal%.prdf', '%HCal%.prdf', '%LL1%.prdf', '%mbd%.prdf', '%ZDC%.prdf'
 # many-to-1
-InputsFromOutput['DST_TRIGGERED_EVENT'] = ['DST_HCAL_CALO']
+InputsFromOutput['DST_TRIGGERED_EVENT'] = [ 'GL1%.evt'
+                                           , 'emcal%.prdf'
+                                           , 'HCal%.prdf'
+                                           , 'LL1%.prdf'
+                                           , 'mbd%.prdf'
+                                           , 'ZDC%.prdf'
+                                           ]
 
+# Downstream products fitting
+InputsFromOutput['DST_CALOFITTING'] = ['DST_TRIGGERED_EVENT']
 
+# Downstream products
+InputsFromOutput['DST_CALO'] = ['DST_CALOFITTING']
+
+# Calo jets - KK: Not clear to me what these are in detail
+InputsFromOutput['DST_JETS'] = ['DST_CALO']
+InputsFromOutput['DST_JETCALO'] = ['DST_CALOFITTING']

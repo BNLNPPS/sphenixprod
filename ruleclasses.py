@@ -6,8 +6,8 @@ import pathlib
 import pprint # noqa: F401
 
 from sphenixdbutils import cnxn_string_map, dbQuery
-from sphenixjobdicts import InputsFromOutput
 from simpleLogger import WARN, DEBUG, ERROR, INFO, CRITICAL  # noqa: F401
+from sphenixjobdicts import InputsFromOutput
 
 """ This file contains the dataclasses for the rule configuration and matching.
     It encapsulates what is tedious but hopefully easily understood instantiation
@@ -31,23 +31,21 @@ RUNFMT = '%08i'
 SEGFMT = '%05i'
 VERFMT = '03d'
 
-# "{leafdir}" needs to stay changeable
+# "{leafdir}" needs to stay changeable.Typical leafdir: DST_STREAMING_EVENT_TPC20 or DST_TRKR_CLUSTER 
 # Target example: 
-# /sphenix/lustre01/sphnxpro/production/$(runname) / $(runtype) / $(build)_$(tag)_$(version) / {leafdir} / run_$(rungroup)/dst
+# /sphenix/lustre01/sphnxpro/production/$(period) / $(runtype) / $(build)_$(tag)_$(version) / {leafdir} / run_$(rungroup)/dst
 # /sphenix/lustre01/sphnxpro/production/ run3auau  /   cosmics  / new_nocdbtag_v000          / {leafdir} / run_00057900_00058000/dst
-# Typical leafdir: DST_STREAMING_EVENT_TPC20 or DST_TRKR_CLUSTER
-# Typical rungroup: 00057900_00058000
 _default_filesystem = {
-        'outdir'  :           "/sphenix/lustre01/sphnxpro/{prodmode}/{runname}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/dst"
-    ,   'logdir'  : "file:///sphenix/data/data02/sphnxpro/{prodmode}/{runname}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/log"
-    ,   'histdir' :        "/sphenix/data/data02/sphnxpro/{prodmode}/{runname}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/hist"
-    ,   'condor'  :                                 "/tmp/{prodmode}/{runname}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/log"    
+        'outdir'  :           "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/dst"
+    ,   'logdir'  : "file:///sphenix/data/data02/sphnxpro/{prodmode}/{period}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/log"
+    ,   'histdir' :        "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/hist"
+    ,   'condor'  :                                 "/tmp/{prodmode}/{period}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/log"    
 }
 
 # ============================================================================
 def check_params(params_data: Dict[str, Any], required: List[str], optional: List[str] ) -> bool:
     """
-    Check if all required para parameters are present, and that no unexpected parameters are present.
+    Check that all required para parameters are present, and no unexpected ones.
     """
     check_clean = True
     for f in required:
@@ -58,9 +56,9 @@ def check_params(params_data: Dict[str, Any], required: List[str], optional: Lis
     for f in params_data.copy():
         if f not in optional + required:
             WARN( f"Unexpected field '{f}' in params. Removing, but you should clean up the yaml")
+            # raise ValueError(f"Unexpected field '{f}'.")
             check_clean = False
             del params_data[f]
-            # raise ValueError(f"Unexpected field '{f}'.")
     return check_clean
 
 # ============================================================================
@@ -69,7 +67,7 @@ class InputConfig:
     """Represents the input configuration block in the YAML."""
 
     db: str
-    query: str
+    # query: str
     direct_path: Optional[str] = None  # Make direct_path optional
 
 # ============================================================================
@@ -93,26 +91,21 @@ class JobConfig:
 class RuleConfig:
     """Represents a single rule configuration in the YAML."""
 
-    # Direct construction (i.e. yaml file + command line arguments)
-    name: str
-    build: str
-    dbtag: str
-    version: int
-    script: str
-    payload: str
-    neventsper: int
-    comment: str
-    rsync: str
-    mem: str    # Legacy decision: this belongs in JobConfig, but we keep it here for backwards compatibility
+    # Direct input (explictly provided by yaml file + command line arguments)
+    rulestem: str       # DST_CALOFITTING
+    period: str         # run3auau
+    build: str          # ana.472
+    dbtag: str          # 2025p000, nocdbtag 
+    version: int        # 0, 1, 2, 3
+    script: str         # run script on the worker node
+    payload: str        # Working directory on the node; transferred by condor
+    neventsper: int     # number of events per job
+    comment: str        # arbitrary comment
+    rsync: str          # additional files to rsync to the node
+    mem: str            # "4000MB"; TODO: this belongs in JobConfig
+    ## Note that optional basic fields are further down! (e.g. outstub, resubmit)
 
-    # KK, TODO: lfn2pfn is (used to be) an option
-    # lfn2pfn provides a mapping between physical files on disk and the corresponding lfn
-    # (i.e. the pfn with the directory path stripped off).
-    # --> Not using it until we have to (no currently existing rules have it) 
-    # KK, DELME: kaedama does rule.name = rule.name.format( **locals() ), but no names with {} are in the yaml files
-    #            Note that $(streamname) does exist, but that's populated differently and later
-
-    # Inferred or constant
+    # Inferred
     build_string: str
     version_string: str
     logbase: str
@@ -122,19 +115,17 @@ class RuleConfig:
     inputConfig: InputConfig
     jobConfig:   JobConfig
 
-    # Optional (these have to be last because they have defaults)
-    runname:    str      # by default inferred from the name
+    ### Optional fields have to be down here to allow for default values
+    outstub: str         # e.g. run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory
     filesystem: dict     # base filesystem paths
 
-    ## Old code: query can dynamically use any field that's in params (via format(**params))
+    ## Query can dynamically use any field that's in params (via format(**params))
     # Powerful but dangerous, so enforce explicit (but optional) fields that users can use
-    # Adding to them then becomes a more conscious decision
-    # Legacy decision: These should logically be in InputConfig; we keep them here for backwards compatibility
+    # Adding to them then becomes is a more conscious decision
+    # These should logically be in InputConfig; we keep them here for backwards compatibility
     mnrun: Optional[int] = 0  # Extra mn < run < mx constraint
     mxrun: Optional[int] = -1
-    dstin: Optional[str]   = ""  # ex. 'DST_STREAMING_EVENT_%_run3auau'
-    dataset: Optional[str] = "" 
-    resubmit: bool = False
+    # resubmit: bool = False
 
     # ------------------------------------------------
     def dict(self) -> Dict[str, Any]:
@@ -166,34 +157,30 @@ class RuleConfig:
         ### Extract and validate top level rule parameters
         params_data = rule_data.get("params", {})
         check_params(params_data
-                    , required=["name", "build", "dbtag", "version", "script",
+                    , required=["rulestem", "period",  "build", "dbtag", "version", "script",
                                 "payload", "neventsper", "comment", "rsync", "mem"]
-                    , optional=["mnrun", "mxrun", "dstin", "dataset", "resubmit","runname"])
+                    , optional=["mnrun", "mxrun", "outstub"])
         
-        # Pre-reading some values for more readable substitutions
-        name=params_data["name"]
-        build=params_data["build"]
-        dbtag=params_data["dbtag"]
-        if 'DST' in rule_substitions:
-            name=name.replace('DST',rule_substitions['DST'])
-            DEBUG(f"name is mangled to {name}")
         
         ### Fill derived data fields
-        build_string=build.replace(".","")
+        build_string=params_data["build"].replace(".","")
         version_string = f'v{params_data["version"]:{VERFMT}}'
-        lfnsnippet = f"{build_string}_{dbtag}_{version_string}" # internal variable
-        outbase    = f"{name}_{lfnsnippet}"
+        lfnsnippet = f'{build_string}_{params_data["dbtag"]}_{version_string}' # internal variable
+        outstub    = params_data["outstub"] if "outstub" in params_data else params_data["period"]
+        outbase    = f'{params_data["rulestem"]}_{outstub}'
+        if "STREAMING" in params_data["rulestem"]:
+            outbase += "_STREAMNAME"  # Replace with streamname later
+        outbase += f"_{lfnsnippet}"
+        if 'DST' in rule_substitions:
+            outbase=outbase.replace('DST',rule_substitions['DST'])
+            DEBUG(f"outbase is mangled to {outbase}")
         logbase    = outbase+f"-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})".format(RUNFMT=RUNFMT,SEGFMT=SEGFMT)
-        # print("logbase is ", logbase)
+        DEBUG(f"outbase is {outbase}")
+        DEBUG(f"logbase is {logbase}")
 
-        ### Change / Add to fields
+        ### Add to transfer list
         params_data["rsync"]=params_data["rsync"] + rule_substitions["append2rsync"]
         
-        ### Construct runname from the name if not provided
-        runname = rule_data.get("runname")
-        if runname is None:
-            runname = name.split('_')[-1]
-
         # Default filesystem paths contain placeholders for substitution
         filesystem = rule_data.get("filesystem")
         if filesystem is None:
@@ -201,24 +188,24 @@ class RuleConfig:
             filesystem = _default_filesystem
 
         for key in filesystem:
-            filesystem[key]=filesystem[key].format(   runname=runname
-                                                    , prodmode=rule_substitions["prodmode"]
+            filesystem[key]=filesystem[key].format(   prodmode=rule_substitions["prodmode"]
+                                                    , period=params_data["period"]
                                                     , mode=rule_substitions["mode"] 
                                                     , lfnsnippet=lfnsnippet
-                                                    , leafdir='{leafdir}',
+                                                    , leafdir='{leafdir}'
                                                     )
             DEBUG(f"Filesystem: {key} is {filesystem[key]}")
         
         ###### Now handle InputConfig and JobConfig 
-
         ### Extract and validate input
         input_data = rule_data.get("input", {})
         check_params(input_data
-                    , required=["db", "query"]
+                    , required=["db"]
                     , optional=["direct_path"] )
 
         # Substitute rule_substitions into the query
-        input_query  = input_data["query"].format(**rule_substitions, **params_data)
+        #input_query  = input_data["query"].format(**rule_substitions, **params_data)
+        #input_query  = input_data["query"]
 
         # Rest of the input substitutions, like database name and direct path
         # DEBUG (f"Using database {rule.inputConfig.db}")
@@ -257,9 +244,11 @@ class RuleConfig:
 
         ### With all preparations done, construct the constant RuleConfig object
         return cls(
-            name=name,
-            build=build,
-            dbtag=dbtag,
+            rulestem=params_data["rulestem"],
+            period=params_data["period"],
+            outstub=params_data.get("outstub"),
+            build=params_data.get("build"),
+            dbtag=params_data.get("dbtag"),
             version=params_data["version"],
             script=params_data["script"],
             payload=params_data["payload"],
@@ -273,7 +262,7 @@ class RuleConfig:
             mem=params_data["mem"],
             inputConfig=InputConfig(
                     db=input_data["db"],
-                    query=input_query,
+                    #query=input_query,
                     direct_path=input_direct_path,
             ),
             filesystem=filesystem,
@@ -287,26 +276,23 @@ class RuleConfig:
                 priority=job_data["priority"],
                 request_xferslots=job_data["request_xferslots"],
             ),
-            runname=runname,  # by default constructed from the name
             mnrun=params_data.get("mnrun"),  # mnrun and mxrun are optional
             mxrun=params_data.get("mxrun"),
-            dstin=params_data.get("dstin"),  # dstin and dataset are optional
-            dataset=params_data.get("dataset"),
-            resubmit=rule_substitions.get("resubmit", False), # Get resubmit from caller's CLI arguments
+            # dataset=params_data.get("dataset"),
+            # resubmit=rule_substitions.get("resubmit", False), # Get resubmit from caller's CLI arguments
         )
 
     # ------------------------------------------------
     @classmethod
-    def from_yaml_file(cls, yaml_file: str, rule_substitions=None) -> Dict[str, "RuleConfig"]:
+    def from_yaml_file(cls, yaml_file: str, rule_name: str, rule_substitions=None) -> "RuleConfig":
         """
         Constructs a dictionary of RuleConfig objects from a YAML file.
 
         Args:
             yaml_file: The path to the YAML file.
-            override_args: A Namespace (usually originating from argparse) to override in the YAML file.
 
         Returns:
-            A dictionary where keys are rule names and values are RuleConfig objects.
+            A RuleConfig objects, keyed by rule name.
         """
         try:
             with open(yaml_file, "r") as stream:
@@ -316,26 +302,28 @@ class RuleConfig:
         except FileNotFoundError:
             raise FileNotFoundError(f"YAML file not found: {yaml_file}")
 
-        rules = {}
-        for rule_name in yaml_data:
-            rules[rule_name] = cls.from_yaml(yaml_data, rule_name, rule_substitions)
-        return rules
-
+        # Could build dictionary where keys are rule names and values are RuleConfig objects.
+        # rules = {}
+        # for rule_name in yaml_data:
+        #     rules[rule_name] = cls.from_yaml(yaml_data, rule_name, rule_substitions)
+        # return rules
+        return cls.from_yaml(yaml_data, rule_name, rule_substitions)
+        
 # ============================================================================
 
 @dataclass( frozen = True )
 class MatchConfig:
     # From RuleConfig
-    name:     str = None         # Name of the matching rule (e.g. DST_CALO)
-    script:   str = None         # run script on the worker node
-    build:    str = None         # new or ana.472
+    rulestem:   str = None         # Name of the matching rule (e.g. DST_CALO)
+    script:     str = None         # run script on the worker node
+    build:      str = None         # new or ana.472
     # tag:      str = None         # DB tag
-    dbtag:    str = None         # DB tag
-    payload:  str = None         # Payload directory (condor transfers inputs from)
-    mem:      str = None         # Required memory. Required field, so defaulting to "4096MB" doesn't work
-    version_string:  str = None      # e.g. "v001"
-    build_string: str = None
-    outbase:      str = None         # Name base of the output file (e.g. DST_STREAMING_EVENT_TPC20)
+    dbtag:      str = None         # DB tag
+    payload:    str = None         # Working directory on the node; transferred by condor
+    mem:        str = None         # Required memory. Required field, so defaulting to "4096MB" doesn't work
+    version_string: str = None      # e.g. "v001"
+    build_string:   str = None
+    outbase:        str = None         # Name base of the output file (e.g. DST_STREAMING_EVENT_TPC20)
 
     # Created
     lfn:       str = None         # Logical filename that matches
@@ -381,7 +369,7 @@ class MatchConfig:
 
         # Formatted version number, needed to identify repeated new_nocdb productions, 0 otherwise
         return cls(
-            name=rule_config.name,
+            rulestem=rule_config.rulestem,
             script=rule_config.script,
             build=rule_config.build,
             build_string=rule_config.build_string,
@@ -390,7 +378,7 @@ class MatchConfig:
             mem=rule_config.mem,
             version_string=rule_config.version_string,
             db = rule_config.inputConfig.db,
-            filequery = rule_config.inputConfig.query,
+            #filequery = rule_config.inputConfig.query,
             outbase = rule_config.outbase,
         )
 
@@ -529,16 +517,33 @@ class MatchConfig:
     def doanewthing (self, args) :
         # Replacement for the old logic
         # TODO: function will be named sensibly and potentially split up
-        pprint.pprint(args)
-        pprint.pprint(self.dict())
+
+        DEBUG(f'Checking for existing files satisfying {args.rulename}')
+        
+        # Despite the "like" clause, this is a very fast query. Extra cuts or substitute cuts like
+        # 'and runnumber>={self.runMin} and runnumber<={self.runMax}'
+        # can be added if the need arises.
+        # Note: If the file database is not up to date, this can be replaced by
+        # a filesystem search in the output directory
+        outTemplate = self.outbase.replace( 'STREAMNAME', '%' )
+        query = f"""select filename from datasets where filename like '{outTemplate}%'"""
+
+        ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
+        if os.uname().sysname=='Darwin' :
+            alreadyHave = [ c[3] for c in dbQuery( cnxn_string_map[self.db], query ) ]
+        else:
+            alreadyHave = [ c.filename for c in dbQuery( cnxn_string_map[self.db], query ) ]
+        
+        INFO(f"Already produced {len(alreadyHave)} output files like {outTemplate}*")
+        print(alreadyHave[0])
+        pprint.pprint(f"{alreadyHave}")
+
         exit(0)
-        # pprint.pprint(self.inputConfig.query)
 
-
-        pprint.pprint(f'Input for {args.rulename} is {InputsFromOutput[args.rulename]}')
-        print()
-        # pprint.pprint(f'type(DST_TRKR_TRACKS) = {type(InputsFromOutput["DST_TRKR_TRACKS"])}')
-        # print()
+        
+        InputStem = InputsFromOutput[self.rulestem]
+        DEBUG( 'Input files are of the form:')
+        DEBUG( f'\n{pprint.pformat(InputStem)}')
 
         exit(0)
 
@@ -567,19 +572,20 @@ class MatchConfig:
 # Example usage:
 if __name__ == "__main__":
     try:
-        # Load all rules from the yaml file.
-        all_rules = RuleConfig.from_yaml_file("DST_STREAMING_run3auau_new_2024p012.yaml")
+        # # Load all rules from the yaml file.
+        # all_rules = RuleConfig.from_yaml_file("DST_STREAMING_run3auau_new_2024p012.yaml")
 
-        for rule_name, rule_config in all_rules.items():
-            print(f"Successfully loaded rule configuration: {rule_name}")
-            print(rule_config.dict())
-            print("---------------------------------------")
+        # for rule_name, rule_config in all_rules.items():
+        #     print(f"Successfully loaded rule configuration: {rule_name}")
+        #     print(rule_config.dict())
+        #     print("---------------------------------------")
 
-            # Create a MatchConfig from the RuleConfig
-            match_config = MatchConfig.from_rule_config(rule_config)
-            print(f"MatchConfig from RuleConfig {rule_name}:")
-            print(match_config.dict())
-            print("---------------------------------------")
+        # Create a MatchConfig from the RuleConfig
+        rule_config  = RuleConfig.from_yaml_file("NewDST_STREAMING_run3auau_new_2024p012.yaml",)
+        match_config = MatchConfig.from_rule_config(rule_config)
+        print(f"MatchConfig from RuleConfig {rule_name}:")
+        print(match_config.dict())
+        print("---------------------------------------")
 
     except (ValueError, FileNotFoundError) as e:
         print(f"Error: {e}")

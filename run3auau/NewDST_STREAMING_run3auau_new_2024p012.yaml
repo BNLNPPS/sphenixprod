@@ -1,17 +1,17 @@
 DST_STREAMING_EVENT_run3auau_streams:
-
-  params:
-    name:       DST_STREAMING_EVENT
-    dataset:    run3auau
-    build:      new
-    dbtag:      nocdbtag
-    version:    0
-    script  :   run_parallel_streams.sh
-    payload :   ./ProdFlow/run3auau/streaming/
-    neventsper: 10000
-    comment :   "---"
-    rsync   :   "./ProdFlow/run3auau/streaming/*"
-    mem     :   4000MB
+   params:
+     rulestem:   DST_STREAMING_EVENT
+     period:     run3auau
+     outstub:    run3auau # could be run3cosmics, run3calib, etc.
+     build:      new
+     dbtag:      nocdbtag
+     version:    0
+     script  :   run_parallel_streams.sh
+     payload :   ./ProdFlow/run3auau/streaming/
+     neventsper: 10000
+     comment :   "---"
+     rsync   :   "./ProdFlow/run3auau/streaming/*"
+     mem     :   4000MB
 
    input:
       db: daqdb
@@ -101,7 +101,9 @@ DST_STREAMING_EVENT_run3auau_streams:
 DST_TRKR_CLUSTER_run3auau_streams:
 
    params:
-     name:       DST_TRKR_CLUSTER_run3auau
+     rulestem:   DST_TRKR_CLUSTER
+     period:     run3auau
+     outstub:    run3auau # could be cosmics, calib, etc.
      build:      ana.472
      dbtag:      2024p012
      version:    1
@@ -113,8 +115,8 @@ DST_TRKR_CLUSTER_run3auau_streams:
      mem     :   4000MB
      mnrun   : 56900
      mxrun   : 99999
-     dstin   : 'DST_STREAMING_EVENT_%_run3auau'
-     dataset : 'new_nocdbtag_v000'
+    #  dstin   : 'DST_STREAMING_EVENT_%_run3auau'
+    #  dataset : 'new_nocdbtag_v000'
 
    input:
       db: fc
@@ -136,7 +138,7 @@ DST_TRKR_CLUSTER_run3auau_streams:
                 and runnumber<={mxrun}
 
          group by runnumber, segment
-`
+
          order by runnumber {limit_condition}
          )
 
