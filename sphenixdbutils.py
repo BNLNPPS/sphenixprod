@@ -93,6 +93,7 @@ def dbQuery( cnxn_string, query, ntries=10 ):
         return sqres
 
     # Proper db access
+    now = time.time()
     lastException = None
     ntries = 1
     curs=None
@@ -110,4 +111,5 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             time.sleep(delay)
             DEBUG(f"Attempt {itry} failed: {lastException}")
     #TODO: Handle connection failure more gracefully
+    DEBUG( f'[Print time       ] {time.time() - now:.2g} seconds' )
     return curs

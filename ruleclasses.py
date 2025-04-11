@@ -1,6 +1,8 @@
 import yaml
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
+from collections import namedtuple
+FileRunSeg = namedtuple('FileRunSeg',['filename','runnumber','segment'])
 import os
 import pathlib
 import pprint # noqa: F401
@@ -395,12 +397,9 @@ class MatchConfig:
 
     # ------------------------------------------------
     def doyourthing (self, args) :
-        # TODO: function will be named sensibly and potentially split up
-        
-        if self.filequery is None :
-            ERROR( "No input query?" )
-            exit(1)
-            return [], None, []  # Early exit
+        # TODO: This function is dead, only kept around for snippets and TODOS
+        CRITICAL("Don't call this function.")
+        exit(-1)
          
         # TODO: add to sanity check
         #  payload should definitely be part of the rsync list but the yaml does that explicitly instead, e.g.
@@ -411,17 +410,6 @@ class MatchConfig:
         # update    = kwargs.get('update',    True ) # update the DB
         updateDb= not args.submit
         
-        ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
-        INFO("Building candidate inputs...")
-        dbresult = dbQuery( cnxn_string_map[ self.db ], self.filequery )
-        INFO(f"Matching DB entries: {len(dbresult)}")
-
-        outputs=[]
-        dstnames={}
-        lfn_lists={}
-        range_lists={}
-        runMin=999999
-        runMax=0
         for line in dbresult:
             ### DEBUG: For real db query result, use
             # run     = line.runnumber
@@ -453,15 +441,6 @@ class MatchConfig:
                 ERROR( f"Duplicate key {output} in lfn,dst,range lists construction. Exiting." )
                 exit(1)
 
-            # Needed? For what? Can definitely be constructed from the output name itself, but maybe eliminated altogether
-            dstnames[ output ] = (f'{self.name}',f'{self.build_string}_{self.dbtag}') # WRONG !! Missing streamname subst
-            lfn_lists[ output ] = line[3].split()                       
-            range_lists[ output ] = line[4].split() # list of ranges per file (often 'na')
-
-            # For limiting the search space in DB queries to come
-            runMax=max(runMax,run)
-            runMin=min(runMin,run)
-        
             # Verbatim from slurp:
             # # Drop the run and segment numbers and leading stuff and just pull the datasets.  Note.  When
             # # we switch up to versioning of the files, this will sweep up the version number as well.
@@ -494,30 +473,8 @@ class MatchConfig:
             DEBUG( "No input files found. Nothing to be done." )
             return [], None, []  # Early exit if nothing to be done
 
-        #
-        # Build dictionary of DSTs existing in the datasets table of the file catalog.  For every DST that is in this list,
-        # we know that we do not have to produce it if it appears w/in the outputs list.
-        
-        print()
-        # pprint.pprint(dstnames) ## filename -> (dsttype, build_ver)
-        pprint.pprint(lfn_lists)
-        # pprint.pprint(range_lists)
-        # for key, tuple_ in dstnames.items():
-        #     dt, ds = tuple_
-        #     print(f"key: {key}")
-        #     print(f"dt: {dt}")
-        #     print(f"ds: {ds}")
+        exit(-1)
 
-        exit()
-
-        # pprint.pprint(outputs[2])
-        ### DEBUG: Just hand over the current objet(s) to the caller for development
-        return outputs
-
-       # # Do not submit if we fail sanity check on definition file
-        # if not sanity_checks( params, input_ ):
-        #     ERROR( "Sanity check failed. Exiting." )
-        #     exit(1)
 
         
     # ------------------------------------------------
@@ -525,7 +482,7 @@ class MatchConfig:
         # Replacement for the old logic
         # TODO: function will be named sensibly and potentially split up
 
-        DEBUG(f'Checking for existing files satisfying {args.rulename}')
+        INFO(f'Checking for already existing output...')
         
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # Despite the "like" clause, this is a very fast query. Extra cuts or substitute cuts like
@@ -536,18 +493,19 @@ class MatchConfig:
         # Note: db in the yaml is for input, all output gets logged to the FileCatalog
         outTemplate = self.outbase.replace( 'STREAMNAME', '%' )
         #outTemplate = 'DST_STREAMING_EVENT' # DEBUG
-        #outTemplate = 'DST_STREAMING_EVENT_%_run3' # DEBUG
+        outTemplate = 'DST_STREAMING_EVENT_%_run3' # DEBUG
         #outTemplate = 'DST_TRKR_CLUSTER_run3' # DEBUG
-        now = time.time()
-        query = f"""select filename from datasets where filename like '{outTemplate}%'"""
-        DEBUG (f'Existing files query is {query}')
+        existQuery  = f"""select filename,runnumber,segment from datasets where filename like '{outTemplate}%'"""
+        existQuery += self.inputConfig.query_constraints
         if os.uname().sysname=='Darwin' :
-            alreadyHave = [ c[3] for c in dbQuery( cnxn_string_map['fccro'], query ) ]
+            alreadyHave = [ FileRunSeg(c[3],-1,-1) for c in dbQuery( cnxn_string_map['fccro'], existQuery ) ]
         else:
-            alreadyHave = [ c.filename for c in dbQuery( cnxn_string_map['fccro'], query ) ]
-        DEBUG( f'Query took {time.time() - now:.2g} seconds' )
-        INFO(f"Already produced {len(alreadyHave)} output files like {outTemplate}*")
+            alreadyHave = [ FileRunSeg(c.filename,c.runnumber,c.segment) for c in dbQuery( cnxn_string_map['fccro'], existQuery ) ]
+        INFO(f"Already have {len(alreadyHave)} output files")
+        if len(alreadyHave) > 0 :
+            INFO(f"First line: {alreadyHave[0]}")
 
+        ###### Now get all existing input files
         INFO("Building candidate inputs...")
         InputStem = InputsFromOutput[self.rulestem]
         DEBUG( 'Input files are of the form:')
@@ -567,16 +525,28 @@ class MatchConfig:
             descriminator='hostname'
         
         # Transform list to ('<v1>','<v2>', ...) format.
-        # This one-liner works only in higher python versions :-(:
-        # inTypes = (f'( \'{"\',\'".join(inTypes)}\' )')
-        # so do it the pedestrian way instead
-        inTypes = (f'( QUOTE{"QUOTE,QUOTE".join(inTypes)}QUOTE )')
+        # This one-liner works only in higher python versions :-(
+        # inTypes = f'( \'{"\',\'".join(inTypes)}\' )'
+        # So do it the pedestrian way instead
+        inTypes = f'( QUOTE{"QUOTE,QUOTE".join(inTypes)}QUOTE )'
         inTypes = inTypes.replace("QUOTE","'")
         
-        query = f'select * from {self.inputConfig.table} where \n\t{descriminator} in {inTypes}\n'
-        query += self.inputConfig.query_constraints        
-        DEBUG(f"Input file query is:\n{query}")
+        infilequery = f'select * from {self.inputConfig.table} where \n\t{descriminator} in {inTypes}\n'
+        infilequery += self.inputConfig.query_constraints
+        DEBUG(f"Input file query is:\n{infilequery}")
+        dbresult = dbQuery( cnxn_string_map[ self.inputConfig.db ], infilequery ).fetchall()
+        inFiles = [ FileRunSeg(c.filename,c.runnumber,c.segment) for c in dbresult ]
 
+        INFO(f"Matching DB entries: {len(inFiles)}")
+        INFO(f"First line: {inFiles[0]}")
+        
+        #### Now build up potential output files from what's available
+        #### Key on runnumber
+        
+        # # Do not submit if we fail sanity check on definition file
+        # if not sanity_checks( params, input_ ):
+        #     ERROR( "Sanity check failed. Exiting." )
+        #     exit(1)
         exit(0)
 
 # ============================================================================
