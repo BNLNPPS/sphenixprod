@@ -566,17 +566,16 @@ class MatchConfig:
         elif 'DST_STREAMING' in self.rulestem :
             descriminator='hostname'
         
-        # Transform list to ('<v1>','<v2>', ...) format
-        inTypes = (f'( \'{"\',\'".join(inTypes)}\' )')
+        # Transform list to ('<v1>','<v2>', ...) format.
+        # This one-liner works only in higher python versions :-(:
+        # inTypes = (f'( \'{"\',\'".join(inTypes)}\' )')
+        # so do it the pedestrian way instead
+        inTypes = (f'( QUOTE{"QUOTE,QUOTE".join(inTypes)}QUOTE )')
+        inTypes = inTypes.replace("QUOTE","'")
+        
         query = f'select * from {self.inputConfig.table} where \n\t{descriminator} in {inTypes}\n'
         query += self.inputConfig.query_constraints        
         DEBUG(f"Input file query is:\n{query}")
-
-        
-        
-        # if "DST_STREAMING_EVENT" in self.rulestem:
-        #     query = f"""select * from {self.inputConfig.table} where hostname in {hosts} """
-        #     print(f"Query is:\n{query}")
 
         exit(0)
 
