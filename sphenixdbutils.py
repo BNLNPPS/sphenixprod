@@ -4,6 +4,7 @@ import pprint # noqa: F401
 
 import time
 import random
+import os
 
 from simpleLogger import DEBUG
 
@@ -63,7 +64,12 @@ cnxn_string_map = {
     'statusw'     : f'DSN={dsnprodw};UID=argouser',
     'raw'         :  'DSN=RawdataCatalog_read;UID=phnxrc;READONLY=True',
     'rawdr'       :  'DSN=RawdataCatalog_read;UID=phnxrc;READONLY=True',
-}    
+}
+# Hack to test on Mac
+if os.uname().sysname=='Darwin' :
+    for key in cnxn_string_map.keys() :
+        DEBUG(f"Changing {key} to use DSN=eickolja")
+        cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;UID=eickolja;'
 
 # ============================================================================================
 def printDbInfo( cnxn, title ):
@@ -83,16 +89,6 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     DEBUG(f"[Print cnxn_string] {cnxn_string}")
     DEBUG(f"[Print query      ] {query}")
 
-    # Hack to test on Mac
-    import os
-    if os.uname().sysname=='Darwin' :
-        from simple import sqres
-        from cmplx import cqres
-        if 'daq' in cnxn_string :
-            return cqres
-        return sqres
-
-    # Proper db access
     now = time.time()
     lastException = None
     ntries = 1
@@ -103,6 +99,9 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             conn = pyodbc.connect( cnxn_string )
             curs = conn.cursor()
             curs.execute( query )
+            for row in curs:
+                print(row)
+                pass
             break
         except Exception as E:
             ntries = ntries + 1
@@ -112,4 +111,6 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             DEBUG(f"Attempt {itry} failed: {lastException}")
     #TODO: Handle connection failure more gracefully
     DEBUG( f'[Print time       ] {time.time() - now:.2g} seconds' )
+    
+    exit(0)
     return curs
