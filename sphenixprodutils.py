@@ -36,11 +36,12 @@ def list_to_condition(lst, name) :
     No effort is made to ensure that inputs are numbers and properly ordered.
 
     Args:
-        lst: A list of values (e.g., run numbers, segment numbers).
-        name: The name of the field/column in the database (e.g., "runnumber", "segment").
+        lst: A list of values supplied via CLI (run numbers or segment numbers).
+        name: The name of the field/column in the database
 
     Returns:
         A string representing a SQL-like condition, or None if the list is empty.
+        A list that explicitly contains all numbers (to use in for loops)
 
     Examples:
         - list_to_condition([123], "runnumber") returns "and runnumber=123"
@@ -49,16 +50,22 @@ def list_to_condition(lst, name) :
         - list_to_condition([], "runnumber") returns None
     """
     condition = ""
-    if   len( lst )==1:
+    full_list = []
+    if  len( lst )==1:
         condition = f"and {name}={lst[0]}"
+        full_list = [int(lst[0])]
     elif len( lst )==2:
         condition = f"and {name}>={lst[0]} and {name}<={lst[1]}"
+        full_list = range( int(lst[0]),int(lst[1])+1)
+        # prlst[0:2])
     elif len( lst )>=3 :
         condition = f"and {name} in ( %s )" % ','.join( lst )
+        full_list = map(int,lst)
     else: 
-        return None
+        return None,None
+    
+    full_list=sorted(full_list)
+    return condition,full_list
+# ============================================================================================
 
-    return condition
 
-
-        

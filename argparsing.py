@@ -21,7 +21,7 @@ def submission_args():
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()
     exclusive_vgroup.add_argument( '-v', '--verbose', help="Prints more information", action="store_true")
     exclusive_vgroup.add_argument( '-d', '--debug', help="Prints even more information", action="store_true")
-    exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO', help="Specific logging level (DEBUG, INFO, WARN, ERROR, CRITICAL)" ) # These enums are valued 10, 20, ..., so a number would be ok too
+    exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO', help="Specific logging level (CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL)" )
     
     arg_parser.add_argument( '--sublogdir', dest='sublogdir', default=None, help="Directory for submission script logging (defaults under /tmp)" )
     # arg_parser.add_argument( '--log', dest='log', default=None, help="Log file name (defaults to stdout)" )
@@ -38,7 +38,7 @@ def submission_args():
     exclusive_rgroup = rgroup.add_mutually_exclusive_group()
     exclusive_rgroup.add_argument( '--runs', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=['56900'] )
     exclusive_rgroup.add_argument( '--runlist', help="Flat text file containing list of runs to process, separated by whitespace / newlines.", default=None )
-    arg_parser.add_argument( '--segments', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=[] )
+    # arg_parser.add_argument( '--segments', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=[] )
     arg_parser.add_argument( '--experiment-mode',dest="mode",help="Specifies the experiment mode (commissioning or physics) for direct lookup of input files.",default="physics")
 
     arg_parser.add_argument( '-N', '--nevents', '-n', default=0, dest='nevents', help='Number of events to process.  0=all.', type=int)
@@ -51,7 +51,7 @@ def submission_args():
 
     # Queue-related constraints
     arg_parser.add_argument( '--maxjobs',dest="maxjobs",help="Maximum number of jobs to pass to condor", default=None )
-    arg_parser.add_argument( '--limit', help="Limit for db queries", default=0, type=int )
+    arg_parser.add_argument( '--limit', help="Limit for input db queries", default=0, type=int )
     # arg_parser.add_argument( '-u', '--unblock-state', nargs='*', dest='unblock',  choices=["submitting","submitted","started","running","evicted","failed","finished"] )
     arg_parser.add_argument( '-r', '--resubmit', dest='resubmit', default=False, action='store_true', help='Existing filecatalog entry does not block a job')
     arg_parser.add_argument( '--docstring',default=None,help="Appends a documentation string to the log entry")

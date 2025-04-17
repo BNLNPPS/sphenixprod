@@ -1,16 +1,18 @@
 import yaml
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
-from collections import namedtuple
-FileRunSeg = namedtuple('FileRunSeg',['filename','runnumber','segment'])
-import os
+import itertools
+import operator
+
 import pathlib
 import pprint # noqa: F401
-import time
 
 from sphenixdbutils import cnxn_string_map, dbQuery
-from simpleLogger import WARN, DEBUG, ERROR, INFO, CRITICAL  # noqa: F401
+from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import InputsFromOutput
+
+from collections import namedtuple
+FileStreamRunSeg = namedtuple('FileStreamRunSeg',['filename','streamname','runnumber','segment'])
 
 """ This file contains the dataclasses for the rule configuration and matching.
     It encapsulates what is tedious but hopefully easily understood instantiation
@@ -72,7 +74,12 @@ class InputConfig:
     db: str
     table: str
     prodIdentifier: Optional[str] = None # run3auau, run3cosmics
-
+    
+    ## Query can dynamically use any field that's in params (via format(**params))
+    # Powerful but dangerous, so enforce explicit (but optional) fields that users can use
+    # Adding to them then becomes is a more conscious decision
+    mnrun: Optional[int] = 0  # Extra mn < run < mx constraint
+    mxrun: Optional[int] = -1
     # query: str
     query_constraints: Optional[str] = None  # Additional constraints for the query
     direct_path: Optional[str] = None  # Make direct_path optional
@@ -126,12 +133,6 @@ class RuleConfig:
     outstub: str         # e.g. run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory
     filesystem: dict     # base filesystem paths
 
-    ## Query can dynamically use any field that's in params (via format(**params))
-    # Powerful but dangerous, so enforce explicit (but optional) fields that users can use
-    # Adding to them then becomes is a more conscious decision
-    # These should logically be in InputConfig; we keep them here for backwards compatibility
-    mnrun: Optional[int] = 0  # Extra mn < run < mx constraint
-    mxrun: Optional[int] = -1
     # resubmit: bool = False
 
     # ------------------------------------------------
@@ -166,7 +167,7 @@ class RuleConfig:
         check_params(params_data
                     , required=["rulestem", "period",  "build", "dbtag", "version", "script",
                                 "payload", "neventsper", "comment", "rsync", "mem"]
-                    , optional=["mnrun", "mxrun", "outstub"])
+                    , optional=["outstub"])
         
         
         ### Fill derived data fields
@@ -208,7 +209,7 @@ class RuleConfig:
         input_data = rule_data.get("input", {})
         check_params(input_data
                     , required=["db", "table"]
-                    , optional=["direct_path"] )
+                    , optional=["direct_path","mnrun", "mxrun"] )
 
         # Rest of the input substitutions, like database name and direct path
         # DEBUG (f"Using database {rule.inputConfig.db}")
@@ -219,6 +220,9 @@ class RuleConfig:
 
         if input_data.get("prodIdentifier") is None:
             prodIdentifier = outstub
+
+        mnrun=input_data.get("mnrun",0)
+        mxrun=input_data.get("mxrun",-1)
 
         input_query_constraints = input_data.get("query_constraints", "")
         input_query_constraints += rule_substitions.get("input_query_constraints")        
@@ -274,6 +278,8 @@ class RuleConfig:
                     table=input_data["table"],
                     direct_path=input_direct_path,
                     prodIdentifier= prodIdentifier,
+                    mnrun=mnrun,
+                    mxrun=mxrun,
                     query_constraints=input_query_constraints,
             ),
             filesystem=filesystem,
@@ -287,8 +293,6 @@ class RuleConfig:
                 priority=job_data["priority"],
                 request_xferslots=job_data["request_xferslots"],
             ),
-            mnrun=params_data.get("mnrun"),  # mnrun and mxrun are optional
-            mxrun=params_data.get("mxrun"),
             # dataset=params_data.get("dataset"),
             # resubmit=rule_substitions.get("resubmit", False), # Get resubmit from caller's CLI arguments
         )
@@ -400,15 +404,6 @@ class MatchConfig:
         # TODO: This function is dead, only kept around for snippets and TODOS
         CRITICAL("Don't call this function.")
         exit(-1)
-         
-        # TODO: add to sanity check
-        #  payload should definitely be part of the rsync list but the yaml does that explicitly instead, e.g.
-        #  payload :   ./ProdFlow/run3auau/streaming/
-        #  rsync   : "./ProdFlow/run3auau/streaming/*"
-
-        # TODO: Find the right class to store this
-        # update    = kwargs.get('update',    True ) # update the DB
-        updateDb= not args.submit
         
         for line in dbresult:
             ### DEBUG: For real db query result, use
@@ -478,11 +473,20 @@ class MatchConfig:
 
         
     # ------------------------------------------------
-    def doanewthing (self, args) :
+    def doanewthing (self, args, runlist) :
         # Replacement for the old logic
         # TODO: function will be named sensibly and potentially split up
 
-        INFO(f'Checking for already existing output...')
+        # TODO: add to sanity check
+        #  payload should definitely be part of the rsync list but the yaml does that explicitly instead, e.g.
+        #  payload :   ./ProdFlow/run3auau/streaming/
+        #  rsync   : "./ProdFlow/run3auau/streaming/*"
+
+        # TODO: Find the right class to store this
+        # update    = kwargs.get('update',    True ) # update the DB
+        updateDb= not args.submit
+
+        INFO('Checking for already existing output...')
         
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # Despite the "like" clause, this is a very fast query. Extra cuts or substitute cuts like
@@ -492,18 +496,17 @@ class MatchConfig:
         # a filesystem search in the output directory
         # Note: db in the yaml is for input, all output gets logged to the FileCatalog
         outTemplate = self.outbase.replace( 'STREAMNAME', '%' )
-        #outTemplate = 'DST_STREAMING_EVENT' # DEBUG
-        outTemplate = 'DST_STREAMING_EVENT_%_run3' # DEBUG
-        #outTemplate = 'DST_TRKR_CLUSTER_run3' # DEBUG
-        existQuery  = f"""select filename,runnumber,segment from datasets where filename like '{outTemplate}%'"""
+        existQuery  = f"""select filename, -1 as streamname,runnumber,segment from datasets where filename like '{outTemplate}%'"""
         existQuery += self.inputConfig.query_constraints
-        if os.uname().sysname=='Darwin' :
-            alreadyHave = [ FileRunSeg(c[3],-1,-1) for c in dbQuery( cnxn_string_map['fccro'], existQuery ) ]
-        else:
-            alreadyHave = [ FileRunSeg(c.filename,c.runnumber,c.segment) for c in dbQuery( cnxn_string_map['fccro'], existQuery ) ]
+
+        # # KK: DEBUG
+        # outTemplate = 'DST_STREAMING_EVENT_%_run3' # DEBUG
+        # existQuery  = f"""select filename,runnumber,segment from datasets where filename like '{outTemplate}%'"""
+
+        alreadyHave = [ FileStreamRunSeg(c.filename,c.streamname, c.runnumber,c.segment) for c in dbQuery( cnxn_string_map['fccro'], existQuery ) ]
         INFO(f"Already have {len(alreadyHave)} output files")
         if len(alreadyHave) > 0 :
-            INFO(f"First line: {alreadyHave[0]}")
+            DEBUG(f"First line: \n{alreadyHave[0]}")
 
         ###### Now get all existing input files
         INFO("Building candidate inputs...")
@@ -512,7 +515,6 @@ class MatchConfig:
         DEBUG( f'\n{pprint.pformat(InputStem)}')
           
         if isinstance(InputStem, dict):
-            # Transform value list to ('<v1>','<v2>', ...) format
             inTypes = InputStem.values()
         else :
             inTypes = InputStem
@@ -525,24 +527,95 @@ class MatchConfig:
             descriminator='hostname'
         
         # Transform list to ('<v1>','<v2>', ...) format.
-        # This one-liner works only in higher python versions :-(
-        # inTypes = f'( \'{"\',\'".join(inTypes)}\' )'
-        # So do it the pedestrian way instead
+        # for higher pythin versions: inTypes = f'( \'{"\',\'".join(inTypes)}\' )'
+        # Pedestrian way:
         inTypes = f'( QUOTE{"QUOTE,QUOTE".join(inTypes)}QUOTE )'
         inTypes = inTypes.replace("QUOTE","'")
-        
-        infilequery = f'select * from {self.inputConfig.table} where \n\t{descriminator} in {inTypes}\n'
+
+        infilequery = f'select filename,{descriminator} as streamname,runnumber,segmentplaceholder as segment from {self.inputConfig.table} where \n\t{descriminator} in {inTypes}\n'
         infilequery += self.inputConfig.query_constraints
+        if 'daq' in self.inputConfig.db: # Raw daq uses sequence instead
+            infilequery=infilequery.replace('segmentplaceholder','sequence')
+            infilequery+="\tand transferred_to_sdcc='t'"
+        else:
+            infilequery=infilequery.replace('segmentplaceholder','segment')
+
         DEBUG(f"Input file query is:\n{infilequery}")
         dbresult = dbQuery( cnxn_string_map[ self.inputConfig.db ], infilequery ).fetchall()
-        inFiles = [ FileRunSeg(c.filename,c.runnumber,c.segment) for c in dbresult ]
+        inFiles = [ FileStreamRunSeg(c.filename,c.streamname,c.runnumber,c.segment) for c in dbresult ]
 
         INFO(f"Matching DB entries: {len(inFiles)}")
-        INFO(f"First line: {inFiles[0]}")
+        if len(inFiles) > 0 :
+            DEBUG(f"First line: \n{inFiles[0]}")
         
         #### Now build up potential output files from what's available
         #### Key on runnumber
+        filesByRun = {k : list(g) for k, g in itertools.groupby(inFiles, operator.attrgetter('runnumber'))}
+        CHATTY(f'All keys:\n{filesByRun.keys()}')
+        if len(filesByRun) > 0 :
+            CHATTY(f"First line: \n{filesByRun[next(iter(filesByRun))]}")
+
+        for runnumber in runlist:
+            # TODO: Adapt the runlist instead of these continues; it's a quick and dirty fix
+            if self.inputConfig.mnrun>0 and runnumber<self.inputConfig.mnrun:
+                continue
+            if self.inputConfig.mxrun>0 and runnumber>self.inputConfig.mxrun:
+                continue
+
+            candidates = [ f for f in inFiles if f.runnumber == runnumber ]
+            if len(candidates) == 0 :
+                CHATTY(f"No input files found for run {runnumber}.")
+                continue
+            DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
+            DEBUG(f"First line: \n{candidates[0]}")
+            #print(f"\n{candidates}")
+            #exit(0)
+            
+            # # Option A : Cut up the candidates into segments
+            # # itertools.groupby depends on data being sorted
+            # candidates.sort(key=lambda x: (x.runnumber, x.segment))
+            # FilesForRun = { k : list(g) for k, g in itertools.groupby(candidates, operator.attrgetter('segment')) }
+            # INFO(f"Found {len(FilesForRun)} segments for run {runnumber}.")
+            # INFO(f'All segment numbers:\n{FilesForRun.keys()}')
+            # if len(FilesForRun) > 0 :
+            #     for seg in FilesForRun:
+            #         INFO(f"Runnumber={runnumber}, Segment {seg}: {len(FilesForRun[seg])}")
+            #         if seg==7:
+            #             INFO(f"seg[7]: \n{FilesForRun[seg]}")
+            # exit(0)
+
+            ### Option B : Cut up the candidates into streams
+            # itertools.groupby depends on data being sorted
+            candidates.sort(key=lambda x: (x.runnumber, x.streamname))
+
+            FilesForRun = { k : list(g) for k, g in itertools.groupby(candidates, operator.attrgetter('streamname')) }
+            CHATTY(f"Found {len(FilesForRun)} segments for run {runnumber}.")
+            CHATTY(f'All streamnames:\n{FilesForRun.keys()}')
+            if len(FilesForRun) > 0 :
+                for stream in FilesForRun:
+                    CHATTY(f"Runnumber={runnumber}, Stream {stream}: {len(FilesForRun[stream])}")
+
+            if isinstance(InputStem, dict):
+                CHATTY(f'\nInputStem is a dictionary, Filenames selected by {descriminator} using:')
+                for key in InputStem:
+                    CHATTY(f'Use output {key} for input {InputStem[key]}')
+            else :
+                CHATTY(f'\nInputStem is a list, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{inTypes}\nas input')
+
+            CHATTY(f"First line: \n{FilesForRun[next(iter(FilesForRun))]}")
+
+            # for stream in FilesForRun:
+            #     print(f"Runnumber={runnumber}, Stream {stream}:")
+            #     for f in FilesForRun[stream]:
+            #         print(f"\t{f.filename} {f.streamname} {f.runnumber} {f.segment}")
+            #     print()
+
+
+
+
+            exit(0)
         
+
         # # Do not submit if we fail sanity check on definition file
         # if not sanity_checks( params, input_ ):
         #     ERROR( "Sanity check failed. Exiting." )

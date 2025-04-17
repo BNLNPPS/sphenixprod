@@ -86,10 +86,10 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     #assert( 'update' not in query.lower() )    
     #assert( 'select'     in query.lower() )
 
-    DEBUG(f"[Print cnxn_string] {cnxn_string}")
-    DEBUG(f"[Print query      ] {query}")
+    DEBUG(f'[cnxn_string] {cnxn_string}')
+    DEBUG(f'[query      ]\n{query}')
 
-    now = time.time()
+    now =time.time()
     lastException = None
     ntries = 1
     curs=None
@@ -99,9 +99,6 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             conn = pyodbc.connect( cnxn_string )
             curs = conn.cursor()
             curs.execute( query )
-            for row in curs:
-                print(row)
-                pass
             break
         except Exception as E:
             ntries = ntries + 1
@@ -109,8 +106,7 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             delay = (itry + 1 ) * random.random()
             time.sleep(delay)
             DEBUG(f"Attempt {itry} failed: {lastException}")
-    #TODO: Handle connection failure more gracefully
-    DEBUG( f'[Print time       ] {time.time() - now:.2g} seconds' )
+    #TODO: Hanquery connn failure more gracefully
+    DEBUG(f'[query time ] {time.time() - now:.2g} seconds' )
     
-    exit(0)
     return curs

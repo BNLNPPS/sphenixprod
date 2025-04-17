@@ -10,7 +10,7 @@ InputsFromOutput={
 
 # Clusters and seeds: many-to-1
 InputsFromOutput['DST_TRKR_CLUSTER'] = list(InputsFromOutput['DST_STREAMING_EVENT'].keys())
-InputsFromOutput['DST_TRKR_SEED']    = list(InputsFromOutput['DST_TRKR_CLUSTER'])
+InputsFromOutput['DST_TRKR_SEED']    = ['DST_TRKR_CLUSTER']
 
 # Tracks: From clusters and seeds, i.e. 2-1
 InputsFromOutput['DST_TRKR_TRACKS']  = ['DST_TRKR_CLUSTER','DST_TRKR_SEED']

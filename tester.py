@@ -9,7 +9,7 @@ import pprint # noqa F401
 
 from argparsing import submission_args
 from ruleclasses import RuleConfig, MatchConfig
-from simpleLogger import slogger, CustomFormatter, WARN, DEBUG, ERROR, INFO, CRITICAL  # noqa: F401
+from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 
 from sphenixprodutils import extract_numbers_to_commastring
 from sphenixprodutils import list_to_condition
@@ -68,11 +68,10 @@ def main():
 
     ### Parse command line arguments into a substitution dictionary 
     # This dictionary is passed to the ctor to override/customize yaml file parameters
-    # Note: this could all be hidden away in the RuleConfig ctor 
+    # Note: The following could all be hidden away in the RuleConfig ctor 
     # but this way, CLI arguments are used by the function that received them and 
-    # constraint constructions are capsulated away from the RuleConfig class
+    # constraint constructions are visibly handled away from the RuleConfig class
     rule_substitions = {}
-    # rule_substitions ["resubmit"] = args.resubmit
 
     #  Force copy our own files to the worker:
     # .testbed, .slurp (deprecated) indicate test mode
@@ -85,48 +84,38 @@ def main():
     rule_substitions["append2rsync"] = append2rsync
 
     ### Which runs to process?
+    # TODO: Finish cleaner construction of run constraints
+    run_condition = None
+    runlist=None
     if args.runlist:
         INFO(f"Processing runs from file: {args.runlist}")
         run_condition = f"and runnumber in ( {extract_numbers_to_commastring(args.runlist)} )"
+        runlist=args.runlist
+    elif args.runs:
+        INFO(f"Processing run (range): {args.runs}")
+        run_condition,runlist = list_to_condition(args.runs, "runnumber")
     else:
-        run_condition = list_to_condition(args.runs, "runnumber")
-
-    if not run_condition:
         ERROR("No runs specified.")
         exit(1)
     DEBUG(f'Run condition is "{run_condition}"')
-    rule_substitions["input_query_constraints"] = ""
-    # rule_substitions["run_condition"] = run_condition
-
-    ### Which segments to process?
-    seg_condition = ""
-    if args.segments:
-        seg_condition = list_to_condition(args.segments, "segment")
-        DEBUG(f'Segment condition is "{seg_condition}"')
-    else:
-        DEBUG("No segment condition specified.")
-    # rule_substitions["seg_condition"] = seg_condition
 
     # Limit the number of results from the query?
     limit_condition = ""
     if args.limit:
         limit_condition = f"limit {args.limit}"
         DEBUG(f"Limiting input query to {args.limit} entries.")
-    rule_substitions["limit_condition"] = limit_condition
 
     # TODO: this is where the run cursor pickup logic should go, if kept
 
-    DEBUG( f"Run condition is {run_condition}" )
-    DEBUG( f"Segment condition is {seg_condition}" )
-    DEBUG( f"Limit condition is {limit_condition}" )
+    DEBUG( f"Run condition is \"{run_condition}\"" )
+    DEBUG( f"Limit condition is \"{limit_condition}\"" )
 
     if run_condition != "":
         run_condition = f"\t{run_condition}\n"
-    if seg_condition != "":
-        seg_condition = f"\t{seg_condition}\n"
     if limit_condition != "":
         limit_condition = f"\t{limit_condition}\n"
-    rule_substitions["input_query_constraints"] = f"""{run_condition}{seg_condition}{limit_condition}"""
+    rule_substitions["input_query_constraints"] = f"""{run_condition}{limit_condition}"""
+    rule_substitions["runlist"] = runlist
 
     # Rest of the input substitutions
     if args.mode is not None:
@@ -145,7 +134,7 @@ def main():
     WARN("Don't forget other override_args")
     ## TODO dbinput, mem, docstring, unblock, batch_name
 
-    DEBUG(f"Rule substitutions: {rule_substitions}")
+    CHATTY(f"Rule substitutions: {rule_substitions}")
     DEBUG("Now loading and building rule configuration.")
 
     #################### Load specific rule from the given yaml file.
@@ -155,12 +144,9 @@ def main():
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
         exit(1)
-    except KeyError as e:
-        ERROR(f"Key not in rule configuration: {e}")
-        exit(1)
 
-    DEBUG("Rule configuration:")
-    DEBUG(yaml.dump(rule.dict))
+    CHATTY("Rule configuration:")
+    CHATTY(yaml.dump(rule.dict))
 
     # if args.printquery:
     #     # prettyquery = pprint.pformat(rule.inputConfig.query)
@@ -185,10 +171,10 @@ def main():
 
     # Create a match configuration from the rule
     match_config = MatchConfig.from_rule_config(rule)  
-    DEBUG("Match configuration:")
-    DEBUG(yaml.dump(match_config.dict))
+    CHATTY("Match configuration:")
+    CHATTY(yaml.dump(match_config.dict))
 
-    match_config.doanewthing(args)
+    match_config.doanewthing(args, runlist)
     exit(0)
     
     outputs = match_config.doyourthing(args)
