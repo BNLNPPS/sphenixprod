@@ -6,7 +6,7 @@ import time
 import random
 import os
 
-from simpleLogger import DEBUG
+from simpleLogger import WARN, DEBUG
 
 """
 This module provides an interface to the sPHENIX databases.
@@ -32,36 +32,26 @@ if ( prod_mode ):
     #print("Found production mode")
     dsnprodr = 'Production_read'
     dsnprodw = 'Production_write'
-    dsnfiler = 'FileCatalog'
-    dsnfilew = 'FileCatalog'    
+    dsnfilec = 'FileCatalog'
 elif ( test_mode ):
     #print("Found testbed mode")
     dsnprodr = 'ProductionStatus'
     dsnprodw = 'ProductionStatusWrite'
-    dsnfiler = 'FileCatalog'
-    dsnfilew = 'FileCatalog'
+    dsnfilec = 'FileCatalog'
 else:
-    #print("NOTICE: Neither production nor testbed mode set.  Default to testbed.  YMMV.")
+    WARN("Neither production nor testbed mode set.  Default to testbed.  YMMV.")
     dsnprodr = 'ProductionStatus'
     dsnprodw = 'ProductionStatusWrite'
-    dsnfiler = 'FileCatalog'
-    dsnfilew = 'FileCatalog'
+    dsnfilec = 'FileCatalog'
 
 # ============================================================================
 cnxn_string_map = {
-    'fcw'         : f'DSN={dsnfilew};UID=phnxrc',
-    'fcr'         : f'DSN={dsnfiler};READONLY=True;UID=phnxrc',
+    'fcw'         : f'DSN={dsnfilec};UID=phnxrc',
+    'fcr'         : f'DSN={dsnfilec};READONLY=True;UID=phnxrc',
     'statr'       : f'DSN={dsnprodr};UID=argouser',
     'statw'       : f'DSN={dsnprodw};UID=argouser',
 
-    # from slurp.py
-    'daq'         :  'DSN=daq;UID=phnxrc;READONLY=True',
     'daqdb'       :  'DSN=daq;UID=phnxrc;READONLY=True',
-    'fc'          : f'DSN={dsnfiler};READONLY=True',
-    'fccro'       : f'DSN={dsnfiler};READONLY=True',
-    'filecatalog' : f'DSN={dsnfiler};READONLY=True',
-    'status'      : f'DSN={dsnprodr};UID=argouser',
-    'statusw'     : f'DSN={dsnprodw};UID=argouser',
     'raw'         :  'DSN=RawdataCatalog_read;UID=phnxrc;READONLY=True',
     'rawdr'       :  'DSN=RawdataCatalog_read;UID=phnxrc;READONLY=True',
 }
@@ -69,7 +59,7 @@ cnxn_string_map = {
 if os.uname().sysname=='Darwin' :
     for key in cnxn_string_map.keys() :
         DEBUG(f"Changing {key} to use DSN=eickolja")
-        cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;UID=eickolja;'
+        cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;;READONLY=True;UID=eickolja'
 
 # ============================================================================================
 def printDbInfo( cnxn, title ):

@@ -50,7 +50,7 @@ DST_CALOFITTING_run3auau:
 #      dataset:  'new_nocdbtag_v000'
 
   input:
-    db:    filecatalog
+    db:    fcr
     table: datasets
 
 
@@ -81,7 +81,7 @@ DST_CALO_run3auau:
     rsync:      "./ProdFlow/run3auau/CaloProduction/*"
 
   input:
-    db:    filecatalog
+    db:    fcr
     table: datasets
     mnrun: 50000
     mxrun: 99999
@@ -111,7 +111,7 @@ DST_JETS_run3auau:
     rsync:      "./ProdFlow/run3auau/JetProduction/*"
 
   input:
-    db:    filecatalog
+    db:    fcr
     table: datasets
     mnrun: 50000
     mxrun: 99999
@@ -141,7 +141,7 @@ DST_JETCALO_run3auau:
     rsync:      "./ProdFlow/run3auau/JetProduction/*"
 
   input:
-    db:    filecatalog
+    db:    fcr
     table: datasets
 
   job:

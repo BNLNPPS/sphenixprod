@@ -502,7 +502,7 @@ class MatchConfig:
         # outTemplate = 'DST_STREAMING_EVENT_%_run3' # DEBUG
         # existQuery  = f"""select filename,runnumber,segment from datasets where filename like '{outTemplate}%'"""
 
-        alreadyHave = [ FileStreamRunSeg(c.filename,c.streamname, c.runnumber,c.segment) for c in dbQuery( cnxn_string_map['fccro'], existQuery ) ]
+        alreadyHave = [ FileStreamRunSeg(c.filename,c.streamname, c.runnumber,c.segment) for c in dbQuery( cnxn_string_map['fcr'], existQuery ) ]
         INFO(f"Already have {len(alreadyHave)} output files")
         if len(alreadyHave) > 0 :
             DEBUG(f"First line: \n{alreadyHave[0]}")
@@ -608,11 +608,11 @@ class MatchConfig:
                 CHATTY(f'\nInputStem is a list, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{inTypes}\nas input')
 
             CHATTY(f"First line: \n{FilesForRun[next(iter(FilesForRun))]}")
-            for stream in FilesForRun:
-                print(f"Runnumber={runnumber}, Stream {stream}:")
-                for f in FilesForRun[stream]:
-                    print(f"\t{f.filename} {f.streamname} {f.runnumber} {f.segment}")
-                print()
+            # for stream in FilesForRun:
+            #     print(f"Runnumber={runnumber}, Stream {stream}:")
+            #     for f in FilesForRun[stream]:
+            #         print(f"\t{f.filename} {f.streamname} {f.runnumber} {f.segment}")
+            #     print()
 
 
 
