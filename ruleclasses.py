@@ -96,7 +96,6 @@ class JobConfig:
     accounting_group: str
     accounting_group_user: str
     priority: str
-    request_xferslots: str
     batch_name: Optional[str] = None
 
 
@@ -114,7 +113,6 @@ class RuleConfig:
     script: str         # run script on the worker node
     payload: str        # Working directory on the node; transferred by condor
     neventsper: int     # number of events per job
-    comment: str        # arbitrary comment
     rsync: str          # additional files to rsync to the node
     mem: str            # "4000MB"; TODO: this belongs in JobConfig
     ## Note that optional basic fields are further down! (e.g. outstub, resubmit)
@@ -132,7 +130,7 @@ class RuleConfig:
     ### Optional fields have to be down here to allow for default values
     outstub: str         # e.g. run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory
     filesystem: dict     # base filesystem paths
-
+    comment: str         # arbitrary comment
     # resubmit: bool = False
 
     # ------------------------------------------------
@@ -166,8 +164,8 @@ class RuleConfig:
         params_data = rule_data.get("params", {})
         check_params(params_data
                     , required=["rulestem", "period",  "build", "dbtag", "version", "script",
-                                "payload", "neventsper", "comment", "rsync", "mem"]
-                    , optional=["outstub"])
+                                "payload", "neventsper", "rsync", "mem"]
+                    , optional=["outstub", "comment", "filesystem"] )
         
         
         ### Fill derived data fields
@@ -189,6 +187,8 @@ class RuleConfig:
         ### Add to transfer list
         params_data["rsync"]=params_data["rsync"] + rule_substitions["append2rsync"]
         
+        ### Optionals
+        comment = params_data.get("comment", "")
         # Default filesystem paths contain placeholders for substitution
         filesystem = rule_data.get("filesystem")
         if filesystem is None:
@@ -237,7 +237,6 @@ class RuleConfig:
                     "accounting_group",
                     "accounting_group_user",
                     "priority",
-                    "request_xferslots",
                     ]
                     , optional=["batch_name"] )
 
@@ -252,6 +251,7 @@ class RuleConfig:
                         , **filesystem
                         , PWD=pathlib.Path(".").absolute()
                         , **params_data
+                        , comment=comment
                 )
                 job_data[field] = subsval
 
@@ -266,7 +266,7 @@ class RuleConfig:
             script=params_data["script"],
             payload=params_data["payload"],
             neventsper=params_data["neventsper"],
-            comment=params_data["comment"],
+            comment=comment,
             rsync=params_data["rsync"],
             build_string=build_string,
             version_string=version_string,
@@ -291,7 +291,6 @@ class RuleConfig:
                 accounting_group=job_data["accounting_group"],
                 accounting_group_user=job_data["accounting_group_user"],
                 priority=job_data["priority"],
-                request_xferslots=job_data["request_xferslots"],
             ),
             # dataset=params_data.get("dataset"),
             # resubmit=rule_substitions.get("resubmit", False), # Get resubmit from caller's CLI arguments
@@ -515,20 +514,19 @@ class MatchConfig:
         DEBUG( f'\n{pprint.pformat(InputStem)}')
           
         if isinstance(InputStem, dict):
-            inTypes = InputStem.values()
+            inTypes = list(InputStem.values())
         else :
             inTypes = InputStem
 
         # Manipulate the input types to match the database
-        if 'DST_TRKR' in self.rulestem :
-            inTypes = [ f'{t}_{self.inputConfig.prodIdentifier}' for t in inTypes ]
-            descriminator='dsttype'
-        elif 'DST_STREAMING' in self.rulestem :
+        if 'daq' in self.inputConfig.db:
             descriminator='hostname'
-        
-        # Transform list to ('<v1>','<v2>', ...) format.
-        # for higher pythin versions: inTypes = f'( \'{"\',\'".join(inTypes)}\' )'
-        # Pedestrian way:
+            inTypes.insert(0,'gl1daq') # all raw daq files need an extra GL1 file
+        else:
+            descriminator='dsttype'
+            inTypes = [ f'{t}_{self.inputConfig.prodIdentifier}' for t in inTypes ]
+                    
+        # Transform list to ('<v1>','<v2>', ...) format. (one-liner doesn't work in python 3.9)
         inTypes = f'( QUOTE{"QUOTE,QUOTE".join(inTypes)}QUOTE )'
         inTypes = inTypes.replace("QUOTE","'")
 
@@ -568,11 +566,8 @@ class MatchConfig:
                 continue
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
             DEBUG(f"First line: \n{candidates[0]}")
-            #print(f"\n{candidates}")
-            #exit(0)
             
             # # Option A : Cut up the candidates into segments
-            # # itertools.groupby depends on data being sorted
             # candidates.sort(key=lambda x: (x.runnumber, x.segment))
             # FilesForRun = { k : list(g) for k, g in itertools.groupby(candidates, operator.attrgetter('segment')) }
             # INFO(f"Found {len(FilesForRun)} segments for run {runnumber}.")
@@ -582,13 +577,23 @@ class MatchConfig:
             #         INFO(f"Runnumber={runnumber}, Segment {seg}: {len(FilesForRun[seg])}")
             #         if seg==7:
             #             INFO(f"seg[7]: \n{FilesForRun[seg]}")
-            # exit(0)
 
             ### Option B : Cut up the candidates into streams
-            # itertools.groupby depends on data being sorted
-            candidates.sort(key=lambda x: (x.runnumber, x.streamname))
+            candidates.sort(key=lambda x: (x.runnumber, x.streamname)) # itertools.groupby depends on data being sorted
 
-            FilesForRun = { k : list(g) for k, g in itertools.groupby(candidates, operator.attrgetter('streamname')) }
+            FilesForRun = { k : list(g) for 
+                           k, g in itertools.groupby(candidates, operator.attrgetter('streamname')) }
+            # daq file lists all need a GL1 file
+            gl1files = FilesForRun.pop('gl1daq',None)
+            if gl1files is not None:
+                CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1files}')
+                for stream in FilesForRun:
+                    FilesForRun[stream] = gl1files + FilesForRun[stream]
+            else:
+                if ( 'gl1daq' in FilesForRun ):
+                    ERROR(f"No GL1 files found for run {runnumber}.")
+                    exit(-1)
+
             CHATTY(f"Found {len(FilesForRun)} segments for run {runnumber}.")
             CHATTY(f'All streamnames:\n{FilesForRun.keys()}')
             if len(FilesForRun) > 0 :
@@ -603,12 +608,11 @@ class MatchConfig:
                 CHATTY(f'\nInputStem is a list, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{inTypes}\nas input')
 
             CHATTY(f"First line: \n{FilesForRun[next(iter(FilesForRun))]}")
-
-            # for stream in FilesForRun:
-            #     print(f"Runnumber={runnumber}, Stream {stream}:")
-            #     for f in FilesForRun[stream]:
-            #         print(f"\t{f.filename} {f.streamname} {f.runnumber} {f.segment}")
-            #     print()
+            for stream in FilesForRun:
+                print(f"Runnumber={runnumber}, Stream {stream}:")
+                for f in FilesForRun[stream]:
+                    print(f"\t{f.filename} {f.streamname} {f.runnumber} {f.segment}")
+                print()
 
 
 

@@ -1,136 +1,126 @@
 #______________________________________________________________________________________________________________________
 DST_STREAMING_EVENT_run3auau_streams:
-   params:
-     rulestem:   DST_STREAMING_EVENT
-     period:     run3auau
-     outstub:    run3auau # could be run3cosmics, run3calib, etc.
-     build:      new
-     dbtag:      nocdbtag
-     version:    0
-     script  :   run_parallel_streams.sh
-     payload :   ./ProdFlow/run3auau/streaming/
-     neventsper: 10000
-     comment :   "---"
-     rsync   :   "./ProdFlow/run3auau/streaming/*"
-     mem     :   4000MB
+  params:
+    rulestem:   DST_STREAMING_EVENT
+    period:     run3auau
+    outstub:    run3auau # could be run3cosmics, run3calib, etc.
+    build:      new
+    dbtag:      nocdbtag
+    version:    0
+    script  :   run_parallel_streams.sh
+    payload :   ./ProdFlow/run3auau/streaming/
+    neventsper: 10000
+    # comment :   "---"
+    rsync   :   "./ProdFlow/run3auau/streaming/*"
+    mem     :   4000MB
 
-   input:
-      db: daqdb
-      table: filelist
-      direct_path: /sphenix/lustre01/sphnxpro/{mode}/*/cosmics/
-      mnrun   : 50000
-      mxrun   : 70000
+  input:
+    db: daqdb
+    table: filelist
+    direct_path: /sphenix/lustre01/sphnxpro/{mode}/*/cosmics/
+    mnrun   : 50000
+    mxrun   : 70000
 
-   job:
-     batch_name            : "$(name)_$(build)_$(tag)_$(version)-singlestreams"
-     arguments             : "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}"
-     output_destination    : '{logdir}'
-     log                   : '{condor}/{logbase}.condor'
-     accounting_group      : "group_sphenix.mdc2"
-     accounting_group_user : "sphnxpro"
-     priority : '40000000'
-     request_xferslots: '0'
+  job:
+    batch_name            : "$(name)_$(build)_$(tag)_$(version)-singlestreams"
+    arguments             : "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}"
+    output_destination    : '{logdir}'
+    log                   : '{condor}/{logbase}.condor'
+    accounting_group      : "group_sphenix.mdc2"
+    accounting_group_user : "sphnxpro"
+    priority : '40000000'
 
 #______________________________________________________________________________________________________________________
 DST_TRKR_CLUSTER_run3auau_streams:
 
-   params:
-     rulestem:   DST_TRKR_CLUSTER
-     period:     run3auau
-     outstub:    run3auau # could be cosmics, calib, etc.
-     build:      ana.472
-     dbtag:      2024p012
-     version:    1
-     script  :   run_singlejob0.sh
-     payload :   ./ProdFlow/run3auau/TrackingProduction/
-     neventsper: 10000
-     comment :    "---"
-     rsync   : "./ProdFlow/run3auau/TrackingProduction/*"
-     mem     :   4000MB
+  params:
+    rulestem:   DST_TRKR_CLUSTER
+    period:     run3auau
+    outstub:    run3auau # could be cosmics, calib, etc.
+    build:      ana.472
+    dbtag:      2024p012
+    version:    1
+    script  :   run_singlejob0.sh
+    payload :   ./ProdFlow/run3auau/TrackingProduction/
+    neventsper: 10000
+    rsync   : "./ProdFlow/run3auau/TrackingProduction/*"
+    mem     :   4000MB
 
-   input:
-      db: fc
-      table: datasets
-      mnrun   : 50000
-      mxrun   : 70000
+  input:
+    db: fc
+    table: datasets
+    mnrun   : 50000
+    mxrun   : 70000
 
-   job:
-     arguments             : "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}"
-     output_destination    : '{logdir}'
-     log                   : '{condor}/{logbase}.condor'
-     accounting_group      : "group_sphenix.mdc2"
-     accounting_group_user : "sphnxpro"
-     priority : '40000000'
-     request_xferslots: '0'
+  job:
+    arguments             : "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}"
+    output_destination    : '{logdir}'
+    log                   : '{condor}/{logbase}.condor'
+    accounting_group      : "group_sphenix.mdc2"
+    accounting_group_user : "sphnxpro"
+    priority : '40000000'
 #______________________________________________________________________________________________________________________
 DST_TRKR_SEED_run3auau_streams:
 
-   params:
-     rulestem:   DST_TRKR_SEED
-     period:     run3auau
-     outstub:    run3auau # could be cosmics, calib, etc.
-     build:      new
-     dbtag:      2025p000
-     version:    0
-     script  :   run_jobA.sh
-     payload :   ./ProdFlow/run3auau/TrackingProduction/
-     neventsper:      10000
-     comment :    "---"
-     rsync   : "./ProdFlow/run3auau/TrackingProduction/*"
-     mem     :   4000MB
+  params:
+    rulestem:   DST_TRKR_SEED
+    period:     run3auau
+    outstub:    run3auau # could be cosmics, calib, etc.
+    build:      new
+    dbtag:      2025p000
+    version:    0
+    script  :   run_jobA.sh
+    payload :   ./ProdFlow/run3auau/TrackingProduction/
+    neventsper:      10000
+    rsync   : "./ProdFlow/run3auau/TrackingProduction/*"
+    mem     :   4000MB
 
-   input:
-     db: fc
-     table: datasets
-     mnrun   : 56900
-     mxrun   : 99999
+  input:
+    db: fc
+    table: datasets
+    mnrun   : 56900
+    mxrun   : 99999
 
-   job:
-     arguments             : "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}"
-     output_destination    : '{logdir}'
-     log                   : '{condor}/{logbase}.condor'
-     accounting_group      : "group_sphenix.mdc2"
-     accounting_group_user : "sphnxpro"
-     priority : '3900'
-     request_xferslots: '0'
-
+  job:
+    arguments             : "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}"
+    output_destination    : '{logdir}'
+    log                   : '{condor}/{logbase}.condor'
+    accounting_group      : "group_sphenix.mdc2"
+    accounting_group_user : "sphnxpro"
+    priority : '3900'
 
 #______________________________________________________________________________________________________________________
 DST_TRKR_TRACKS_run3auau_streams:
 
-   params:
-     rulestem:       DST_TRKR_TRACKS
-     period:     run3auau
-     outstub:    run3auau # could be cosmics, calib, etc.
-     build:      new
-     dbtag:      2025p000
-     version:    0
-     script  :   run_jobC.sh
-     payload :   ./ProdFlow/run3auau/TrackingProduction/
-     neventsper:      10000
-     comment :    "---"
-     rsync   : "./ProdFlow/run3auau/TrackingProduction/*"
-     mem     :   4000MB
-     # dstin1   : 'DST_TRKR_CLUSTER_run3auau'
-     # dataset1 : 'new_2025p000_v000'
-     # dstin2   : 'DST_TRKR_SEED_run3auau'
-     # dataset2 : 'new_2025p000_v000'          
+  params:
+    rulestem:       DST_TRKR_TRACKS
+    period:     run3auau
+    outstub:    run3auau # could be cosmics, calib, etc.
+    build:      new
+    dbtag:      2025p000
+    version:    0
+    script  :   run_jobC.sh
+    payload :   ./ProdFlow/run3auau/TrackingProduction/
+    neventsper:      10000
+    rsync   : "./ProdFlow/run3auau/TrackingProduction/*"
+    mem     :   4000MB
+    # dstin1   : 'DST_TRKR_CLUSTER_run3auau'
+    # dataset1 : 'new_2025p000_v000'
+    # dstin2   : 'DST_TRKR_SEED_run3auau'
+    # dataset2 : 'new_2025p000_v000'          
 
-   input:
-     db: fc
-     table: datasets
-     mnrun   : 56900
-     mxrun   : 99999
+  input:
+    db: fc
+    table: datasets
+    mnrun   : 56900
+    mxrun   : 99999
 
-   job:
-     arguments             : "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}"
-     output_destination    : '{logdir}'
-     log                   : '{condor}/{logbase}.condor'
-     accounting_group      : "group_sphenix.mdc2"
-     accounting_group_user : "sphnxpro"
-     priority : '3900'
-     request_xferslots: '0'
+  job:
+    arguments             : "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}"
+    output_destination    : '{logdir}'
+    log                   : '{condor}/{logbase}.condor'
+    accounting_group      : "group_sphenix.mdc2"
+    accounting_group_user : "sphnxpro"
+    priority : '3900'
 
 #______________________________________________________________________________________________________________________
-
-     

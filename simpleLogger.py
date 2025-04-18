@@ -11,7 +11,7 @@ logging.addLevelName(CHATTY_LEVEL_NUM, "CHATTY")
 def chatty(self, message, *args, **kws):
     # Yes, logger takes its '*args' as 'args'.
     if self.isEnabledFor(CHATTY_LEVEL_NUM):
-        self._log(CHATTY_LEVEL_NUM, message, args, **kws)
+        self._log(CHATTY_LEVEL_NUM, message, args, stacklevel=2, **kws)
 logging.Logger.chatty = chatty
 
 # ============================================================================
@@ -20,7 +20,7 @@ class CustomFormatter(logging.Formatter):
     grey     = "\x1b[38;20m"
     yellow   = "\x1b[33;20m"
     green    = "\x1b[32;20m"
-    blue     = "\x1b[34;20m"    
+    blue     = "\x1b[34;20m"   
     red      = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
     reset    = "\x1b[0m"
@@ -36,12 +36,11 @@ class CustomFormatter(logging.Formatter):
     }
 
     def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno)
+        log_fmt = self.FORMATS.get(record.levelno, self.format)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
                                                                 
 # ============================================================================
-# def slogger ( filename = None, name = 'sphenixprod'):
 slogger = logging.getLogger( 'sphenixprod' )
 # Prevent duplicate handlers if this module is reloaded
 if not slogger.hasHandlers():
