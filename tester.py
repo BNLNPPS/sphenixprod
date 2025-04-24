@@ -92,18 +92,18 @@ def main():
     else:
         ERROR("No runs specified.")
         exit(1)
-    DEBUG(f'Run condition is "{run_condition}"')
 
     # Limit the number of results from the query?
     limit_condition = ""
     if args.limit:
         limit_condition = f"limit {args.limit}"
-        DEBUG(f"Limiting input query to {args.limit} entries.")
+        WARN(f"Limiting input query to {args.limit} entries.")
 
     # TODO: this is where the run cursor pickup logic should go, if kept
 
     DEBUG( f"Run condition is \"{run_condition}\"" )
-    DEBUG( f"Limit condition is \"{limit_condition}\"" )
+    if limit_condition != "":
+        DEBUG( f"Limit condition is \"{limit_condition}\"" )
 
     if run_condition != "":
         run_condition = f"\t{run_condition}\n"
@@ -161,9 +161,8 @@ def main():
     ruleMatches=match_config.matches()
     INFO(f"Matching complete. {len(ruleMatches)} jobs to be submitted.")
     for outFile,inFiles in ruleMatches.items():
-        print(f"Output: {outFile}")
-        print(f"Input:  {inFiles}")
-        print()
+        CHATTY(f"Output: {outFile}")
+        CHATTY(f"Input:  {inFiles}\n")
 
     # TODO: add to sanity checks:
     # if rev==0 and build != 'new':

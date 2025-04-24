@@ -19,8 +19,9 @@ def submission_args():
     
     vgroup = arg_parser.add_argument_group('Logging level')
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()
-    exclusive_vgroup.add_argument( '-v', '--verbose', help="Prints more information", action="store_true")
+    exclusive_vgroup.add_argument( '-v', '--verbose', help="Prints more information per repetition", action='count', default=0)
     exclusive_vgroup.add_argument( '-d', '--debug', help="Prints even more information", action="store_true")
+    exclusive_vgroup.add_argument( '-c', '--chatty', help="Prints the most information", action="store_true")
     exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO', help="Specific logging level (CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL)" )
     
     arg_parser.add_argument( '--sublogdir', dest='sublogdir', default=None, help="Directory for submission script logging (defaults under /tmp)" )
@@ -61,10 +62,12 @@ def submission_args():
     # args, userargs = arg_parser.parse_known_args()
 
     args = arg_parser.parse_args()
-    if ( args.verbose ) :
+    if args.verbose==1 :
         args.loglevel = 'INFO'
-    if ( args.debug ) :
+    if args.debug or args.verbose==2 :
         args.loglevel = 'DEBUG'
+    if args.chatty or args.verbose==3 :
+        args.loglevel = 'CHATTY'
     
     return args
 

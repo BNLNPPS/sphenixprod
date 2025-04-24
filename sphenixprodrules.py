@@ -1,7 +1,7 @@
 import yaml
 import re
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
+from typing import Dict, List, Any, Optional
 import itertools
 import operator
 
@@ -153,14 +153,19 @@ class InputConfig:
 @dataclass( frozen = True )
 class JobConfig:
     """Represents the job configuration block in the YAML."""
+    script: str         # run script on the worker node
     arguments: str
     output_destination: str ### needed? used?
     log: str
+    neventsper: int     # number of events per job
+    payload: str        # Working directory on the node; transferred by condor
+    rsync: str          # additional files to rsync to the node
+    mem: str            # "4000MB"
+    comment: str        # arbitrary comment
     priority: str
     accounting_group: str = 'group_sphenix.mdc2'
     accounting_group_user: str = 'sphnxpro'
     batch_name: Optional[str] = None
-
 
 # ============================================================================
 @dataclass( frozen = True )
@@ -170,14 +175,9 @@ class RuleConfig:
     # Direct input (explictly provided by yaml file + command line arguments)
     rulestem: str       # DST_CALOFITTING
     period: str         # run3auau
-    build: str          # ana.472
-    dbtag: str          # 2025p000, nocdbtag 
-    version: int        # 0, 1, 2, 3
-    script: str         # run script on the worker node
-    payload: str        # Working directory on the node; transferred by condor
-    neventsper: int     # number of events per job
-    rsync: str          # additional files to rsync to the node
-    mem: str            # "4000MB"; TODO: this belongs in JobConfig
+    build: str          # for output; ex. ana.472
+    dbtag: str          # for output; ex. 2025p000, nocdbtag 
+    version: int        # for output; ex. 0, 1, 2. Can separate repeated productions
     ## Note that optional basic fields are further down! (e.g. outstub, resubmit)
 
     # Inferred
@@ -193,7 +193,6 @@ class RuleConfig:
     ### Optional fields have to be down here to allow for default values
     outstub: str         # e.g. run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory
     filesystem: dict     # base filesystem paths
-    comment: str         # arbitrary comment
     # resubmit: bool = False
 
     # ------------------------------------------------
@@ -226,9 +225,8 @@ class RuleConfig:
         ### Extract and validate top level rule parameters
         params_data = rule_data.get("params", {})
         check_params(params_data
-                    , required=["rulestem", "period",  "build", "dbtag", "version", "script",
-                                "payload", "neventsper", "rsync", "mem"]
-                    , optional=["outstub", "comment", "filesystem"] )
+                    , required=["rulestem", "period",  "build", "dbtag", "version"]
+                    , optional=["outstub", "filesystem"] )
         
         
         ### Fill derived data fields
@@ -247,9 +245,6 @@ class RuleConfig:
         DEBUG(f"outbase is {outbase}")
         DEBUG(f"logbase is {logbase}")
 
-        ### Add to transfer list
-        params_data["rsync"]=params_data["rsync"] + rule_substitions["append2rsync"]
-        
         ### Optionals
         comment = params_data.get("comment", "")
         # Default filesystem paths contain placeholders for substitution
@@ -291,17 +286,22 @@ class RuleConfig:
         job_data = rule_data.get("job", {})
         check_params(job_data
                     , required=[
-                    "arguments",
-                    "output_destination",
-                    "log",
-                    "priority",
+                    "script", "payload", "neventsper", "rsync", "mem",
+                    "arguments", "output_destination","log","priority",
                     ]
                     , optional=["batch_name","accounting_group","accounting_group_user",
                 ] )
 
+        ### Add to transfer list
+        rsync       = job_data["rsync"] + rule_substitions["append2rsync"]        
+        neventsper  = job_data["neventsper"]
+        comment     = job_data.get("comment", "")
+    
         # Substitute rule_substitions into the job data
-        for field in job_data:
-            subsval = job_data[field]
+
+        for field in 'batch_name', 'arguments','output_destination','log':
+            subsval = job_data.get(field)
+            print(f"Field {field} is {subsval}")
             if isinstance(subsval, str): # don't try changing None or dictionaries
                 subsval = subsval.format( 
                           **rule_substitions
@@ -310,7 +310,9 @@ class RuleConfig:
                         , **filesystem
                         , PWD=pathlib.Path(".").absolute()
                         , **params_data
+                        , rsync=rsync
                         , comment=comment
+                        , neventsper=neventsper
                 )
                 job_data[field] = subsval
 
@@ -322,16 +324,10 @@ class RuleConfig:
             build=params_data.get("build"),
             dbtag=params_data.get("dbtag"),
             version=params_data["version"],
-            script=params_data["script"],
-            payload=params_data["payload"],
-            neventsper=params_data["neventsper"],
-            comment=comment,
-            rsync=params_data["rsync"],
             build_string=build_string,
             version_string=version_string,
             logbase=logbase,
             outbase=outbase,
-            mem=params_data["mem"],
             inputConfig=InputConfig(
                     db=input_data["db"],
                     table=input_data["table"],
@@ -341,6 +337,12 @@ class RuleConfig:
             ),
             filesystem=filesystem,
             jobConfig=JobConfig(
+                script=job_data["script"],
+                payload=job_data["payload"],
+                neventsper=neventsper,
+                rsync=job_data["rsync"],
+                mem=job_data["mem"],
+                comment=comment,
                 batch_name=job_data.get("batch_name"),  # batch_name is optional
                 arguments=job_data["arguments"],
                 output_destination=job_data["output_destination"],
@@ -385,15 +387,8 @@ class RuleConfig:
 @dataclass( frozen = True )
 class MatchConfig:
     # From RuleConfig
-    rulestem:   str = None         # Name of the matching rule (e.g. DST_CALO)
-    script:     str = None         # run script on the worker node XXX
-    build:      str = None         # new or ana.472
-    dbtag:      str = None         # DB tag
-    payload:    str = None         # Working directory on the node; transferred by condor XXX
-    mem:        str = None         # Required memory. Required field, so defaulting to "4096MB" doesn't work XXX
-    version_string: str = None      # e.g. "v001"
-    build_string:   str = None
-    outbase:        str = None         # Name base of the output file (e.g. DST_STREAMING_EVENT_TPC20) ???
+    rulestem:       str = None         # Name of the matching rule (e.g. DST_CALO)
+    outbase:        str = None         # Name base of the output file, contains all production info and possibly STREAMNAME to be replaced
     inputConfig: InputConfig = None
 
     # Created
@@ -407,7 +402,6 @@ class MatchConfig:
     ranges:   str = None
     firstevent: str = None
     lastevent: str = None
-
 
     stdout:   str = None 
     stderr:   str = None 
@@ -438,16 +432,8 @@ class MatchConfig:
         # Formatted version number, needed to identify repeated new_nocdb productions, 0 otherwise
         return cls(
             rulestem=rule_config.rulestem,
-            script=rule_config.script,
-            build=rule_config.build,
-            build_string=rule_config.build_string,
-            dbtag=rule_config.dbtag,
-            payload=rule_config.payload,
-            mem=rule_config.mem,
-            version_string=rule_config.version_string,
-            inputConfig = rule_config.inputConfig,
-            #filequery = rule_config.inputConfig.query,
             outbase = rule_config.outbase,
+            inputConfig = rule_config.inputConfig,
         )
 
     # ------------------------------------------------
@@ -491,8 +477,7 @@ class MatchConfig:
         ###### Now get all existing input files
         INFO("Building candidate inputs...")
         InputStem = InputsFromOutput[self.rulestem]
-        DEBUG( 'Input files are of the form:')
-        DEBUG( f'\n{pprint.pformat(InputStem)}')
+        DEBUG( f'Input files are of the form:\n{pprint.pformat(InputStem)}')
           
         if isinstance(InputStem, dict):
             inTypes = list(InputStem.values())
@@ -500,7 +485,7 @@ class MatchConfig:
             inTypes = InputStem
 
         # Manipulate the input types to match the database
-        if 'daq' in self.inputConfig.db:
+        if 'raw' in self.inputConfig.db:
             descriminator='hostname'
             inTypes.insert(0,'gl1daq') # all raw daq files need an extra GL1 file
         else:
@@ -513,7 +498,7 @@ class MatchConfig:
 
         infilequery = f'select filename,{descriminator} as streamname,runnumber,segmentplaceholder as segment from {self.inputConfig.table} where \n\t{descriminator} in {inTypes}\n'
         infilequery += self.inputConfig.query_constraints
-        if 'daq' in self.inputConfig.db: # Raw daq uses sequence instead
+        if 'raw' in self.inputConfig.db: # Raw daq uses sequence instead
             infilequery=infilequery.replace('segmentplaceholder','sequence')
             infilequery+="\tand transferred_to_sdcc='t'"
         else:
@@ -559,8 +544,8 @@ class MatchConfig:
             if ( 'gl1daq' in inTypes ):
                 gl1files = FilesForRun.pop('gl1daq',None)
                 if gl1files is None:
-                    ERROR(f"No GL1 files found for run {runnumber}.")
-                    exit(-1)
+                    WARN(f"No GL1 files found for run {runnumber}. Skipping this run.")
+                    continue
                 CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1files}')
                 for stream in FilesForRun:
                     FilesForRun[stream] = gl1files + FilesForRun[stream]
@@ -581,7 +566,7 @@ class MatchConfig:
             # In this case, the inputs should be a plain list
             if 'gl1daq' not in inTypes:
                 if isinstance(InputStem, dict):
-                    ERROR( "InputStem is a dictionary. Only supported for specific productions from daq.")
+                    ERROR( "InputStem is a dictionary. Only supported for specific productions from raw daq.")
                     exit(-1)
                 CHATTY(f'\nInputStem is a list, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{inTypes}\nas input')
 

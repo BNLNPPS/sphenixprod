@@ -9,12 +9,6 @@ DST_TRIGGERED_EVENT_run3auau:
     build:      new
     dbtag:      nocdbtag
     version:    0
-    script:     run.sh
-    payload:    ./ProdFlow/run3auau/TriggerProduction/
-    mem:        2048M
-    neventsper: 100000
-    noverflow:  20000
-    rsync:      "ProdFlow/run3auau/TriggerProduction/*,cups.py"
 
   input:
     db:          rawr
@@ -22,6 +16,12 @@ DST_TRIGGERED_EVENT_run3auau:
     table:       filelist
 
   job:
+    script:                run.sh
+    payload:               ./ProdFlow/run3auau/TriggerProduction/
+    mem:                   2048M
+    neventsper:            100000
+    noverflow:             20000
+    rsync:                 'ProdFlow/run3auau/TriggerProduction/*,cups.py' # Adjusted quoting
     arguments:             "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync} $(firstevent) $(lastevent) $(runs_last_event) {PWD} {rsync}"
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
@@ -37,24 +37,21 @@ DST_CALOFITTING_run3auau:
     build:      new
     dbtag:      2025p000
     version:    0
-    script:     runy2fitting.sh
-    payload:    ./ProdFlow/run3auau/CaloProduction/
-    mem:        1024MB
-    neventsper: 50000
-    rsync:      "./ProdFlow/run3auau/CaloProduction/*,cups.py"
-#      dstin:    'DST_TRIGGERED_EVENT_run3auau'
-#      dataset:  'new_nocdbtag_v000'
 
   input:
     db:    fcr
     table: datasets
 
-
   # FIXME: This is the only rule that gets nevents from the input (via ramenya2)
   #        I.e., {nevents} is filled at submission time via format instead of in the wrapper via $(nevents).
   #        Setting it to 0 for until I see a real use case for this.
   job:
-    arguments:             "0 {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}"
+    script:                runy2fitting.sh
+    payload:               ./ProdFlow/run3auau/CaloProduction/
+    mem:                   1024MB
+    neventsper:            50000
+    rsync:                 './ProdFlow/run3auau/CaloProduction/*,cups.py'
+    arguments:             '0 {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'
@@ -69,18 +66,18 @@ DST_CALO_run3auau:
     dbtag:      2024p017
     # dbtag:      2025p000
     version:    0
-    script:     runy2calib.sh
-    payload:    ./ProdFlow/run3auau/CaloProduction/
-    mem:        4096MB
-    neventsper: 50000
-    rsync:      "./ProdFlow/run3auau/CaloProduction/*"
 
   input:
     db:    fcr
     table: datasets
 
   job:
-    arguments:             "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}"
+    script:                runy2calib.sh
+    payload:               ./ProdFlow/run3auau/CaloProduction/
+    mem:                   4096MB
+    neventsper:            50000
+    rsync:                 './ProdFlow/run3auau/CaloProduction/*'
+    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'
@@ -95,18 +92,18 @@ DST_JETS_run3auau:
     build:      new
     dbtag:      2025p000
     version:    0
-    script:     runjets.sh
-    payload:    ./ProdFlow/run3auau/JetProduction/
-    mem:        2096MB
-    neventsper: 50000
-    rsync:      "./ProdFlow/run3auau/JetProduction/*"
 
   input:
     db:    fcr
     table: datasets
 
   job:
-    arguments:             "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}"
+    script:                runjets.sh
+    payload:               ./ProdFlow/run3auau/JetProduction/
+    mem:                   2096MB
+    neventsper:            50000
+    rsync:                 './ProdFlow/run3auau/JetProduction/*'
+    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'
@@ -121,18 +118,18 @@ DST_JETCALO_run3auau:
     build:      new
     dbtag:      2025p000
     version:    0
-    script:     runy2jetskim.sh
-    payload:    ./ProdFlow/run3auau/JetProduction/
-    mem:        4096MB
-    neventsper: 50000
-    rsync:      "./ProdFlow/run3auau/JetProduction/*"
 
   input:
     db:    fcr
     table: datasets
 
   job:
-    arguments:             "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}"
+    script:                runy2jetskim.sh
+    payload:               ./ProdFlow/run3auau/JetProduction/
+    mem:                   4096MB
+    neventsper:            50000
+    rsync:                 './ProdFlow/run3auau/JetProduction/*'
+    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'
