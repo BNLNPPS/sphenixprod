@@ -84,16 +84,13 @@ def main():
     rule_substitions["append2rsync"] = append2rsync
 
     ### Which runs to process?
-    # TODO: Finish cleaner construction of run constraints
     run_condition = None
-    runlist=None
     if args.runlist:
         INFO(f"Processing runs from file: {args.runlist}")
         run_condition = f"and runnumber in ( {extract_numbers_to_commastring(args.runlist)} )"
-        runlist=args.runlist
     elif args.runs:
         INFO(f"Processing run (range): {args.runs}")
-        run_condition,runlist = list_to_condition(args.runs, "runnumber")
+        run_condition = list_to_condition(args.runs, "runnumber")
     else:
         ERROR("No runs specified.")
         exit(1)
@@ -115,8 +112,7 @@ def main():
     if limit_condition != "":
         limit_condition = f"\t{limit_condition}\n"
     rule_substitions["input_query_constraints"] = f"""{run_condition}{limit_condition}"""
-    rule_substitions["runlist"] = runlist
-
+    
     # Rest of the input substitutions
     if args.mode is not None:
         rule_substitions["mode"] = args.mode # e.g. physics 
@@ -174,7 +170,7 @@ def main():
     CHATTY("Match configuration:")
     CHATTY(yaml.dump(match_config.dict))
 
-    match_config.doanewthing(args, runlist)
+    match_config.doanewthing(args)
     exit(0)
     
     outputs = match_config.doyourthing(args)

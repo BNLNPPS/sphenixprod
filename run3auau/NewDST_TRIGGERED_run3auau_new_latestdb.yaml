@@ -19,16 +19,12 @@ DST_TRIGGERED_EVENT_run3auau:
   input:
     db:          daqdb
     direct_path: /sphenix/lustre01/sphnxpro/physics/*/*/
-    mnrun:       50000
-    mxrun:       99999
     table:       filelist
 
   job:
     arguments:             "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync} $(firstevent) $(lastevent) $(runs_last_event) {PWD} {rsync}"
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
-    accounting_group:      "group_sphenix.mdc2"
-    accounting_group_user: "sphnxpro"
     priority:              '3900'
     periodicremove:        '(JobStatus==2)&&(time()-EnteredCurrentStatus)>(3*24*3600)'
 
@@ -61,8 +57,6 @@ DST_CALOFITTING_run3auau:
     arguments:             "0 {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}"
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
-    accounting_group:      "group_sphenix.mdc2"
-    accounting_group_user: "sphnxpro"
     priority:              '3900'
 
 #_____________________________________________________________________________________________
@@ -72,7 +66,8 @@ DST_CALO_run3auau:
     period:     run3auau
     outstub:    run3auau # could be run3cosmics, run3calib, etc.
     build:      new
-    dbtag:      2025p000
+    dbtag:      2024p017
+    # dbtag:      2025p000
     version:    0
     script:     runy2calib.sh
     payload:    ./ProdFlow/run3auau/CaloProduction/
@@ -83,15 +78,11 @@ DST_CALO_run3auau:
   input:
     db:    fcr
     table: datasets
-    mnrun: 50000
-    mxrun: 99999
 
   job:
     arguments:             "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}"
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
-    accounting_group:      "group_sphenix.mdc2"
-    accounting_group_user: "sphnxpro"
     priority:              '3900'
 
 #______________________________________________________________________________________________________________________
@@ -113,15 +104,11 @@ DST_JETS_run3auau:
   input:
     db:    fcr
     table: datasets
-    mnrun: 50000
-    mxrun: 99999
 
   job:
     arguments:             "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}"
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
-    accounting_group:      "group_sphenix.mdc2"
-    accounting_group_user: "sphnxpro"
     priority:              '3900'
 
 #______________________________________________________________________________________________________________________
@@ -148,6 +135,4 @@ DST_JETCALO_run3auau:
     arguments:             "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}"
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
-    accounting_group:      "group_sphenix.mdc2"
-    accounting_group_user: "sphnxpro"
     priority:              '3900'

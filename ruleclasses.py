@@ -35,6 +35,9 @@ FileStreamRunSeg = namedtuple('FileStreamRunSeg',['filename','streamname','runnu
 RUNFMT = '%08i'
 SEGFMT = '%05i'
 VERFMT = '03d'
+pRUNFMT = RUNFMT.replace('%','').replace('i','d')
+pSEGFMT = SEGFMT.replace('%','').replace('i','d')
+
 
 # "{leafdir}" needs to stay changeable.Typical leafdir: DST_STREAMING_EVENT_TPC20 or DST_TRKR_CLUSTER 
 # Target example: 
@@ -78,9 +81,6 @@ class InputConfig:
     ## Query can dynamically use any field that's in params (via format(**params))
     # Powerful but dangerous, so enforce explicit (but optional) fields that users can use
     # Adding to them then becomes is a more conscious decision
-    mnrun: Optional[int] = 0  # Extra mn < run < mx constraint
-    mxrun: Optional[int] = -1
-    # query: str
     query_constraints: Optional[str] = None  # Additional constraints for the query
     direct_path: Optional[str] = None  # Make direct_path optional
 
@@ -93,9 +93,9 @@ class JobConfig:
     arguments: str
     output_destination: str ### needed? used?
     log: str
-    accounting_group: str
-    accounting_group_user: str
     priority: str
+    accounting_group: str = 'group_sphenix.mdc2'
+    accounting_group_user: str = 'sphnxpro'
     batch_name: Optional[str] = None
 
 
@@ -209,7 +209,7 @@ class RuleConfig:
         input_data = rule_data.get("input", {})
         check_params(input_data
                     , required=["db", "table"]
-                    , optional=["direct_path","mnrun", "mxrun"] )
+                    , optional=["direct_path"] )
 
         # Rest of the input substitutions, like database name and direct path
         # DEBUG (f"Using database {rule.inputConfig.db}")
@@ -221,9 +221,6 @@ class RuleConfig:
         if input_data.get("prodIdentifier") is None:
             prodIdentifier = outstub
 
-        mnrun=input_data.get("mnrun",0)
-        mxrun=input_data.get("mxrun",-1)
-
         input_query_constraints = input_data.get("query_constraints", "")
         input_query_constraints += rule_substitions.get("input_query_constraints")        
 
@@ -234,11 +231,10 @@ class RuleConfig:
                     "arguments",
                     "output_destination",
                     "log",
-                    "accounting_group",
-                    "accounting_group_user",
                     "priority",
                     ]
-                    , optional=["batch_name"] )
+                    , optional=["batch_name","accounting_group","accounting_group_user",
+                ] )
 
         # Substitute rule_substitions into the job data
         for field in job_data:
@@ -278,8 +274,6 @@ class RuleConfig:
                     table=input_data["table"],
                     direct_path=input_direct_path,
                     prodIdentifier= prodIdentifier,
-                    mnrun=mnrun,
-                    mxrun=mxrun,
                     query_constraints=input_query_constraints,
             ),
             filesystem=filesystem,
@@ -288,8 +282,8 @@ class RuleConfig:
                 arguments=job_data["arguments"],
                 output_destination=job_data["output_destination"],
                 log=job_data["log"],
-                accounting_group=job_data["accounting_group"],
-                accounting_group_user=job_data["accounting_group_user"],
+                accounting_group=job_data.get("accounting_group", 'group_sphenix.mdc2'),
+                accounting_group_user=job_data.get("accounting_group_user", 'sphnxpro'),
                 priority=job_data["priority"],
             ),
             # dataset=params_data.get("dataset"),
@@ -397,82 +391,9 @@ class MatchConfig:
     # ------------------------------------------------
     def dict(self):
         return { k: str(v) for k, v in asdict(self).items() if v is not None }
-
+                
     # ------------------------------------------------
-    def doyourthing (self, args) :
-        # TODO: This function is dead, only kept around for snippets and TODOS
-        CRITICAL("Don't call this function.")
-        exit(-1)
-        
-        for line in dbresult:
-            ### DEBUG: For real db query result, use
-            # run     = line.runnumber
-            # segment = line.segment
-            # streamname = getattr( line, 'streamname', None ) ## e.g. TPC12
-            ### DEBUG: Hack for development:
-            run     = line[1]
-            segment = line[2]
-            # DEBUG: Can be column 4 or 5
-            if line[4] == 'NA' :
-                streamname = None
-            else:
-                streamname = line[5]
-
-            output = self.outbase + "-" + RUNFMT + "-" + SEGFMT + ".root"
-            runsegkey = f"{run}-{segment}"  # used to index a dictionary
-            if streamname:
-                output = output.replace( '$(streamname)',streamname ) # TODO: hacky. "$(streamname)" is a poor choice (pretends to be a shell variable before substitution)
-                runsegkey += f"-{streamname}"
-
-            # Populate the output name
-            # e.g. DST_TRKR_CLUSTER_run3auau_ana.472_2024p012-00057655-00003.root
-            output = output % ( int(run), int(segment))
-            outputs.append(output)
-
-            # Each output file has a list of corresponding input files
-            # TODO: Check key logic is correct. Used to be f"{self.name}_{self.build_string}_{self.dbtag}" or runsegkey. Trying outfile instead
-            if dstnames.get( output ) is not None or lfn_lists.get( output ) is not None or range_lists.get( output ) is not None:
-                ERROR( f"Duplicate key {output} in lfn,dst,range lists construction. Exiting." )
-                exit(1)
-
-            # Verbatim from slurp:
-            # # Drop the run and segment numbers and leading stuff and just pull the datasets.  Note.  When
-            # # we switch up to versioning of the files, this will sweep up the version number as well.
-            # # Do we want version to be part of the dataset, or a separate entity on its own?
-            # #
-            # # Additionally... we can no longer rely on just doing a split here UNLESS we are planning to
-            # # have a complete break with backwards compatability... The dataset convention goes from
-            # #
-            # # anaIII_202JpKKK --> anaIII_202JpKKK_vMMM
-            # #
-            # # I can use a regex here instead.  But do we need to?  Do we want to?  I could see us making
-            # # a complete break here... so that the old naming convention is just simply dropped dropped dropped
-            # # and we reprocess.
-            # #
-            # # ... but we don't need to build this if we are using direct lookup
-            # if rule.direct is None:
-            #     for fn in f.files.split():
-            #         base1 = fn.split('-')[0]
-            #         rematch = regex_dset.match( base1 )
-            #         dset = rematch.group(1)
-            #         dtype = rematch.group(2)
-            #         vnum = rematch.group(4)
-            #         if vnum:
-            #             dtype = dtype + '_' + vnum
-            #         input_datasets[ ( dset, dtype ) ] = 1
-
-            ### KK: Instead, see if we can't simplify and unify the construction of lfn2pfn later
-
-        if len(lfn_lists)==0:
-            DEBUG( "No input files found. Nothing to be done." )
-            return [], None, []  # Early exit if nothing to be done
-
-        exit(-1)
-
-
-        
-    # ------------------------------------------------
-    def doanewthing (self, args, runlist) :
+    def doanewthing (self, args) :
         # Replacement for the old logic
         # TODO: function will be named sensibly and potentially split up
 
@@ -483,7 +404,7 @@ class MatchConfig:
 
         # TODO: Find the right class to store this
         # update    = kwargs.get('update',    True ) # update the DB
-        updateDb= not args.submit
+        # updateDb= not args.submit
 
         INFO('Checking for already existing output...')
         
@@ -498,14 +419,12 @@ class MatchConfig:
         existQuery  = f"""select filename, -1 as streamname,runnumber,segment from datasets where filename like '{outTemplate}%'"""
         existQuery += self.inputConfig.query_constraints
 
-        # # KK: DEBUG
-        # outTemplate = 'DST_STREAMING_EVENT_%_run3' # DEBUG
-        # existQuery  = f"""select filename,runnumber,segment from datasets where filename like '{outTemplate}%'"""
-
-        alreadyHave = [ FileStreamRunSeg(c.filename,c.streamname, c.runnumber,c.segment) for c in dbQuery( cnxn_string_map['fcr'], existQuery ) ]
+        # We can use various attributes to get the info we need, most straightforward is to use the filename
+        # Full info with alreadyHave = [ FileStreamRunSeg(c.filename,c.streamname, c.runnumber,c.segment) for c in dbQuery( cnxn_string_map['fcr'], existQuery ) ]
+        alreadyHave = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], existQuery ) ]
         INFO(f"Already have {len(alreadyHave)} output files")
         if len(alreadyHave) > 0 :
-            DEBUG(f"First line: \n{alreadyHave[0]}")
+            CHATTY(f"First line: \n{alreadyHave[0]}")
 
         ###### Now get all existing input files
         INFO("Building candidate inputs...")
@@ -540,84 +459,98 @@ class MatchConfig:
 
         DEBUG(f"Input file query is:\n{infilequery}")
         dbresult = dbQuery( cnxn_string_map[ self.inputConfig.db ], infilequery ).fetchall()
+        # TODO: Support rule.printquery
         inFiles = [ FileStreamRunSeg(c.filename,c.streamname,c.runnumber,c.segment) for c in dbresult ]
 
-        INFO(f"Matching DB entries: {len(inFiles)}")
+        INFO(f"Total number of available input files: {len(inFiles)}")
         if len(inFiles) > 0 :
             DEBUG(f"First line: \n{inFiles[0]}")
         
         #### Now build up potential output files from what's available
         #### Key on runnumber
+        inFiles.sort(key=lambda x: (x.runnumber)) # itertools.groupby depends on data being sorted
         filesByRun = {k : list(g) for k, g in itertools.groupby(inFiles, operator.attrgetter('runnumber'))}
-        CHATTY(f'All keys:\n{filesByRun.keys()}')
+        runlist = list(filesByRun.keys())
+        DEBUG(f'All available runnumbers:{runlist}')
         if len(filesByRun) > 0 :
             CHATTY(f"First line: \n{filesByRun[next(iter(filesByRun))]}")
 
         for runnumber in runlist:
-            # TODO: Adapt the runlist instead of these continues; it's a quick and dirty fix
-            if self.inputConfig.mnrun>0 and runnumber<self.inputConfig.mnrun:
-                continue
-            if self.inputConfig.mxrun>0 and runnumber>self.inputConfig.mxrun:
-                continue
-
             candidates = [ f for f in inFiles if f.runnumber == runnumber ]
             if len(candidates) == 0 :
-                CHATTY(f"No input files found for run {runnumber}.")
-                continue
+                # By construction of runlist, every runnumber now should have at least one file
+                ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Aborting.")
+                exit(-1)
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
-            DEBUG(f"First line: \n{candidates[0]}")
+            CHATTY(f"First line: \n{candidates[0]}")
             
-            # # Option A : Cut up the candidates into segments
-            # candidates.sort(key=lambda x: (x.runnumber, x.segment))
-            # FilesForRun = { k : list(g) for k, g in itertools.groupby(candidates, operator.attrgetter('segment')) }
-            # INFO(f"Found {len(FilesForRun)} segments for run {runnumber}.")
-            # INFO(f'All segment numbers:\n{FilesForRun.keys()}')
-            # if len(FilesForRun) > 0 :
-            #     for seg in FilesForRun:
-            #         INFO(f"Runnumber={runnumber}, Segment {seg}: {len(FilesForRun[seg])}")
-            #         if seg==7:
-            #             INFO(f"seg[7]: \n{FilesForRun[seg]}")
-
-            ### Option B : Cut up the candidates into streams
+            ######## Cut up the candidates into streams
             candidates.sort(key=lambda x: (x.runnumber, x.streamname)) # itertools.groupby depends on data being sorted
-
             FilesForRun = { k : list(g) for 
                            k, g in itertools.groupby(candidates, operator.attrgetter('streamname')) }
-            # daq file lists all need a GL1 file
-            gl1files = FilesForRun.pop('gl1daq',None)
-            if gl1files is not None:
+            # Remove the files we just processed. May be useful to shorten the search space
+            # for the next iteration. Could also be a waste of time
+            inFiles = [ f for f in inFiles if f.runnumber != runnumber ] 
+            
+            # daq file lists all need GL1 files. Pull them out and add them to the others
+            if ( 'gl1daq' in inTypes ):
+                gl1files = FilesForRun.pop('gl1daq',None)
+                if gl1files is None:
+                    ERROR(f"No GL1 files found for run {runnumber}.")
+                    exit(-1)
                 CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1files}')
                 for stream in FilesForRun:
                     FilesForRun[stream] = gl1files + FilesForRun[stream]
-            else:
-                if ( 'gl1daq' in FilesForRun ):
-                    ERROR(f"No GL1 files found for run {runnumber}.")
+                        
+            ######### The next step gets a bit hairy.
+            # - Easy: If the input has a segment number, then the output will have the same segment number
+            #     - These are downstream objects (input is already a DST)
+            #     - This can be 1-1 or many-to-1 (usually 2-1 for SEED + CLUSTER --> TRACKS)
+            # - Medium: The input has no segment number but each output is connected to one input stream
+            #     - This is currently the case for the streaming daq (tracking)
+            #     - In this case, provide ALL input files for the run, and the output will produce its own segment numbers
+            # - Hard: The input has no segment number and the output is connected to multiple input streams
+            #     - This is currently the case for the triggered daq (calos). 
+            #     - There may be some intricate mixing needed to get the right event numbers together. 
+            #       - For now, we ignore this case because it may soon be changed to medium difficulty
+
+            # Easy case. One way to identify this case is to see if gl1 is not needed
+            # In this case, the inputs should be a plain list
+            if 'gl1daq' not in inTypes:
+                if isinstance(InputStem, dict):
+                    ERROR( "InputStem is a dictionary. Only supported for specific productions from daq.")
                     exit(-1)
-
-            CHATTY(f"Found {len(FilesForRun)} segments for run {runnumber}.")
-            CHATTY(f'All streamnames:\n{FilesForRun.keys()}')
-            if len(FilesForRun) > 0 :
-                for stream in FilesForRun:
-                    CHATTY(f"Runnumber={runnumber}, Stream {stream}: {len(FilesForRun[stream])}")
-
-            if isinstance(InputStem, dict):
-                CHATTY(f'\nInputStem is a dictionary, Filenames selected by {descriminator} using:')
-                for key in InputStem:
-                    CHATTY(f'Use output {key} for input {InputStem[key]}')
-            else :
                 CHATTY(f'\nInputStem is a list, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{inTypes}\nas input')
 
-            CHATTY(f"First line: \n{FilesForRun[next(iter(FilesForRun))]}")
-            # for stream in FilesForRun:
-            #     print(f"Runnumber={runnumber}, Stream {stream}:")
-            #     for f in FilesForRun[stream]:
-            #         print(f"\t{f.filename} {f.streamname} {f.runnumber} {f.segment}")
-            #     print()
+                # For every segment, there is exactly one output file, and exactly one input file from each stream
+                # Sort and group the input files by segment
+                # NOTE: We could save a small bit of work by not checking the input files 
+                # if the output already exists. But we need the segments for that anyway
+                segments = None
+                rejected = set()
+                for stream in FilesForRun:
+                    FilesForRun[stream].sort(key=lambda x: (x.segment))
+                    newsegments = list(map(lambda x: x.segment, FilesForRun[stream]))
+                    if segments is None:
+                        segments = newsegments
+                    elif segments != newsegments:
+                        rejected.update( set(segments).symmetric_difference(set(newsegments)) )
+                        segments = list(set(segments).intersection(newsegments))                    
 
+                if len(rejected) > 0:
+                    WARN(f"Run {runnumber}: Removed segments not present in all streams: {rejected}")
+    
+                # If the output doesn't exist yet, use input files to create the job
+                for seg in segments:
+                    output = f"{self.outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}.root"
+                    if output in alreadyHave:
+                        CHATTY(f"Output file {output} already exists. Not submitting.")
+                        continue
 
-
-
-            exit(0)
+                    infiles= []
+                    for stream in FilesForRun:
+                        infiles += [ f.filename for f in FilesForRun[stream] if f.segment == seg ]
+                    CHATTY(f"Creating {output} from {infiles}")
         
 
         # # Do not submit if we fail sanity check on definition file
@@ -627,24 +560,3 @@ class MatchConfig:
         exit(0)
 
 # ============================================================================
-
-# Example usage:
-if __name__ == "__main__":
-    try:
-        # # Load all rules from the yaml file.
-        # all_rules = RuleConfig.from_yaml_file("DST_STREAMING_run3auau_new_2024p012.yaml")
-
-        # for rule_name, rule_config in all_rules.items():
-        #     print(f"Successfully loaded rule configuration: {rule_name}")
-        #     print(rule_config.dict())
-        #     print("---------------------------------------")
-
-        # Create a MatchConfig from the RuleConfig
-        rule_config  = RuleConfig.from_yaml_file("NewDST_STREAMING_run3auau_new_2024p012.yaml",)
-        match_config = MatchConfig.from_rule_config(rule_config)
-        print(f"MatchConfig from RuleConfig {rule_name}:")
-        print(match_config.dict())
-        print("---------------------------------------")
-
-    except (ValueError, FileNotFoundError) as e:
-        print(f"Error: {e}")
