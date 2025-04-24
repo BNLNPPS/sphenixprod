@@ -8,9 +8,9 @@ from logging.handlers import RotatingFileHandler
 import pprint # noqa F401
 
 from argparsing import submission_args
-from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-
+from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
+from sphenixcondorjobs import CondorJob
 from sphenixdbutils import test_mode as dbutils_test_mode
 
 # ============================================================================================
@@ -141,6 +141,13 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
+
+    # Assign shared class variables for CondorJob
+    # Note: If these need to differ per instance, they shouldn't be ClassVar
+    CondorJob.script                = rule.jobConfig.script
+    CondorJob.neventsper            = rule.jobConfig.neventsper
+    CondorJob.accounting_group      = rule.jobConfig.accounting_group
+    CondorJob.accounting_group_user = rule.jobConfig.accounting_group_user
 
     # if args.printquery:
     #     # prettyquery = pprint.pformat(rule.inputConfig.query)

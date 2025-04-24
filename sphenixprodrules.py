@@ -11,6 +11,7 @@ import pprint # noqa: F401
 from sphenixdbutils import cnxn_string_map, dbQuery
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import InputsFromOutput
+from sphenixcondorjobs import CondorJobConfig
 
 from collections import namedtuple
 FileStreamRunSeg = namedtuple('FileStreamRunSeg',['filename','streamname','runnumber','segment'])
@@ -148,24 +149,6 @@ class InputConfig:
     # This used to contain things like mnrun, mxrun
     # All those are now removed, but if we need them back, those parameters should go here
 
-# ============================================================================
-
-@dataclass( frozen = True )
-class JobConfig:
-    """Represents the job configuration block in the YAML."""
-    script: str         # run script on the worker node
-    arguments: str
-    output_destination: str ### needed? used?
-    log: str
-    neventsper: int     # number of events per job
-    payload: str        # Working directory on the node; transferred by condor
-    rsync: str          # additional files to rsync to the node
-    mem: str            # "4000MB"
-    comment: str        # arbitrary comment
-    priority: str
-    accounting_group: str = 'group_sphenix.mdc2'
-    accounting_group_user: str = 'sphnxpro'
-    batch_name: Optional[str] = None
 
 # ============================================================================
 @dataclass( frozen = True )
@@ -188,7 +171,7 @@ class RuleConfig:
 
     # Nested dataclasses
     inputConfig: InputConfig
-    jobConfig:   JobConfig
+    jobConfig:   CondorJobConfig
 
     ### Optional fields have to be down here to allow for default values
     outstub: str         # e.g. run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory
@@ -262,7 +245,7 @@ class RuleConfig:
                                                     )
             DEBUG(f"Filesystem: {key} is {filesystem[key]}")
         
-        ###### Now handle InputConfig and JobConfig 
+        ###### Now handle InputConfig and CondorJobConfig
         ### Extract and validate input
         input_data = rule_data.get("input", {})
         check_params(input_data
@@ -336,7 +319,7 @@ class RuleConfig:
                     query_constraints=input_query_constraints,
             ),
             filesystem=filesystem,
-            jobConfig=JobConfig(
+            jobConfig=CondorJobConfig(
                 script=job_data["script"],
                 payload=job_data["payload"],
                 neventsper=neventsper,
