@@ -26,6 +26,8 @@ FileStreamRunSeg = namedtuple('FileStreamRunSeg',['filename','streamname','runnu
     find appropriate input files and name the output files.
     It is constructed from a RuleConfig object.
 
+    IMPORTANT: The only interesting business logic in this file is in the MatchConfig.matches method.
+
 """
 
 # Striving to keep Dataclasses immutable (frozen=True)
@@ -54,7 +56,7 @@ _default_filesystem = {
 # ============================================================================
 def check_params(params_data: Dict[str, Any], required: List[str], optional: List[str] ) -> bool:
     """
-    Check that all required para parameters are present, and no unexpected ones.
+    Check that all required parameters are present, and no unexpected ones.
     """
     check_clean = True
     for f in required:
@@ -69,7 +71,6 @@ def check_params(params_data: Dict[str, Any], required: List[str], optional: Lis
             check_clean = False
             del params_data[f]
     return check_clean
-
 
 # ============================================================================================
 def extract_numbers_to_commastring(filepath):
@@ -98,7 +99,7 @@ def extract_numbers_to_commastring(filepath):
 # ============================================================================================
 def list_to_condition(lst, name) :
     """
-    Generates a SQL-like condition string from a list of values.
+    Generates a condition string usable in a SQL query from a list of values.
 
     This function takes a list (`lst`) and a field name (`name`) and constructs a 
     string that can be used as a `WHERE` clause condition in a SQL query. It 

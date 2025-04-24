@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 import pprint # noqa F401
 
 from argparsing import submission_args
-from ruleclasses import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
+from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 
 from sphenixdbutils import test_mode as dbutils_test_mode
