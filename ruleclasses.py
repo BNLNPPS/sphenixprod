@@ -1,4 +1,5 @@
 import yaml
+import re
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 import itertools
@@ -69,27 +70,88 @@ def check_params(params_data: Dict[str, Any], required: List[str], optional: Lis
             del params_data[f]
     return check_clean
 
+
+# ============================================================================================
+def extract_numbers_to_commastring(filepath):
+    """
+    Extracts all numbers from a file, combines them into a comma-separated string,
+    and returns the string. Numbers can be separated by whitespace including newlines.
+
+    Args:
+        filepath: The path to the file.
+
+    Returns:
+        A string containing a comma-separated list of numbers, or None if the file
+        does not exist or no numbers are found.
+    """
+    try:
+        with open(filepath, 'r') as file:
+            content = file.read()
+    except FileNotFoundError:
+        print(f"Error: File not found at {filepath}")
+        return None
+
+    # Find all integer numbers. Could catch mistakes better
+    numbers = re.findall(r"[-+]?\d+", content)
+    return ','.join(numbers) if numbers else None
+        
+# ============================================================================================
+def list_to_condition(lst, name) :
+    """
+    Generates a SQL-like condition string from a list of values.
+
+    This function takes a list (`lst`) and a field name (`name`) and constructs a 
+    string that can be used as a `WHERE` clause condition in a SQL query. It 
+    handles different list lengths to create appropriate conditions.
+    No effort is made to ensure that inputs are numbers and properly ordered.
+
+    Args:
+        lst: A list of values supplied via CLI (run numbers or segment numbers).
+        name: The name of the field/column in the database
+
+    Returns:
+        A string representing a SQL-like condition, or None if the list is empty.
+
+    Examples:
+        - list_to_condition([123], "runnumber") returns "and runnumber=123"
+        - list_to_condition([100, 200], "runnumber") returns "and runnumber>=100 and runnumber<=200"
+        - list_to_condition([1, 2, 3], "runnumber") returns "and runnumber in ( 1,2,3 )"
+        - list_to_condition([], "runnumber") returns None
+    """
+    condition = ""
+    if  len( lst )==1:
+        condition = f"and {name}={lst[0]}"
+    elif len( lst )==2:
+        condition = f"and {name}>={lst[0]} and {name}<={lst[1]}"
+    elif len( lst )>=3 :
+        condition = f"and {name} in ( %s )" % ','.join( lst )
+    else: 
+        return None
+    
+    return condition
+
 # ============================================================================
 @dataclass( frozen = True )
 class InputConfig:
     """Represents the input configuration block in the YAML."""
-
     db: str
     table: str
     prodIdentifier: Optional[str] = None # run3auau, run3cosmics
     
+    query_constraints: Optional[str] = None  # Additional constraints for the query
+    direct_path: Optional[str] = None  # Make direct_path optional
+
     ## Query can dynamically use any field that's in params (via format(**params))
     # Powerful but dangerous, so enforce explicit (but optional) fields that users can use
     # Adding to them then becomes is a more conscious decision
-    query_constraints: Optional[str] = None  # Additional constraints for the query
-    direct_path: Optional[str] = None  # Make direct_path optional
+    # This used to contain things like mnrun, mxrun
+    # All those are now removed, but if we need them back, those parameters should go here
 
 # ============================================================================
 
 @dataclass( frozen = True )
 class JobConfig:
     """Represents the job configuration block in the YAML."""
-
     arguments: str
     output_destination: str ### needed? used?
     log: str
@@ -323,15 +385,14 @@ class RuleConfig:
 class MatchConfig:
     # From RuleConfig
     rulestem:   str = None         # Name of the matching rule (e.g. DST_CALO)
-    script:     str = None         # run script on the worker node
+    script:     str = None         # run script on the worker node XXX
     build:      str = None         # new or ana.472
-    # tag:      str = None         # DB tag
     dbtag:      str = None         # DB tag
-    payload:    str = None         # Working directory on the node; transferred by condor
-    mem:        str = None         # Required memory. Required field, so defaulting to "4096MB" doesn't work
+    payload:    str = None         # Working directory on the node; transferred by condor XXX
+    mem:        str = None         # Required memory. Required field, so defaulting to "4096MB" doesn't work XXX
     version_string: str = None      # e.g. "v001"
     build_string:   str = None
-    outbase:        str = None         # Name base of the output file (e.g. DST_STREAMING_EVENT_TPC20)
+    outbase:        str = None         # Name base of the output file (e.g. DST_STREAMING_EVENT_TPC20) ???
     inputConfig: InputConfig = None
 
     # Created
@@ -393,7 +454,7 @@ class MatchConfig:
         return { k: str(v) for k, v in asdict(self).items() if v is not None }
                 
     # ------------------------------------------------
-    def doanewthing (self, args) :
+    def matches (self) :
         # Replacement for the old logic
         # TODO: function will be named sensibly and potentially split up
 
@@ -467,6 +528,7 @@ class MatchConfig:
             DEBUG(f"First line: \n{inFiles[0]}")
         
         #### Now build up potential output files from what's available
+        ruleMatches = {}
         #### Key on runnumber
         inFiles.sort(key=lambda x: (x.runnumber)) # itertools.groupby depends on data being sorted
         filesByRun = {k : list(g) for k, g in itertools.groupby(inFiles, operator.attrgetter('runnumber'))}
@@ -551,12 +613,7 @@ class MatchConfig:
                     for stream in FilesForRun:
                         infiles += [ f.filename for f in FilesForRun[stream] if f.segment == seg ]
                     CHATTY(f"Creating {output} from {infiles}")
-        
+                    ruleMatches[output] = infiles
 
-        # # Do not submit if we fail sanity check on definition file
-        # if not sanity_checks( params, input_ ):
-        #     ERROR( "Sanity check failed. Exiting." )
-        #     exit(1)
-        exit(0)
-
+        return ruleMatches
 # ============================================================================

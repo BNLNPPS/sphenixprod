@@ -17,7 +17,7 @@ DST_TRIGGERED_EVENT_run3auau:
     rsync:      "ProdFlow/run3auau/TriggerProduction/*,cups.py"
 
   input:
-    db:          daqdb
+    db:          rawr
     direct_path: /sphenix/lustre01/sphnxpro/physics/*/*/
     table:       filelist
 

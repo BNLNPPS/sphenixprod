@@ -8,11 +8,9 @@ from logging.handlers import RotatingFileHandler
 import pprint # noqa F401
 
 from argparsing import submission_args
-from ruleclasses import RuleConfig, MatchConfig
+from ruleclasses import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 
-from sphenixprodutils import extract_numbers_to_commastring
-from sphenixprodutils import list_to_condition
 from sphenixdbutils import test_mode as dbutils_test_mode
 
 # ============================================================================================
@@ -152,6 +150,21 @@ def main():
     #     slogger.log(100, "[End of query]")
     #     exit(0)
  
+    #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
+    INFO("Rule construction complete. Now constructing corresponding match configuration.")
+
+    # Create a match configuration from the rule
+    match_config = MatchConfig.from_rule_config(rule)  
+    CHATTY("Match configuration:")
+    CHATTY(yaml.dump(match_config.dict))
+
+    ruleMatches=match_config.matches()
+    INFO(f"Matching complete. {len(ruleMatches)} jobs to be submitted.")
+    for outFile,inFiles in ruleMatches.items():
+        print(f"Output: {outFile}")
+        print(f"Input:  {inFiles}")
+        print()
+
     # TODO: add to sanity checks:
     # if rev==0 and build != 'new':
     #     logging.error( f'production version must be nonzero for fixed builds' )
@@ -161,21 +174,10 @@ def main():
     #     logging.error( 'production version must be zero for new build' )
     #     result = False
 
-
-    #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
-    INFO("Rule construction complete. Now constructing corresponding match configuration.")
-
-    # Create a match configuration from the rule
-    match_config = MatchConfig.from_rule_config(rule)  
-    CHATTY("Match configuration:")
-    CHATTY(yaml.dump(match_config.dict))
-
-    match_config.doanewthing(args)
-    exit(0)
-    
-    outputs = match_config.doyourthing(args)
-    print(outputs)
-
+    # # Do not submit if we fail sanity check on definition file
+    # if not sanity_checks( params, input_ ):
+    #     ERROR( "Sanity check failed. Exiting." )
+    #     exit(1)
 
     INFO( "KTHXBYE!" )
 

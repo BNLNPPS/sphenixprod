@@ -15,7 +15,7 @@ DST_STREAMING_EVENT_run3auau_streams:
     mem:        4000MB
 
   input:
-    db:          daqdb
+    db:          rawr
     table:       filelist
     direct_path: /sphenix/lustre01/sphnxpro/{mode}/*/cosmics/
 

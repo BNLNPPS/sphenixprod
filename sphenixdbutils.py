@@ -29,12 +29,10 @@ test_mode = (
 
 prod_mode = pathlib.Path("SPHNX_PRODUCTION_MODE").is_file()
 if ( prod_mode ):
-    #print("Found production mode")
     dsnprodr = 'Production_read'
     dsnprodw = 'Production_write'
     dsnfilec = 'FileCatalog'
 elif ( test_mode ):
-    #print("Found testbed mode")
     dsnprodr = 'ProductionStatus'
     dsnprodw = 'ProductionStatusWrite'
     dsnfilec = 'FileCatalog'
@@ -48,18 +46,16 @@ else:
 cnxn_string_map = {
     'fcw'         : f'DSN={dsnfilec};UID=phnxrc',
     'fcr'         : f'DSN={dsnfilec};READONLY=True;UID=phnxrc',
-    'statr'       : f'DSN={dsnprodr};UID=argouser',
+    'statr'       : f'DSN={dsnprodr};READONLY=True;UID=argouser',
     'statw'       : f'DSN={dsnprodw};UID=argouser',
-
-    'daqdb'       :  'DSN=daq;UID=phnxrc;READONLY=True',
-    'raw'         :  'DSN=RawdataCatalog_read;UID=phnxrc;READONLY=True',
-    'rawdr'       :  'DSN=RawdataCatalog_read;UID=phnxrc;READONLY=True',
+    'rawr'        :  'DSN=RawdataCatalog_read;READONLY=True;UID=phnxrc',
 }
-# Hack to test on Mac
+
+# Hack to test locally on Mac
 if os.uname().sysname=='Darwin' :
     for key in cnxn_string_map.keys() :
         DEBUG(f"Changing {key} to use DSN=eickolja")
-        cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;;READONLY=True;UID=eickolja'
+        cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;READONLY=True;UID=eickolja'
 
 # ============================================================================================
 def printDbInfo( cnxn, title ):
@@ -70,9 +66,9 @@ def printDbInfo( cnxn, title ):
 # ============================================================================================
 def dbQuery( cnxn_string, query, ntries=10 ):
 
-    # Guard rails
-    assert( 'delete' not in query.lower() )    
-    #assert( 'insert' not in query.lower() )    
+    # Guard rails - should not be needed, because only Readonly connections should be used
+    assert( 'delete' not in query.lower() )
+    #assert( 'insert' not in query.lower() )
     #assert( 'update' not in query.lower() )    
     #assert( 'select'     in query.lower() )
 
