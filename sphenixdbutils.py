@@ -75,8 +75,8 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     DEBUG(f'[cnxn_string] {cnxn_string}')
     DEBUG(f'[query      ]\n{query}')
 
-    now =time.time()
-    lastException = None
+    now=time.time()
+    last_exception = None
     ntries = 1
     curs=None
     # Attempt to connect up to ntries
@@ -88,10 +88,10 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             break
         except Exception as E:
             ntries = ntries + 1
-            lastException = str(E)
+            last_exception = str(E)
             delay = (itry + 1 ) * random.random()
             time.sleep(delay)
-            DEBUG(f"Attempt {itry} failed: {lastException}")
+            DEBUG(f"Attempt {itry} failed: {last_exception}")
     #TODO: Hanquery connn failure more gracefully
     DEBUG(f'[query time ] {time.time() - now:.2g} seconds' )
     

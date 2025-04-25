@@ -19,8 +19,8 @@ def main():
     ### digest arguments
     args = submission_args()
 
-    #################### Test mode? 
-    test_mode = ( 
+    #################### Test mode?
+    test_mode = (
             dbutils_test_mode
             or args.test_mode
             # or ( hasattr(rule, 'test_mode') and rule.test_mode )
@@ -39,7 +39,7 @@ def main():
         else:
             sublogdir='/tmp/sphenixprod/sphenixprod/'
     sublogdir += f"{args.rulename}".replace('.yaml','')
-        
+
     pathlib.Path(sublogdir).mkdir( parents=True, exist_ok=True )
     RotFileHandler = RotatingFileHandler(
         filename=f"{sublogdir}/{str(datetime.datetime.today().date())}.log",
@@ -57,17 +57,17 @@ def main():
 
     if test_mode:
         INFO("Running in testbed mode.")
-        args.mangle_dirpath = 'production-testbed'    
+        args.mangle_dirpath = 'production-testbed'
     else:
         INFO("Running in production mode.")
 
     #################### Rule has steering parameters and two subclasses for input and job specifics
     # Rule is instantiated via the yaml reader.
 
-    ### Parse command line arguments into a substitution dictionary 
+    ### Parse command line arguments into a substitution dictionary
     # This dictionary is passed to the ctor to override/customize yaml file parameters
-    # Note: The following could all be hidden away in the RuleConfig ctor 
-    # but this way, CLI arguments are used by the function that received them and 
+    # Note: The following could all be hidden away in the RuleConfig ctor
+    # but this way, CLI arguments are used by the function that received them and
     # constraint constructions are visibly handled away from the RuleConfig class
     rule_substitions = {}
 
@@ -110,10 +110,10 @@ def main():
     if limit_condition != "":
         limit_condition = f"\t{limit_condition}\n"
     rule_substitions["input_query_constraints"] = f"""{run_condition}{limit_condition}"""
-    
+
     # Rest of the input substitutions
     if args.mode is not None:
-        rule_substitions["mode"] = args.mode # e.g. physics 
+        rule_substitions["mode"] = args.mode # e.g. physics
 
     if args.mangle_dstname:
         DEBUG("Mangling DST name")
@@ -144,10 +144,12 @@ def main():
 
     # Assign shared class variables for CondorJob
     # Note: If these need to differ per instance, they shouldn't be ClassVar
-    CondorJob.script                = rule.jobConfig.script
-    CondorJob.neventsper            = rule.jobConfig.neventsper
-    CondorJob.accounting_group      = rule.jobConfig.accounting_group
-    CondorJob.accounting_group_user = rule.jobConfig.accounting_group_user
+    CondorJob.script                = rule.job_config.script
+    CondorJob.neventsper            = rule.job_config.neventsper
+    # 04/25/2025: accounting_group and accounting_group_user should no longer be set,
+    # submit host will do this automatically.
+    # CondorJob.accounting_group      = rule.job_config.accounting_group
+    # CondorJob.accounting_group_user = rule.job_config.accounting_group_user
 
     # if args.printquery:
     #     # prettyquery = pprint.pformat(rule.inputConfig.query)
@@ -156,20 +158,24 @@ def main():
     #     slogger.log(100, rule.inputConfig.query)
     #     slogger.log(100, "[End of query]")
     #     exit(0)
- 
+
     #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
     INFO("Rule construction complete. Now constructing corresponding match configuration.")
 
     # Create a match configuration from the rule
-    match_config = MatchConfig.from_rule_config(rule)  
+    match_config = MatchConfig.from_rule_config(rule)
     CHATTY("Match configuration:")
     CHATTY(yaml.dump(match_config.dict))
 
-    ruleMatches=match_config.matches()
-    INFO(f"Matching complete. {len(ruleMatches)} jobs to be submitted.")
-    for outFile,inFiles in ruleMatches.items():
-        CHATTY(f"Output: {outFile}")
-        CHATTY(f"Input:  {inFiles}\n")
+    rule_matches=match_config.matches()
+    INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
+    for out_file,in_files in rule_matches.items():
+        CHATTY(f"Output: {out_file}")
+        CHATTY(f"Input:  {len(in_files)}\n")
+
+    DEBUG(f"Rule matches is a {type(rule_matches)}")
+    jobs = CondorJob.from_config(job_config=rule.job_config)
+
 
     # TODO: add to sanity checks:
     # if rev==0 and build != 'new':

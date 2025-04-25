@@ -6,22 +6,20 @@ from typing import Optional, ClassVar
 @dataclass( frozen = True )
 class CondorJobConfig:
     """Represents the job configuration block in the YAML."""
-    script: str         # run script on the worker node
-    arguments: str
-    output_destination: str ### needed? used?
-    log: str
-    neventsper: int     # number of events per job
-    payload: str        # Working directory on the node; transferred by condor
-    rsync: str          # additional files to rsync to the node
-    mem: str            # "4000MB"
-    comment: str        # arbitrary comment
-    priority: str
-    accounting_group: str = 'group_sphenix.mdc2'
-    accounting_group_user: str = 'sphnxpro'
-    batch_name: Optional[str] = None
+    script:                str  # run script on the worker node
+    arguments:             str
+    output_destination:    str  # needed? used?
+    log:                   str
+    neventsper:            int  # number of events per job
+    payload:               str  # Working directory on the node; transferred by condor
+    rsync:                 str  # additional files to rsync to the node
+    mem:                   str  # "4000MB"
+    comment:               str  # arbitrary comment
+    priority:              str
+    batch_name:            Optional[str] = None
 
 # ============================================================================
-@dataclass( frozen = False )
+@dataclass( frozen = True )
 class CondorJob:
     """ This class is used for individual condor jobs. 
     Configured via JobConfig and RuleConfig.
@@ -37,13 +35,16 @@ class CondorJob:
     # --- Class Variables (Shared across all instances) ---
     script:                ClassVar[str] # run script on the worker node
     neventsper:            ClassVar[int] # number of events per job
-    accounting_group:      ClassVar[str] = 'group_sphenix.mdc2'
-    accounting_group_user: ClassVar[str] = 'sphnxpro'
+    # 04/25/2025: accounting_group and accounting_group_user should no longer be set, 
+    # submit host will do this automatically.
+    # accounting_group:      ClassVar[str] = 'group_sphenix.mdc2'
+    # accounting_group_user: ClassVar[str] = 'sphnxpro'
 
     # --- Instance Variables (Specific to each job) ---
     arguments:             str
-    output_destination:    str           ### needed? used?
+    output_destination:    str           
     log:                   str
+    # --- Most or all of these should also be ClassVar, but we're allowing some flexibility for now
     payload:               str           # Working directory on the node; transferred by condor.
     rsync:                 str           # additional files to rsync to the node.
     mem:                   str           # "4000MB".
@@ -52,21 +53,23 @@ class CondorJob:
     batch_name:            Optional[str] = None
 
     # ------------------------------------------------
-    def __init__(self, job_config: CondorJobConfig):
+    @classmethod
+    def from_config(cls, job_config: CondorJobConfig):
         """
         Constructs a CondorJob instance from a CondorJobConfig object.
         """
 
-        # Assign instance variables
-        self.arguments           = job_config.arguments
-        self.output_destination  = job_config.output_destination
-        self.log                 = job_config.log
-        self.payload             = job_config.payload
-        self.rsync               = job_config.rsync
-        self.mem                 = job_config.mem
-        self.comment             = job_config.comment
-        self.priority            = job_config.priority
-        self.batch_name          = job_config.batch_name # Handles Optional[str] correctly
+        return cls(
+            arguments           = job_config.arguments,
+            output_destination  = job_config.output_destination,
+            log                 = job_config.log,
+            payload             = job_config.payload,
+            rsync               = job_config.rsync,
+            mem                 = job_config.mem,
+            comment             = job_config.comment,
+            priority            = job_config.priority,
+            batch_name          = job_config.batch_name, # Handles Optional[str] correctly
+        )
 
     # ------------------------------------------------
     def dict(self):
