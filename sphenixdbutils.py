@@ -57,6 +57,12 @@ if os.uname().sysname=='Darwin' :
         DEBUG(f"Changing {key} to use DSN=eickolja")
         cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;READONLY=True;UID=eickolja'
 
+# Hack to use local PostgreSQL database from inside a docker container
+if os.path.exists('/.dockerenv') :
+    for key in cnxn_string_map.keys() :
+        DEBUG(f"Changing {key} to use DSN=eickolja")
+        cnxn_string_map[key] = 'DRIVER=PostgreSQL;SERVER=host.docker.internal;DSN=eickolja;READONLY=True;UID=eickolja'
+
 # ============================================================================================
 def printDbInfo( cnxn, title ):
     name=cnxn.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)

@@ -1,3 +1,4 @@
 pyodbc
 pyyaml
-# htcondor
+htcondor
+classad

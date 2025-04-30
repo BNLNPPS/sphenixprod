@@ -6,6 +6,10 @@ import cProfile
 # from dataclasses import fields
 from logging.handlers import RotatingFileHandler
 import pprint # noqa F401
+import os
+if os.uname().sysname!='Darwin' :
+    import htcondor # type: ignore
+#import classad # type: ignore
 
 from argparsing import submission_args
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
@@ -112,8 +116,8 @@ def main():
     rule_substitions["input_query_constraints"] = f"""{run_condition}{limit_condition}"""
 
     # Rest of the input substitutions
-    if args.mode is not None:
-        rule_substitions["mode"] = args.mode # e.g. physics
+    if args.physicsmode is not None:
+        rule_substitions["physicsmode"] = args.physicsmode # e.g. physics
 
     if args.mangle_dstname:
         DEBUG("Mangling DST name")
@@ -125,11 +129,11 @@ def main():
     if args.mangle_dirpath:
         rule_substitions["prodmode"] = args.mangle_dirpath
 
-    WARN("Don't forget other override_args")
-    ## TODO dbinput, mem, docstring, unblock, batch_name
+    #WARN("Don't forget other override_args")
+    ## TODO? dbinput, mem, docstring, unblock, batch_name
 
     CHATTY(f"Rule substitutions: {rule_substitions}")
-    DEBUG("Now loading and building rule configuration.")
+    INFO("Now loading and building rule configuration.")
 
     #################### Load specific rule from the given yaml file.
     try:
@@ -169,14 +173,29 @@ def main():
 
     rule_matches=match_config.matches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
-    for out_file,in_files in rule_matches.items():
-        CHATTY(f"Output: {out_file}")
-        CHATTY(f"Input:  {len(in_files)}\n")
+    for out_file,(in_files,run,seg,stream) in rule_matches.items():
+        WARN(f"Run:    {run}, Seg:    {seg}, Stream: {stream}")
+        CHATTY(f"Output: {out_file}")        
+        CHATTY(f"Input:  {in_files}\n")
 
-    DEBUG(f"Rule matches is a {type(rule_matches)}")
-    jobs = CondorJob.from_config(job_config=rule.job_config)
+    if os.uname().sysname=='Darwin' :
+        WARN("Running on native Mac, cannot use condor.")
+        WARN("Exiting early.")
+        exit(0)
 
+    for out_file,(in_files,run,seg,stream) in rule_matches.items():
+        condor_job = CondorJob.from_config( job_config=rule.job_config, 
+                                            output_file=out_file, 
+                                            input_files=in_files,
+                                            run=run,
+                                            seg=seg,
+                                        )        
+        jobs = htcondor.Submit(condor_job.dict())
+        print(jobs)
+    #     exit(0)
 
+    # pprint.pprint(jobs["arguments"])
+    
     # TODO: add to sanity checks:
     # if rev==0 and build != 'new':
     #     logging.error( f'production version must be nonzero for fixed builds' )

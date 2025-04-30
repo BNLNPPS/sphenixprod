@@ -14,7 +14,7 @@ from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJobConfig
 
 from collections import namedtuple
-FileStreamRunSeg = namedtuple('FileStreamRunSeg',['filename','streamname','runnumber','segment'])
+FileHostRunSegTran = namedtuple('FileHostRunSeg',['filename','hostname','runnumber','segment','transferred_to_sdcc'])
 
 """ This file contains the dataclasses for the rule configuration and matching.
     It encapsulates what is tedious but hopefully easily understood instantiation
@@ -43,15 +43,16 @@ pRUNFMT = RUNFMT.replace('%','').replace('i','d')
 pSEGFMT = SEGFMT.replace('%','').replace('i','d')
 
 
-# "{leafdir}" needs to stay changeable.Typical leafdir: DST_STREAMING_EVENT_TPC20 or DST_TRKR_CLUSTER
+# "{leafdir}" needs to stay changeable.  Typical leafdir: DST_STREAMING_EVENT_TPC20 or DST_TRKR_CLUSTER
+# "{rungroup}" needs to stay changeable. Typical rungroup: run_00057900_00058000
 # Target example:
-# /sphenix/lustre01/sphnxpro/production/$(period) / $(runtype) / $(build)_$(tag)_$(version) / {leafdir} / run_$(rungroup)/dst
+# /sphenix/lustre01/sphnxpro/production/$(period) / $(runtype) / $(build)_$(tag)_$(version) / {leafdir} / run_{rungroup}/dst
 # /sphenix/lustre01/sphnxpro/production/ run3auau  /   cosmics  / new_nocdbtag_v000          / {leafdir} / run_00057900_00058000/dst
 _default_filesystem = {
-        'outdir'  :           "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/dst"
-    ,   'logdir'  : "file:///sphenix/data/data02/sphnxpro/{prodmode}/{period}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/log"
-    ,   'histdir' :        "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/hist"
-    ,   'condor'  :                                 "/tmp/{prodmode}/{period}/{mode}/{lfnsnippet}/{leafdir}/run_$(rungroup)/log"
+        'outdir'  :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{lfnsnippet}/{leafdir}/{rungroup}/dst"
+    ,   'logdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{lfnsnippet}/{leafdir}/{rungroup}/log"
+    ,   'histdir' : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{lfnsnippet}/{leafdir}/{rungroup}/hist"
+    ,   'condor'  :                          "/tmp/{prodmode}/{period}/{physicsmode}/{lfnsnippet}/{leafdir}/{rungroup}/log"
 }
 
 # ============================================================================
@@ -174,6 +175,7 @@ class RuleConfig:
     job_config:   CondorJobConfig
 
     ### Optional fields have to be down here to allow for default values
+    physicsmode: str     # e.g. cosmics, commissioning, physics
     outstub: str         # e.g. run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory
     filesystem: dict     # base filesystem paths
     # resubmit: bool = False
@@ -221,9 +223,11 @@ class RuleConfig:
         version_string = f'v{params_data["version"]:{VERFMT}}'
         lfnsnippet = f'{build_string}_{params_data["dbtag"]}_{version_string}' # internal variable
         outstub    = params_data["outstub"] if "outstub" in params_data else params_data["period"]
-        outbase    = f'{params_data["rulestem"]}_{outstub}'
+        leafdir    = f'{params_data["rulestem"]}'
+        outbase    = f'{leafdir}_{outstub}'
         if "STREAMING" in params_data["rulestem"]:
-            outbase += "_STREAMNAME"  # Replace with streamname later
+            leafdir += "_LEAF"   # Replace with hostname later
+            outbase += "_LEAF"   # Replace with hostname later
         outbase += f"_{lfnsnippet}"
         if 'DST' in rule_substitions:
             outbase=outbase.replace('DST',rule_substitions['DST'])
@@ -233,6 +237,8 @@ class RuleConfig:
         DEBUG(f"logbase is {logbase}")
 
         ### Optionals
+        physicsmode = params_data.get("physicsmode", "physics")
+        physicsmode = rule_substitions.get("physicsmode", physicsmode)
         comment = params_data.get("comment", "")
         # Default filesystem paths contain placeholders for substitution
         filesystem = rule_data.get("filesystem")
@@ -243,9 +249,11 @@ class RuleConfig:
         for key in filesystem:
             filesystem[key]=filesystem[key].format(   prodmode=rule_substitions["prodmode"]
                                                     , period=params_data["period"]
-                                                    , mode=rule_substitions["mode"]
+                                                    , physicsmode=physicsmode
                                                     , lfnsnippet=lfnsnippet
+                                                    # these two will bne filled at a later stage
                                                     , leafdir='{leafdir}'
+                                                    , rungroup='{rungroup}'
                                                     )
             DEBUG(f"Filesystem: {key} is {filesystem[key]}")
 
@@ -254,13 +262,13 @@ class RuleConfig:
         input_data = rule_data.get("input", {})
         check_params(input_data
                     , required=["db", "table"]
-                    , optional=["direct_path", "prod_identifier", "query_constraints"] ) # Added optional fields
+                    , optional=["direct_path", "prod_identifier", "query_constraints","physicsmode"] ) # Added optional fields
 
         # Rest of the input substitutions, like database name and direct path
         # DEBUG (f"Using database {rule.input_config.db}")
         input_direct_path = input_data.get("direct_path")
-        if input_direct_path is not None and "mode" in rule_substitions:
-            input_direct_path = input_direct_path.format(**rule_substitions)
+        if input_direct_path is not None:
+            input_direct_path = input_direct_path.format(mode=physicsmode)
             DEBUG (f"Using direct path {input_direct_path}")
 
         prod_identifier = input_data.get("prod_identifier")
@@ -290,7 +298,6 @@ class RuleConfig:
         # Substitute rule_substitions into the job data
         for field in 'batch_name', 'arguments','output_destination','log':
             subsval = job_data.get(field)
-            print(f"Field {field} is {subsval}")
             if isinstance(subsval, str): # don't try changing None or dictionaries
                 subsval = subsval.format(
                           **rule_substitions
@@ -304,7 +311,6 @@ class RuleConfig:
                         , neventsper=neventsper
                 )
                 job_data[field] = subsval
-                print(f" -->      now {job_data[field]}")
 
         ### With all preparations done, construct the constant RuleConfig object
         return cls(
@@ -318,6 +324,7 @@ class RuleConfig:
             version_string=version_string,
             logbase=logbase,
             outbase=outbase,
+            leafdir=leafdir,
             input_config=InputConfig(
                     db=input_data["db"],
                     table=input_data["table"],
@@ -326,6 +333,7 @@ class RuleConfig:
                     query_constraints=input_query_constraints,
             ),
             filesystem=filesystem,
+            physicsmode=physicsmode,
             job_config=CondorJobConfig(
                 script=job_data["script"],
                 payload=job_data["payload"],
@@ -354,8 +362,8 @@ class RuleConfig:
             A RuleConfig objects, keyed by rule name.
         """
         try:
-            with open(yaml_file, "r") as stream:
-                yaml_data = yaml.safe_load(stream)
+            with open(yaml_file, "r") as yamlstream:
+                yaml_data = yaml.safe_load(yamlstream)
         except yaml.YAMLError as exc:
             raise ValueError(f"Error parsing YAML file: {exc}")
         except FileNotFoundError:
@@ -374,8 +382,10 @@ class RuleConfig:
 class MatchConfig:
     # From RuleConfig
     rulestem:       str = None         # Name of the matching rule (e.g. DST_CALO)
-    outbase:        str = None         # Name base of the output file, contains all production info and possibly STREAMNAME to be replaced
+    outbase:        str = None         # Name base of the output file, contains all production info and possibly LEAF to be replaced
+    leafdir:        str = None         # Leaf directory name, e.g. DST_STREAMING_EVENT_TPC20 (i.e., not the run period)
     input_config: InputConfig = None
+    physicsmode:    str = None         # e.g. cosmics, commissioning, physics
 
     # Created
     lfn:       str = None         # Logical filename that matches
@@ -395,11 +405,10 @@ class MatchConfig:
     rungroup: str = None
     runs_last_event: str = None
     neventsper : str = None
-    streamname : str = None
-    streamfile : str = None
+    hostname : str = None
 
     # ------------------------------------------------
-    # TODO: Handle "rungroup" which defines the logfile and output file directory structure
+    # TODO: Rungroup 
     # hardcodes "08d" as the run format
     # original in __post_init__ of MatchConfig:
     # object.__setattr__(self, 'rungroup', f'{100*math.floor(run/100):08d}_{100*math.ceil((run+1)/100):08d}')
@@ -420,6 +429,8 @@ class MatchConfig:
             rulestem=rule_config.rulestem,
             outbase = rule_config.outbase,
             input_config = rule_config.input_config,
+            leafdir = rule_config.leafdir,
+            physicsmode = rule_config.physicsmode,
         )
 
     # ------------------------------------------------
@@ -443,23 +454,22 @@ class MatchConfig:
         INFO('Checking for already existing output...')
 
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
-        # Despite the "like" clause, this is a very fast query. Extra cuts or substitute cuts like
+        # Despite the "like" clause, this is a fast query. Extra cuts or substitute cuts like
         # 'and runnumber>={self.runMin} and runnumber<={self.runMax}'
         # can be added if the need arises.
-        # Note: If the file database is not up to date, this can be replaced by
-        # a filesystem search in the output directory
+        # Note: If the file database is not up to date, we can use a filesystem search in the output directory
         # Note: db in the yaml is for input, all output gets logged to the FileCatalog
-        out_template = self.outbase.replace( 'STREAMNAME', '%' )
-        exist_query  = f"""select filename, -1 as streamname,runnumber,segment from datasets where filename like '{out_template}%'"""
+        out_template = self.outbase.replace( 'LEAF', '%' )
+        exist_query  = f"""select filename, -1 as hostname,runnumber,segment from datasets where filename like '{out_template}%'"""
         exist_query += self.input_config.query_constraints
 
         # We can use various attributes to get the info we need, most straightforward is to use the filename
-        # Full info with already_have = [ FileStreamRunSeg(c.filename,c.streamname, c.runnumber,c.segment) for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         already_have = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         INFO(f"Already have {len(already_have)} output files")
         if len(already_have) > 0 :
             CHATTY(f"First line: \n{already_have[0]}")
 
+        
         ###### Now get all existing input files
         INFO("Building candidate inputs...")
         input_stem = inputs_from_output[self.rulestem]
@@ -482,19 +492,22 @@ class MatchConfig:
         in_types_str = f'( QUOTE{"QUOTE,QUOTE".join(in_types)}QUOTE )'
         in_types_str = in_types_str.replace("QUOTE","'")
 
-        infile_query = f'select filename,{descriminator} as streamname,runnumber,segmentplaceholder as segment from {self.input_config.table} where \n\t{descriminator} in {in_types_str}\n'
+        # Need transferred_to_sdcc to be true for all files in a given run,host combination
+        # Easier to check that below than in SQL
+        infile_query = f'select filename,{descriminator} as hostname,runnumber,segmentplaceholder as segment, transferred_to_sdcc from {self.input_config.table} where \n\t{descriminator} in {in_types_str}\n'
         infile_query += self.input_config.query_constraints
 
         if 'raw' in self.input_config.db: # Raw daq uses sequence instead
             infile_query=infile_query.replace('segmentplaceholder','sequence')
-            infile_query+="\tand transferred_to_sdcc='t'"
+            infile_query+= f" and filename like '%bbox%{self.physicsmode}%'"
         else:
             infile_query=infile_query.replace('segmentplaceholder','segment')
+            infile_query=infile_query.replace('transferred_to_sdcc','\'1\' as transferred_to_sdcc')
 
         DEBUG(f"Input file query is:\n{infile_query}")
         db_result = dbQuery( cnxn_string_map[ self.input_config.db ], infile_query ).fetchall()
         # TODO: Support rule.printquery
-        in_files = [ FileStreamRunSeg(c.filename,c.streamname,c.runnumber,c.segment) for c in db_result ]
+        in_files = [ FileHostRunSegTran(c.filename,c.hostname,c.runnumber,c.segment,c.transferred_to_sdcc) for c in db_result ]
 
         INFO(f"Total number of available input files: {len(in_files)}")
         if len(in_files) > 0 :
@@ -519,10 +532,10 @@ class MatchConfig:
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
             CHATTY(f"First line: \n{candidates[0]}")
 
-            ######## Cut up the candidates into streams
-            candidates.sort(key=lambda x: (x.runnumber, x.streamname)) # itertools.groupby depends on data being sorted
+            ######## Cut up the candidates into streams/hostnames
+            candidates.sort(key=lambda x: (x.runnumber, x.hostname)) # itertools.groupby depends on data being sorted
             files_for_run = { k : list(g) for
-                           k, g in itertools.groupby(candidates, operator.attrgetter('streamname')) }
+                           k, g in itertools.groupby(candidates, operator.attrgetter('hostname')) }
             # Remove the files we just processed. May be useful to shorten the search space
             # for the next iteration. Could also be a waste of time
             in_files = [ f for f in in_files if f.runnumber != runnumber ]
@@ -534,28 +547,30 @@ class MatchConfig:
                     WARN(f"No GL1 files found for run {runnumber}. Skipping this run.")
                     continue
                 CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1_files}')
-                for stream in files_for_run:
-                    files_for_run[stream] = gl1_files + files_for_run[stream]
+                for host in files_for_run:
+                    files_for_run[host] = gl1_files + files_for_run[host]
 
-            ######### The next step gets a bit hairy.
+            ######### Two or three possibilities:
             # - Easy: If the input has a segment number, then the output will have the same segment number
             #     - These are downstream objects (input is already a DST)
             #     - This can be 1-1 or many-to-1 (usually 2-1 for SEED + CLUSTER --> TRACKS)
-            # - Medium: The input has no segment number but each output is connected to one input stream
+            # - Medium: The input has no segment number; each output is produced from all sequences in one input stream
             #     - This is currently the case for the streaming daq (tracking)
+            #     - As of 04/29, this is the new scheme for the calo daq as well
             #     - In this case, provide ALL input files for the run, and the output will produce its own segment numbers
             # - Hard: The input has no segment number and the output is connected to multiple input streams
             #     - This is currently the case for the triggered daq (calos).
             #     - There may be some intricate mixing needed to get the right event numbers together.
-            #       - For now, we ignore this case because it may soon be changed to medium difficulty
-
-            # Easy case. One way to identify this case is to see if gl1 is not needed
-            # In this case, the inputs should be a plain list
+            #        - For now, we ignore this case because it may soon be changed to medium difficulty
+            #        - As of 04/29, this case should now be ignored other than for backwards compatibility
+            
+            ####### Easy case. One way to identify this case is to see if gl1 is not needed 
             if 'gl1daq' not in in_types_str:
+                # In this case, the inputs should be a plain list
                 if isinstance(input_stem, dict):
-                    ERROR( "InputStem is a dictionary. Only supported for specific productions from raw daq.")
+                    ERROR( "Input is a downstream object but input_stem is a dictionary.")
                     exit(-1)
-                CHATTY(f'\nInputStem is a list, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
+                CHATTY(f'\ninput_stem is a list, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
 
                 # For every segment, there is exactly one output file, and exactly one input file from each stream
                 # Sort and group the input files by segment
@@ -563,14 +578,14 @@ class MatchConfig:
                 # if the output already exists. But we need the segments for that anyway
                 segments = None
                 rejected = set()
-                for stream in files_for_run:
-                    files_for_run[stream].sort(key=lambda x: (x.segment))
-                    new_segments = list(map(lambda x: x.segment, files_for_run[stream]))
+                for host in files_for_run:
+                    files_for_run[host].sort(key=lambda x: (x.segment))
+                    new_segments = list(map(lambda x: x.segment, files_for_run[host]))
                     if segments is None:
                         segments = new_segments
                     elif segments != new_segments:
                         rejected.update( set(segments).symmetric_difference(set(new_segments)) )
-                        segments = list(set(segments).intersection(new_segments))
+                        segments = list( set(segments).intersection(new_segments))
 
                 if len(rejected) > 0:
                     WARN(f"Run {runnumber}: Removed segments not present in all streams: {rejected}")
@@ -583,10 +598,43 @@ class MatchConfig:
                         continue
 
                     in_files_for_seg= []
-                    for stream in files_for_run:
-                        in_files_for_seg += [ f.filename for f in files_for_run[stream] if f.segment == seg ]
+                    for host in files_for_run:
+                        in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
                     CHATTY(f"Creating {output} from {in_files_for_seg}")
-                    rule_matches[output] = in_files_for_seg
+                    rule_matches[output] = in_files_for_seg, runnumber, seg, None
+
+            ####### Medium case. Streaming and (now also) triggered daq
+            if 'gl1daq' in in_types_str:
+                if not isinstance(input_stem, dict):
+                    ERROR( "Input is raw daq but input_stem is not a dictionary.")
+                    exit(-1)
+                WARN(f'\ninput_stem is a dictionary, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
+                
+                # Every runnumber has exactly one output file, and a gaggle of input files with matching hostname
+                # Sort and group the input files by host
+                for leafdir, hostname in input_stem.items():
+                    if hostname not in files_for_run:
+                        DEBUG(f"No inputs from {hostname} for run {runnumber}.")
+                        continue
+
+                    print( f"{self.lfnsnippet}")
+                    print( f"leafdir: {leafdir}")
+                    #print( f"{self.outbase.replace('LEAF',leafdir)}-{runnumber:{pRUNFMT}}.root")
+                    # output = f"{self.outbase.format{LEAF=leafdir}}-{runnumber:{pRUNFMT}}-{leafdir}.root"
+                    files_for_run[hostname].sort(key=lambda x: (x.segment))
+                    # All files have to be in sdcc for the run/host combination to be ready for processing
+                    for f in files_for_run[hostname]:
+                        if not f.transferred_to_sdcc:
+                            WARN(f"Run {runnumber}: File {f.filename} is not transferred to sdcc. Skipping ].")
+                            continue
+                    
+                    WARN(f"Hostname: {hostname}, Leafdir: {leafdir}")
+                    # CHATTY(f"{[(f.filename, f.transferred_to_sdcc) for f in files_for_run[hostname]]}\n")
+
+                    # in_files_for_host = [f.filename for f in files_for_run[hostname]]
+                    # WARN(f"Creating {output} from {len(in_files_for_host)} input files")
+                    # rule_matches[output] = in_files_for_host, runnumber, None, leafdir
+                # exit(-1)
 
         return rule_matches
 # ============================================================================

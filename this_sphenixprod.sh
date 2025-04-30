@@ -4,7 +4,7 @@ if ! [[ "$SHELL" =~ "bash" ]]; then
 fi
 
 OS=$( hostnamectl | awk '/Operating System/{ print $3" "$4 }' )
-echo "Setting up sPHNIX Production for ${OS}"
+echo "Setting up sPHENIX Production for ${OS}"
 
 # This is the directory of the script (but no symlinks allowed)
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )

@@ -1,5 +1,8 @@
 from dataclasses import dataclass
-from typing import Optional, ClassVar
+from typing import Optional, ClassVar, List
+import math
+
+import pprint # noqa F401
 
 # ============================================================================
 
@@ -8,7 +11,7 @@ class CondorJobConfig:
     """Represents the job configuration block in the YAML."""
     script:                str  # run script on the worker node
     arguments:             str
-    output_destination:    str  # needed? used?
+    output_destination:    str
     log:                   str
     neventsper:            int  # number of events per job
     payload:               str  # Working directory on the node; transferred by condor
@@ -16,6 +19,8 @@ class CondorJobConfig:
     mem:                   str  # "4000MB"
     comment:               str  # arbitrary comment
     priority:              str
+    leafdir:               str = "TODO"
+    rungroup:              str = "run_{a:08d}_{b:08d}"
     batch_name:            Optional[str] = None
 
 # ============================================================================
@@ -44,6 +49,10 @@ class CondorJob:
     arguments:             str
     output_destination:    str           
     log:                   str
+    output_file:           str           # Output file for the job
+    input_files:           List[str]     # List of input files for the job
+    run:                   int
+    seg:                   int
     # --- Most or all of these should also be ClassVar, but we're allowing some flexibility for now
     payload:               str           # Working directory on the node; transferred by condor.
     rsync:                 str           # additional files to rsync to the node.
@@ -54,13 +63,47 @@ class CondorJob:
 
     # ------------------------------------------------
     @classmethod
-    def from_config(cls, job_config: CondorJobConfig):
+    def from_config(cls, job_config: CondorJobConfig, output_file: str, input_files: List[str], run: int, seg: int):
         """
         Constructs a CondorJob instance from a CondorJobConfig object.
         """
 
+        # leafdir=job_config.leafdir
+        # print(f"leafdir: {leafdir}")
+        # rungroup=job_config.rungroup.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
+        # print(f"rungroup: {rungroup}")
+        # output_file=output_file.format(leafdir=leafdir, rungroup=rungroup)
+        # print(f"output_file: {output_file}")
+        # input_files=",".join(input_files)
+        # print(f"input_files: {input_files}")
+        # input_files=input_files.format(leafdir=leafdir, rungroup=rungroup)
+        
+
+        rungroup=job_config.rungroup.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
+        leafdir=job_config.leafdir
+        job_config_arguments = job_config.arguments.format(rungroup=rungroup, leafdir=leafdir)
+        print(f"job_config_arguments: {job_config_arguments}")
+        print()
+        exit()
+        for key in job_config_arguments:
+            job_config_arguments[key] = job_config_arguments[key].format(
+                leafdir=job_config.leafdir,
+                rungroup=job_config.rungroup.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
+            )
+        print(f"job_config_arguments: {job_config_arguments}")
+
+        exit(0)
+        arguments = job_config.arguments.format(
+            neventsper=job_config.neventsper,
+            input_files=input_files,
+            output_file=output_file,
+            leafdir=job_config.leafdir,
+            rungroup=job_config.rungroup.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100)),
+        )
+        # print(f"{job_config.rungroup.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))}")
+        # exit(0)
         return cls(
-            arguments           = job_config.arguments,
+            arguments           = arguments,
             output_destination  = job_config.output_destination,
             log                 = job_config.log,
             payload             = job_config.payload,
@@ -69,8 +112,15 @@ class CondorJob:
             comment             = job_config.comment,
             priority            = job_config.priority,
             batch_name          = job_config.batch_name, # Handles Optional[str] correctly
+            output_file         = output_file,
+            input_files         = input_files,
+            run                 = run,
+            seg                 = seg,
         )
 
+    # ------------------------------------------------
+    # @classmethod
+    # def from_config(cls, job_config: CondorJobConfig, input_output_dict: Dict[str, str]):
     # ------------------------------------------------
     def dict(self):
         """
@@ -81,6 +131,8 @@ class CondorJob:
         # by htcondor.Submit, or rely on htcondor.Submit handling them.
         # asdict() only includes instance variables.
         data = {
+            # 'accounting_group':      self.accounting_group,
+            # 'accounting_group_user': self.accounting_group_user,
             'script':                self.script,
             'arguments':             self.arguments,
             'output_destination':    self.output_destination,
@@ -91,8 +143,6 @@ class CondorJob:
             'mem':                   self.mem,
             'comment':               self.comment,
             'priority':              self.priority,
-            'accounting_group':      self.accounting_group,
-            'accounting_group_user': self.accounting_group_user,
         }
         if self.batch_name is not None:
             data['batch_name'] = self.batch_name
