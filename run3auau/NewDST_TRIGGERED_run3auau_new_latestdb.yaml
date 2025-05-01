@@ -1,9 +1,7 @@
 #______________________________________________________________________________________________________________________
 DST_TRIGGERED_EVENT_run3auau:
   params:
-    # Commented out the rulestem to provoke a failure
-    # This rule shouldn't be used currently
-    # rulestem:   DST_TRIGGERED_EVENT
+    rulestem:   DST_TRIGGERED_EVENT
     period:     run3auau
     outstub:    run3auau # could be run3cosmics, run3calib, etc.
     build:      new
@@ -22,7 +20,7 @@ DST_TRIGGERED_EVENT_run3auau:
     neventsper:            100000
     noverflow:             20000
     rsync:                 'ProdFlow/run3auau/TriggerProduction/*,cups.py' # Adjusted quoting
-    arguments:             "$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync} $(firstevent) $(lastevent) $(runs_last_event) {PWD} {rsync}"
+    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync} $(firstevent) $(lastevent) $(runs_last_event) {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'
@@ -51,7 +49,7 @@ DST_CALOFITTING_run3auau:
     mem:                   1024MB
     neventsper:            50000
     rsync:                 './ProdFlow/run3auau/CaloProduction/*,cups.py'
-    arguments:             '0 {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
+    arguments:             '0 {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'
@@ -77,7 +75,7 @@ DST_CALO_run3auau:
     mem:                   4096MB
     neventsper:            50000
     rsync:                 './ProdFlow/run3auau/CaloProduction/*'
-    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
+    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'
@@ -103,7 +101,7 @@ DST_JETS_run3auau:
     mem:                   2096MB
     neventsper:            50000
     rsync:                 './ProdFlow/run3auau/JetProduction/*'
-    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
+    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'
@@ -129,7 +127,7 @@ DST_JETCALO_run3auau:
     mem:                   4096MB
     neventsper:            50000
     rsync:                 './ProdFlow/run3auau/JetProduction/*'
-    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
+    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'

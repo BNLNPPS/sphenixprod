@@ -74,6 +74,7 @@ def main():
     # but this way, CLI arguments are used by the function that received them and
     # constraint constructions are visibly handled away from the RuleConfig class
     rule_substitions = {}
+    rule_substitions["nevents"] = args.nevents
 
     #  Force copy our own files to the worker:
     # .testbed, .slurp (deprecated) indicate test mode
@@ -148,8 +149,8 @@ def main():
 
     # Assign shared class variables for CondorJob
     # Note: If these need to differ per instance, they shouldn't be ClassVar
-    CondorJob.script                = rule.job_config.script
-    CondorJob.neventsper            = rule.job_config.neventsper
+    # CondorJob.script                = rule.job_config.script
+    # CondorJob.neventsper            = rule.job_config.neventsper
     # 04/25/2025: accounting_group and accounting_group_user should no longer be set,
     # submit host will do this automatically.
     # CondorJob.accounting_group      = rule.job_config.accounting_group
@@ -171,28 +172,35 @@ def main():
     CHATTY("Match configuration:")
     CHATTY(yaml.dump(match_config.dict))
 
+    # Note: matches() is keyed by output file names, but the run scripts use the output base name and separately the run number    
     rule_matches=match_config.matches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
-    for out_file,(in_files,run,seg,stream) in rule_matches.items():
-        WARN(f"Run:    {run}, Seg:    {seg}, Stream: {stream}")
-        CHATTY(f"Output: {out_file}")        
-        CHATTY(f"Input:  {in_files}\n")
+        
+    for out_file,(in_files, outbase, logbase, run, seg, leaf) in rule_matches.items():
+        CHATTY(f"Run:    {run}, Seg:    {seg}, Stream: {leaf}")
+        CHATTY(f"Outbase: {outbase}  Output: {out_file}")
+        CHATTY(f"Logbase: {logbase}")
+        CHATTY(f"nInput:  {len(in_files)}\n")
 
     if os.uname().sysname=='Darwin' :
         WARN("Running on native Mac, cannot use condor.")
         WARN("Exiting early.")
         exit(0)
-
-    for out_file,(in_files,run,seg,stream) in rule_matches.items():
-        condor_job = CondorJob.from_config( job_config=rule.job_config, 
-                                            output_file=out_file, 
-                                            input_files=in_files,
-                                            run=run,
-                                            seg=seg,
+    
+    CondorJob.job_config = rule.job_config
+    for out_file,(in_files, outbase, logbase, run, seg, leaf) in rule_matches.items():
+        condor_job = CondorJob.make_job(output_file=out_file, 
+                                        inputs=in_files,
+                                        outbase=outbase,
+                                        logbase=logbase,
+                                        leafdir=leaf,
+                                        run=run,
+                                        seg=seg,
                                         )        
         jobs = htcondor.Submit(condor_job.dict())
         print(jobs)
-    #     exit(0)
+        exit(0)
+
 
     # pprint.pprint(jobs["arguments"])
     
@@ -205,10 +213,21 @@ def main():
     #     logging.error( 'production version must be zero for new build' )
     #     result = False
 
+    # TODO: add to sanity check
+    #  payload should definitely be part of the rsync list but the yaml does that explicitly instead, e.g.
+    #  payload :   ./ProdFlow/run3auau/streaming/
+    #  rsync   : "./ProdFlow/run3auau/streaming/*"
+
+    # TODO: Find the right class to store update, updateDb, etc.
+    # update    = kwargs.get('update',    True ) # update the DB
+    # updateDb= not args.submit
+
+
     # # Do not submit if we fail sanity check on definition file
     # if not sanity_checks( params, input_ ):
     #     ERROR( "Sanity check failed. Exiting." )
     #     exit(1)
+
 
     INFO( "KTHXBYE!" )
 

@@ -56,7 +56,7 @@ def submission_args():
     # arg_parser.add_argument( '-u', '--unblock-state', nargs='*', dest='unblock',  choices=["submitting","submitted","started","running","evicted","failed","finished"] )
     arg_parser.add_argument( '-r', '--resubmit', dest='resubmit', default=False, action='store_true', help='Existing filecatalog entry does not block a job')
     arg_parser.add_argument( '--docstring',default=None,help="Appends a documentation string to the log entry")
-    # batch_name should be set in JobConfig <-=- ALLOW OVERRIDE?
+    # batch_name should be set in JobConfig <-- TODO: allow override?
     # arg_parser.add_argument( "--batch-name", dest="batch_name", default=None ) #default="$(name)_$(build)_$(tag)_$(version)"
     
     # args, userargs = arg_parser.parse_known_args()

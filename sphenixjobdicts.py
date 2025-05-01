@@ -1,14 +1,14 @@
 ### Tracking detectors
 # Physical detectors are streaming: many outputs, but each is 1-to-1
 inputs_from_output={
-    'DST_STREAMING_EVENT' : { f'DST_STREAMING_EVENT_INTT{n}'    : f'intt{n}'    for n in range(0,8) }
-                        |   { f'DST_STREAMING_EVENT_MVTX{n}'    : f'mvtx{n}'    for n in range(0,6) }
-                        |   { f'DST_STREAMING_EVENT_TPC{n:02}'  : f'ebdc{n:02}' for n in range(0,24) }
-                        |   {  'DST_STREAMING_EVENT_TPOT'       :  'ebdc39' }
+    'DST_STREAMING_EVENT' : { f'INTT{n}'    : f'intt{n}'    for n in range(0,8) }
+                        |   { f'MVTX{n}'    : f'mvtx{n}'    for n in range(0,6) }
+                        |   { f'TPC{n:02}'  : f'ebdc{n:02}' for n in range(0,24) }
+                        |   {  'TPOT'       :  'ebdc39' }
 }
 
 # Clusters and seeds: many-to-1
-inputs_from_output['DST_TRKR_CLUSTER'] = list(inputs_from_output['DST_STREAMING_EVENT'].keys())
+inputs_from_output['DST_TRKR_CLUSTER'] = list('DST_STREAMING_EVENT_' + LEAF for LEAF in inputs_from_output['DST_STREAMING_EVENT'].keys())
 inputs_from_output['DST_TRKR_SEED']    = ['DST_TRKR_CLUSTER']
 
 # Tracks: From clusters and seeds, i.e. 2-1
@@ -25,10 +25,13 @@ inputs_from_output['DST_TRKR_TRACKS']  = ['DST_TRKR_CLUSTER','DST_TRKR_SEED']
 #                                            , 'mbd%.prdf'
 #                                            , 'ZDC%.prdf'
 #                                            ]
-inputs_from_output['DST_TRIGGERED_EVENT'] = [ f'seb{n:02}' for n in range(0,24) ]
+# inputs_from_output['DST_TRIGGERED_EVENT'] = [ f'seb{n:02}' for n in range(0,24) ]
+inputs_from_output['DST_TRIGGERED_EVENT'] = { f'seb{n:02}' : f'seb{n:02}' for n in range(0,24) }
+# or inputs_from_output['DST_TRIGGERED_EVENT'] = { f'SEB{n:02}' : f'seb{n:02}' for n in range(0,24) }
+# or use the ones from the list above (emcal, HCal,...) 
 
 # Downstream products fitting
-inputs_from_output['DST_CALOFITTING'] = ['DST_TRIGGERED_EVENT']
+inputs_from_output['DST_CALOFITTING'] = list('DST_TRIGGERED_EVENT_' + LEAF for LEAF in inputs_from_output['DST_TRIGGERED_EVENT'].keys())
 
 # Downstream products
 inputs_from_output['DST_CALO'] = ['DST_CALOFITTING']

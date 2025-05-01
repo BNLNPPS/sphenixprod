@@ -15,7 +15,9 @@ DST_STREAMING_EVENT_run3auau_streams:
 
   job:
     script:                 run_parallel_streams.sh
-    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
+# TODO: ranges?
+#    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
+    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     neventsper:             10000
@@ -43,7 +45,7 @@ DST_TRKR_CLUSTER_run3auau_streams:
 
   job:
     script:                 run_singlejob0.sh
-    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
+    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     neventsper:             10000
@@ -73,7 +75,7 @@ DST_TRKR_SEED_run3auau_streams:
     neventsper:             10000
     rsync:                 './ProdFlow/run3auau/TrackingProduction/*'
     mem:                    4000MB
-    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
+    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     priority:              '3900'
@@ -95,7 +97,7 @@ DST_TRKR_TRACKS_run3auau_streams:
 
   job:
     script:                 run_jobC.sh
-    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
+    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     neventsper:             10000
