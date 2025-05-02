@@ -26,9 +26,7 @@ inputs_from_output['DST_TRKR_TRACKS']  = ['DST_TRKR_CLUSTER','DST_TRKR_SEED']
 #                                            , 'ZDC%.prdf'
 #                                            ]
 # inputs_from_output['DST_TRIGGERED_EVENT'] = [ f'seb{n:02}' for n in range(0,24) ]
-inputs_from_output['DST_TRIGGERED_EVENT'] = { f'seb{n:02}' : f'seb{n:02}' for n in range(0,24) }
-# or inputs_from_output['DST_TRIGGERED_EVENT'] = { f'SEB{n:02}' : f'seb{n:02}' for n in range(0,24) }
-# or use the ones from the list above (emcal, HCal,...) 
+inputs_from_output['DST_TRIGGERED_EVENT'] = { f'SEB{n:02}' : f'seb{n:02}' for n in range(0,24) }
 
 # Downstream products fitting
 inputs_from_output['DST_CALOFITTING'] = list('DST_TRIGGERED_EVENT_' + LEAF for LEAF in inputs_from_output['DST_TRIGGERED_EVENT'].keys())
