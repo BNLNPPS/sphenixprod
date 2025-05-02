@@ -1,0 +1,4 @@
+pyodbc
+pyyaml
+# htcondor
+classad
