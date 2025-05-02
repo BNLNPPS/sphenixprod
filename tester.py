@@ -188,6 +188,9 @@ def main():
         exit(0)
     
     CondorJob.job_config = rule.job_config
+    base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
+    print(base_job)
+    i=1
     for out_file,(in_files, outbase, logbase, run, seg, leaf) in rule_matches.items():
         condor_job = CondorJob.make_job(output_file=out_file, 
                                         inputs=in_files,
@@ -197,9 +200,13 @@ def main():
                                         run=run,
                                         seg=seg,
                                         )        
-        jobs = htcondor.Submit(condor_job.dict())
-        print(jobs)
-        exit(0)
+        job = htcondor.Submit(condor_job.dict())
+        print(job)
+        print("Queue")
+        print()
+        i+=1
+        if i > 3:
+            exit(0)
 
 
     # pprint.pprint(jobs["arguments"])
