@@ -138,7 +138,8 @@ class CondorJob:
         Returns a dictionary representation suitable for htcondor.Submit,
         excluding None values.
         """
-        data = self.job_config.condor_dict()
+        # data = self.job_config.condor_dict() # Repeat base config for each job
+        data = {}
         # Add instance-specific fields
         data.update({
             'arguments':             self.arguments,
