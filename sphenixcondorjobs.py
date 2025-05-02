@@ -12,54 +12,102 @@ class CondorJobConfig:
     """Represents the job configuration block in the YAML.
     Members that are modified by individual jobs are tagged _tmpl
     """
-    script:                str  # run script on the worker node
-    payload:               str  # Working directory on the node; transferred by condor
-    neventsper:            int  # number of events per job
-    rsync:                 str  # additional files to rsync to the node
-    mem:                   str  # "4000MB"
-    request_disk:          str  # "10GB"
-    comment:               str  # arbitrary comment
-    batch_name:            Optional[str]
-    priority:              str
-    arguments_tmpl:             str
-    output_destination_tmpl:    str
-    log_tmpl:                   str
-    rungroup_tmpl:              str = "run_{a:08d}_{b:08d}"
+    universe:                   str = "vanilla"
+    getenv:                     str = "False"
+    environment:                str = None
+    executable:                 str = "./jobwrapper.sh"
+    comment:                    str = None # arbitrary comment
+    user_job_wrapper:           str = None # TODO: use this instead of executable for jobwrapper.sh?
+    batch_name:                 Optional[str] = None 
+
+    request_disk:               str = "10GB"
+    request_cpus:               str = "1"
+    request_memory:             str = "4000MB"
+    priority:                   str = "40000000"
+    max_retries:                str = None # No default...
+    request_xferslots:          str = None
+    job_lease_duration:         str = "3600"
+    requirements:               str = '(CPU_Type == "mdc2")'
+    periodichold: 	            str = "(NumJobStarts>=1 && JobStatus == 1)"
+    periodicremove:             str = None
+    
+    on_exit_hold:               str = None
+    on_exit_remove:             str = None
+    concurrency_limits:         str = None
+    notification:               str = None
+    notify_user:                str = None
 
     # 04/25/2025: accounting_group and accounting_group_user should no longer be set, 
     # submit host will do this automatically.
-    # accounting_group:      ClassVar[str] = 'group_sphenix.mdc2'
-    # accounting_group_user: ClassVar[str] = 'sphnxpro'
+    # accounting_group:         str = 'group_sphenix.mdc2'
+    # accounting_group_user:    str = 'sphnxpro'
+    accounting_group:           str = None
+    accounting_group_user:      str = None
+    initialdir:                 str = None
+    should_transfer_files:      str = "YES" # TODO: check why this is needed
+    when_to_transfer_output:    str = "ON_EXIT"
+    transfer_output_files:      str = '""'
+    transfer_output_remaps:     str = None
+    transferout:                str = "false"
+    transfererr:                str = "false"
+    transfer_input_files:       str = None
+    
+    script:                     str = None # run script on the worker node
+    payload:                    str = None # Working directory on the node; transferred by condor
+    neventsper:                 int = "0" # number of events per job
+    rsync:                      str = None # additional files to rsync to the node
+
+    arguments_tmpl:             str = None
+    output_destination_tmpl:    str = None
+    log_tmpl:                   str = None
+    rungroup_tmpl:              str = "run_{a:08d}_{b:08d}"
 
     def condor_dict(self) -> dict:
         """
         Returns a dictionary representation suitable for base HTCondor job configuration,
-        excluding None values and template fields.
+        excluding None values and template/internal fields.
         """
-        data = {
-            # 'should_transfer_files': 'YES',
-            # 'when_to_transfer_output': 'ON_EXIT',
-            # 'transfer_input_files':  ','.join(self.inputs),
-            # 'transfer_output_files': self.output_file,
-            # 'transfer_executable':   'NO',
-            # 'executable':           self.script,
-            # 'output':               self.output_destination,
-            # 'error':                self.log,
-            # 'log':                  self.log,
-            # executable:              f"{`SLURPPATH}/jobwrapper.sh"
-            # 'accounting_group':      self.accounting_group,
-            # 'accounting_group_user': self.accounting_group_user,
-            'universe':              'vanilla',
-            'executable':            self.script,
-            'request_memory':        self.mem,
-            'request_disk':          self.request_disk,
-            'priority':              self.priority,
-            'comment':               self.comment,
-        }
-        # FIXME? Leads to MY.JobBatchName = $(name)_$(build)_$(tag)_$(version)-singlestreams
-        # if self.batch_name is not None:
-        #     data['+JobBatchName'] = self.batch_name # Use +JobBatchName for HTCondor
+        # List of attributes that correspond directly to HTCondor parameters, in desired order
+        condor_attributes = [
+            'universe',
+            'executable',
+            'environment',
+            'getenv',
+            'initialdir',
+            'requirements',
+            'priority',
+            'request_disk',
+            'request_cpus',
+            'request_memory',
+            'request_xferslots',
+            'job_lease_duration',
+            'max_retries',
+            'periodichold',
+            'periodicremove',
+            'on_exit_hold',
+            'on_exit_remove',
+            'concurrency_limits',
+            'notification',
+            'notify_user',
+            'should_transfer_files',
+            'when_to_transfer_output',
+            'transfer_output_files',
+            'transfer_output_remaps',
+            'transfer_input_files',
+            'accounting_group', # Keep last as they are often None/unused now
+            'accounting_group_user',
+            'comment', # Comment often comes last in submit files
+        ]
 
+        data = {attr_name: getattr(self, attr_name)
+                for attr_name in condor_attributes
+                if hasattr(self, attr_name)}
+
+        # Handle special cases like batch_name
+        if self.batch_name is not None:
+            data['+JobBatchName'] = self.batch_name # Use +JobBatchName for HTCondor
+
+        # Filter out None values and convert remaining values to strings
         return {k: str(v) for k, v in data.items() if v is not None}
 
 # ============================================================================
@@ -81,7 +129,9 @@ class CondorJob:
 
     # --- Instance Variables (Specific to each job) ---
     arguments:             str
-    output_destination:    str           
+    output_destination:    str
+    # output:                str = None 
+    # error:                 str = None
     log:                   str
     output_file:           str           # Output file for the job --> not used directly except for bookkeeping
     inputs:                List[str]     # List of input files for the job

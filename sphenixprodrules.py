@@ -328,7 +328,7 @@ class RuleConfig:
             job_config=CondorJobConfig(
                 script=job_data["script"],
                 payload=job_data["payload"],
-                mem=job_data["mem"],
+                request_memory=job_data["mem"],
                 request_disk=job_data.get("request_disk", "10GB"),
                 comment=comment,
                 neventsper=neventsper,
@@ -417,16 +417,16 @@ class MatchConfig:
     # ------------------------------------------------
     def matches(self) :
 
-
         INFO('Checking for already existing output...')
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # Despite the "like" clause, this is a fast query. Extra cuts or substitute cuts like
         # 'and runnumber>={self.runMin} and runnumber<={self.runMax}'
         # can be added if the need arises.
         # Note: If the file database is not up to date, we can use a filesystem search in the output directory
-        # Note: db in the yaml is for input queries only, all output queries go to the FileCatalog
+        # Note: The db field in the yaml is for input queries only, all output queries go to the FileCatalog
         dst_type_template = f'{self.rulestem}'
-        if 'TRIGGERED' in self.rulestem or 'STREAMING' in self.rulestem:
+        # This test should be equivalent: if 'TRIGGERED' in self.rulestem or 'STREAMING' in self.rulestem:
+        if 'raw' in self.input_config.db:
             dst_type_template += '_%'
         dst_type_template += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
         exist_query  = f"""select filename, -1 as hostname,runnumber,segment from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
