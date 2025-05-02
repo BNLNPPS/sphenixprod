@@ -24,8 +24,8 @@ DST_STREAMING_EVENT_run3auau_streams:
     payload:                ./ProdFlow/run3auau/streaming/
     rsync:                 './ProdFlow/run3auau/streaming/*'
     mem:                    4000MB
-    batch_name:            '$(name)_$(build)_$(tag)_$(version)-singlestreams'
-    priority:              '40000000'
+    # batch_name:            '$(name)_$(build)_$(tag)_$(version)-singlestreams'
+    priority:              '3500'
     # comment :              '---'
 
 #______________________________________________________________________________________________________________________
@@ -52,7 +52,7 @@ DST_TRKR_CLUSTER_run3auau_streams:
     payload:                ./ProdFlow/run3auau/TrackingProduction/
     rsync:                 './ProdFlow/run3auau/TrackingProduction/*'
     mem:                    4000MB
-    priority:              '40000000'
+    priority:              '3500'
     
 #______________________________________________________________________________________________________________________
 DST_TRKR_SEED_run3auau_streams:
@@ -78,7 +78,7 @@ DST_TRKR_SEED_run3auau_streams:
     arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
-    priority:              '3900'
+    priority:              '3500'
 
 #______________________________________________________________________________________________________________________
 DST_TRKR_TRACKS_run3auau_streams:
@@ -104,6 +104,6 @@ DST_TRKR_TRACKS_run3auau_streams:
     payload:                ./ProdFlow/run3auau/TrackingProduction/
     rsync:                 './ProdFlow/run3auau/TrackingProduction/*'
     mem:                    4000MB
-    priority:              '3900'
+    priority:              '3500'
 
 #______________________________________________________________________________________________________________________

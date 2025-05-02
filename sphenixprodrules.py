@@ -235,7 +235,7 @@ class RuleConfig:
         ### Optionals
         physicsmode = params_data.get("physicsmode", "physics")
         physicsmode = rule_substitions.get("physicsmode", physicsmode)
-        comment = params_data.get("comment", "---")
+        comment = params_data.get("comment", None)
         # Filesystem paths contain placeholders for substitution
         filesystem = rule_data.get("filesystem")
         if filesystem is None:
@@ -299,7 +299,7 @@ class RuleConfig:
         ### Add to transfer list
         rsync       = job_data["rsync"] + rule_substitions.get("append_to_rsync", "")
         neventsper  = job_data["neventsper"]
-        comment     = job_data.get("comment", "") # Get comment from job_data first
+        comment     = job_data.get("comment", None)
 
         # Partially fill rule_substitions into the job data
         for field in 'batch_name', 'arguments','output_destination','log':
@@ -334,7 +334,7 @@ class RuleConfig:
                 neventsper=neventsper,
                 rsync=rsync,
                 priority=job_data["priority"],
-                batch_name=job_data.get("batch_name"),
+                #batch_name=job_data.get("batch_name"),
                 arguments_tmpl=job_data["arguments"],
                 output_destination_tmpl=job_data["output_destination"],
                 log_tmpl=job_data["log"],

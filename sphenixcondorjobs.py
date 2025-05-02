@@ -15,15 +15,17 @@ class CondorJobConfig:
     universe:                   str = "vanilla"
     getenv:                     str = "False"
     environment:                str = None
-    executable:                 str = "./jobwrapper.sh"
+    # executable:                 str = "./jobwrapper.sh"
+    executable:                 str = "/bin/echo"
     comment:                    str = None # arbitrary comment
     user_job_wrapper:           str = None # TODO: use this instead of executable for jobwrapper.sh?
-    batch_name:                 Optional[str] = None 
+    # batch_name:                 Optional[str] = None 
+    batch_name:                 str = "kolja.test"
 
     request_disk:               str = "10GB"
     request_cpus:               str = "1"
     request_memory:             str = "4000MB"
-    priority:                   str = "40000000"
+    priority:                   str = "3500" # higher is better.
     max_retries:                str = None # No default...
     request_xferslots:          str = None
     job_lease_duration:         str = "3600"
@@ -44,9 +46,9 @@ class CondorJobConfig:
     accounting_group:           str = None
     accounting_group_user:      str = None
     initialdir:                 str = None
-    should_transfer_files:      str = "YES" # TODO: check why this is needed
-    when_to_transfer_output:    str = "ON_EXIT"
-    transfer_output_files:      str = '""'
+    # should_transfer_files:      str = "YES" # TODO: check why this is needed
+    # when_to_transfer_output:    str = "ON_EXIT"
+    # transfer_output_files:      str = '""'
     transfer_output_remaps:     str = None
     transferout:                str = "false"
     transfererr:                str = "false"
@@ -105,7 +107,7 @@ class CondorJobConfig:
 
         # Handle special cases like batch_name
         if self.batch_name is not None:
-            data['+JobBatchName'] = self.batch_name # Use +JobBatchName for HTCondor
+            data['JobBatchName'] = self.batch_name # Use +JobBatchName for HTCondor
 
         # Filter out None values and convert remaining values to strings
         return {k: str(v) for k, v in data.items() if v is not None}
@@ -139,6 +141,9 @@ class CondorJob:
     logbase:               str           # Base name for the log file
     run:                   int
     seg:                   int
+    output:                str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).out'
+    error:                 str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).err'
+
 
     # ------------------------------------------------
     @classmethod
@@ -195,6 +200,8 @@ class CondorJob:
             'arguments':             self.arguments,
             'output_destination':    self.output_destination,
             'log':                   self.log,
+            'output':                self.output,
+            'error':                 self.error,
         })
 
         # Filter out any potential None values if necessary, though current
