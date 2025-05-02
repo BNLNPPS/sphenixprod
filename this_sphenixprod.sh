@@ -1,9 +1,13 @@
-if ! [[ "$SHELL" =~ "bash" ]]; then
+if ! echo "$SHELL" | grep -q "bash"; then
    echo "This script must be run in bash"
    return 1
 fi
 
 OS=$( hostnamectl | awk '/Operating System/{ print $3" "$4 }' )
+if ! [[ "$OS" =~ "Alma" || "$OS" =~ "CentOS" || "$OS" =~ "Rocky" || "$OS" =~ "RHEL" || "$OS" =~ "Ubuntu" ]]; then
+   echo "This script must be run on a supported OS"
+   return 1
+fi
 echo "Setting up sPHENIX Production for ${OS}"
 
 # This is the directory of the script (but no symlinks allowed)
