@@ -144,7 +144,6 @@ class CondorJob:
     output:                str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).out'
     error:                 str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).err'
 
-
     # ------------------------------------------------
     @classmethod
     def make_job(cls,
@@ -207,6 +206,29 @@ class CondorJob:
         # Filter out any potential None values if necessary, though current
         # fields seem mostly required or have defaults.
         return {k: str(v) for k, v in data.items() if v is not None}
+
+        # ------------------------------------------------
+    def condor_row(self):
+        """
+        Returns a one line string suitable for queue a,b,... from jobs.ini 
+        FIXME: None values?
+        """
+        # data = self.job_config.condor_dict() # Repeat base config for each job
+        data = {}
+        # Add instance-specific fields
+        # arguments _must_ come last because it can contain spaces and errors
+        # and condor's multi-queue from file mechanism only accepts that as the last, catchall, input 
+        data.update({
+            'output_destination':    self.output_destination,
+            'log':                   self.log,
+            'output':                self.output,
+            'error':                 self.error,
+            'arguments':             self.arguments,
+        })
+
+        # Filter out any potential None values if necessary, though current
+        # fields seem mostly required or have defaults.
+        return ",".join([str(v) for v in data.values()])#+"\n"
 
 # ============================================================================
 

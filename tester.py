@@ -189,24 +189,41 @@ def main():
     
     CondorJob.job_config = rule.job_config
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
-    print(base_job)
-    i=1
-    for out_file,(in_files, outbase, logbase, run, seg, leaf) in rule_matches.items():
-        condor_job = CondorJob.make_job(output_file=out_file, 
-                                        inputs=in_files,
-                                        outbase=outbase,
-                                        logbase=logbase,
-                                        leafdir=leaf,
-                                        run=run,
-                                        seg=seg,
-                                        )        
-        job = htcondor.Submit(condor_job.dict())
-        print(job)
-        print("Queue")
-        print()
-        i+=1
-        if i > 3:
-            exit(0)
+    with open("base.sub", "w") as file:
+        file.write(str(base_job))
+        file.write("""
+output_destination = $(output_destination)
+log = $(log)
+output = $(output)
+error = $(error)
+arguments = $(arguments)
+queue output_destination,log,output,error,arguments from jobs.in
+""")
+    
+        
+    with open("jobs.in", "w") as file:
+        i=1
+        for out_file,(in_files, outbase, logbase, run, seg, leaf) in rule_matches.items():
+            condor_job = CondorJob.make_job( output_file=out_file, 
+                                             inputs=in_files,
+                                             outbase=outbase,
+                                             logbase=logbase,
+                                             leafdir=leaf,
+                                             run=run,
+                                             seg=seg,
+                                            )        
+            # job = htcondor.Submit(condor_job.dict())
+            # file.writelines(str(job))
+            from lipsum import generate_words
+            file.write(condor_job.condor_row()+generate_words(50000))
+            file.write("\n") ;exit()
+            # file.write("\n") # confuses condor
+            # row = condor_job.condor_row().split(",")
+            # print(f"output_destination = {row[0]}")
+            
+            # i+=1
+            # if i > 3: exit(0)
+        file.write("\n") 
 
 
     # pprint.pprint(jobs["arguments"])
