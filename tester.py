@@ -212,22 +212,18 @@ queue output_destination,log,output,error,arguments from jobs.in
                                              run=run,
                                              seg=seg,
                                             )        
-            # job = htcondor.Submit(condor_job.dict())
+            # # From this file's dict, one can create files for condor_submit via the Submit class
+            # job = htcondor.Submit(condor_job.dict()) 
             # file.writelines(str(job))
-            from lipsum import generate_words
-            file.write(condor_job.condor_row()+generate_words(50000))
-            file.write("\n") ;exit()
-            # file.write("\n") # confuses condor
-            # row = condor_job.condor_row().split(",")
-            # print(f"output_destination = {row[0]}")
+
+            # ... but that's deprecated; multi-queue is now done by reading lines from a separate input file            
+            file.write(condor_job.condor_row())
+            # file.write("\n") # empthy lines confuse condor_submit
             
-            # i+=1
-            # if i > 3: exit(0)
-        file.write("\n") 
+            i+=1
+            if i > 3: 
+                exit(0)
 
-
-    # pprint.pprint(jobs["arguments"])
-    
     # TODO: add to sanity checks:
     # if rev==0 and build != 'new':
     #     logging.error( f'production version must be nonzero for fixed builds' )

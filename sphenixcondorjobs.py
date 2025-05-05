@@ -29,7 +29,7 @@ class CondorJobConfig:
     max_retries:                str = None # No default...
     request_xferslots:          str = None
     job_lease_duration:         str = "3600"
-    requirements:               str = '(CPU_Type == "mdc2")'
+    requirements:               str = None # '(CPU_Type == "mdc2")'
     periodichold: 	            str = "(NumJobStarts>=1 && JobStatus == 1)"
     periodicremove:             str = None
     
@@ -141,8 +141,11 @@ class CondorJob:
     logbase:               str           # Base name for the log file
     run:                   int
     seg:                   int
-    output:                str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).out'
-    error:                 str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).err'
+    #DEBUG:
+    # output:                str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).out'
+    # error:                 str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).err'
+    output:                str = '/Users/eickolja/sphenix/sphenixprod/test/test.$(Process).out'
+    error:                 str = '/Users/eickolja/sphenix/sphenixprod/test/test.$(Process).err'
 
     # ------------------------------------------------
     @classmethod
@@ -228,7 +231,7 @@ class CondorJob:
 
         # Filter out any potential None values if necessary, though current
         # fields seem mostly required or have defaults.
-        return ",".join([str(v) for v in data.values()])#+"\n"
+        return ",".join([str(v) for v in data.values()])+"\n"
 
 # ============================================================================
 
