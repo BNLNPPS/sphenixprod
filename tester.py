@@ -250,7 +250,7 @@ def main():
             CHATTY(f"Deleting: {f_to_delete}")
             f_to_delete.unlink()
 
-    chunk_size = 100
+    chunk_size = 1000
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
@@ -277,13 +277,11 @@ queue output_destination,log,output,error,arguments from {subbase}_{i}.in
                                                 run=run,
                                                 seg=seg,
                                                 )        
-                pprint.pprint(condor_job)
-                exit()
                 # Multiple queue in a file are deprecated; multi-queue is now done by reading lines from a separate input file
                 file.write(condor_job.condor_row()) # ... and everything has to be on one line
                 # file.write("\n") # empthy lines confuse condor_submit
-    INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
 
+    INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
     INFO( "KTHXBYE!" )
 
 
