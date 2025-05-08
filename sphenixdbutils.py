@@ -6,7 +6,7 @@ import time
 import random
 import os
 
-from simpleLogger import WARN, DEBUG
+from simpleLogger import WARN, DEBUG, ERROR
 
 """
 This module provides an interface to the sPHENIX databases.
@@ -95,6 +95,8 @@ def dbQuery( cnxn_string, query, ntries=10 ):
         except Exception as E:
             ntries = ntries + 1
             last_exception = str(E)
+            ERROR(f"Attempt {itry} failed: {last_exception}")
+            exit(1)
             delay = (itry + 1 ) * random.random()
             time.sleep(delay)
             DEBUG(f"Attempt {itry} failed: {last_exception}")
