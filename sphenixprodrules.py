@@ -4,7 +4,7 @@ from dataclasses import dataclass, asdict
 from typing import Dict, List, Any, Optional
 import itertools
 import operator
-
+import time
 import pathlib
 import pprint # noqa: F401
 
@@ -139,10 +139,11 @@ class InputConfig:
     """Represents the input configuration block in the YAML."""
     db: str
     table: str
-    prod_identifier: Optional[str] = None # run3auau, run3cosmics
+    prod_identifier:            Optional[str] = None # run3auau, run3cosmics
 
-    query_constraints: Optional[str] = None  # Additional constraints for the query
-    direct_path: Optional[str] = None  # Make direct_path optional
+    file_query_constraints:     Optional[str] = None  # Additional constraints for the filecatalog query
+    status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
+    direct_path: Optional[str]                = None  # Make direct_path optional
 
 # ============================================================================
 @dataclass( frozen = True )
@@ -211,7 +212,7 @@ class RuleConfig:
         ### Fill derived data fields
         build_string=params_data["build"].replace(".","")
         version_string = f'v{params_data["version"]:{VERFMT}}'
-        outstub    = params_data["outstub"] if "outstub" in params_data else params_data["period"]
+        outstub = params_data["outstub"] if "outstub" in params_data else params_data["period"]
         dataset = f'{build_string}_{params_data["dbtag"]}_{version_string}'
 
         ### outbase and logbase can depend on the leaf (aka stream or host) name.
@@ -261,7 +262,7 @@ class RuleConfig:
         input_data = rule_data.get("input", {})
         check_params(input_data
                     , required=["db", "table"]
-                    , optional=["direct_path", "prod_identifier", "query_constraints","physicsmode"] )
+                    , optional=["direct_path", "prod_identifier", "file_query_constraints","status_query_constraints","physicsmode"] )
 
         # Substitutions in direct input path, if given
         input_direct_path = input_data.get("direct_path")
@@ -272,17 +273,20 @@ class RuleConfig:
         prod_identifier = input_data.get("prod_identifier",outstub)
         
         # Allow arbitrary query constraints to be added
-        input_query_constraints = input_data.get("query_constraints", "")
-        input_query_constraints += rule_substitions.get("input_query_constraints", "")
-        DEBUG(f"Input query constraints: {input_query_constraints}" if input_query_constraints!= "" else  None)
+        file_query_constraints  = input_data.get("file_query_constraints", "")
+        file_query_constraints += rule_substitions.get("file_query_constraints", "")
+        status_query_constraints = input_data.get("status_query_constraints", "")
+        status_query_constraints += rule_substitions.get("status_query_constraints", "")
+        DEBUG(f"Input query constraints: {file_query_constraints}" if file_query_constraints!= "" else  None)
+        DEBUG(f"Status query constraints: {status_query_constraints}" if status_query_constraints!= "" else  None)
         input_config=InputConfig(
                 db=input_data["db"],
                 table=input_data["table"],
                 direct_path=input_direct_path,
                 prod_identifier= prod_identifier,
-                query_constraints=input_query_constraints,
+                file_query_constraints=file_query_constraints,
+                status_query_constraints=status_query_constraints
         )
-
 
         # Extract and validate job_config
         job_data = rule_data.get("job", {})
@@ -315,6 +319,7 @@ class RuleConfig:
                         , neventsper=neventsper
                         , buildarg=build_string
                         , tag=params_data["dbtag"]
+                        , dataset=dataset
                         # pass remaining per-job parameters forward to be replaced later
                         , outbase='{outbase}'
                         , logbase='{logbase}'
@@ -334,7 +339,7 @@ class RuleConfig:
                 neventsper=neventsper,
                 rsync=rsync,
                 priority=job_data["priority"],
-                #batch_name=job_data.get("batch_name"),
+                batch_name=job_data.get("batch_name"),
                 arguments_tmpl=job_data["arguments"],
                 output_destination_tmpl=job_data["output_destination"],
                 log_tmpl=job_data["log"],
@@ -429,16 +434,29 @@ class MatchConfig:
         if 'raw' in self.input_config.db:
             dst_type_template += '_%'
         dst_type_template += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
-        exist_query  = f"""select filename, -1 as hostname,runnumber,segment from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
-        exist_query += self.input_config.query_constraints
+        dst_type_template += '_%'
+        # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
+        # exist_query  = f"""select filename, -1 as hostname,runnumber,segment from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
+        ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
+        exist_query  = f"""select filename from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
+        exist_query += self.input_config.file_query_constraints
+        existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
+        INFO(f"Already have {len(existing_output)} output files")
+        if len(existing_output) > 0 :
+            CHATTY(f"First line: \n{existing_output[0]}")
 
-        # We'll check files to be created against this list. Could use various attributes but most straightforward just the filename
-        already_have = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
-        INFO(f"Already have {len(already_have)} output files")
-        if len(already_have) > 0 :
-            CHATTY(f"First line: \n{already_have[0]}")
-        
+        ### Check production status
+        INFO('Checking for output already in production...')
+        status_query  = f"""select dstfile,status from production_status where dstname like '{dst_type_template}'"""
+        status_query += self.input_config.status_query_constraints
+        existing_status = { c.dstfile if c.dstfile.endswith('.root') else c.dstfile+".root" : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
+        INFO(f"Already have {len(existing_status)} output files in the production db")
+        if len(existing_status) > 0 :
+            CHATTY(f"First line: \n{next(iter(existing_status))}")
+
+        ####################################################################################
         ###### Now get all existing input files
+        ####################################################################################
         INFO("Building candidate inputs...")
         input_stem = inputs_from_output[self.rulestem]
         DEBUG( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
@@ -463,7 +481,7 @@ class MatchConfig:
         # Need transferred_to_sdcc to be true for all files in a given run,host combination
         # Easier to check that below than in SQL
         infile_query = f'select filename,{descriminator} as hostname,runnumber,segmentplaceholder as segment, transferred_to_sdcc from {self.input_config.table} where \n\t{descriminator} in {in_types_str}\n'
-        infile_query += self.input_config.query_constraints
+        infile_query += self.input_config.file_query_constraints
 
         if 'raw' in self.input_config.db: # Raw daq uses sequence instead
             infile_query=infile_query.replace('segmentplaceholder','sequence')
@@ -482,6 +500,7 @@ class MatchConfig:
             DEBUG(f"First line: \n{in_files[0]}")
 
         #### Now build up potential output files from what's available
+        now=time.time()
         rule_matches = {}
         #### Key on runnumber
         in_files.sort(key=lambda x: (x.runnumber)) # itertools.groupby depends on data being sorted
@@ -491,8 +510,8 @@ class MatchConfig:
         if len(files_by_run) > 0 :
             CHATTY(f"First line: \n{files_by_run[next(iter(files_by_run))]}")
 
-        for runnumber in runlist:
-            candidates = [ f for f in in_files if f.runnumber == runnumber ]
+        for runnumber in files_by_run:
+            candidates = files_by_run[runnumber]
             if len(candidates) == 0 :
                 # By construction of runlist, every runnumber now should have at least one file
                 ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Aborting.")
@@ -504,9 +523,9 @@ class MatchConfig:
             candidates.sort(key=lambda x: (x.runnumber, x.hostname)) # itertools.groupby depends on data being sorted
             files_for_run = { k : list(g) for
                            k, g in itertools.groupby(candidates, operator.attrgetter('hostname')) }
-            # Remove the files we just processed. May be useful to shorten the search space
-            # for the next iteration. Could also be a waste of time
-            in_files = [ f for f in in_files if f.runnumber != runnumber ]
+            # Removing  the files we just _could_ be useful to shorten the search space
+            # for the next iteration. But this is NOT the way to do it, turned out to be the slowest part of the code
+            # in_files = [ f for f in in_files if f.runnumber != runnumber ]
 
             # daq file lists all need GL1 files. Pull them out and add them to the others
             if ( 'gl1daq' in in_types_str ):
@@ -566,7 +585,7 @@ class MatchConfig:
                 for seg in segments:
                     logbase= f'{outbase}_{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
                     output = f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}.root' # == {logbase}.root but this is more explicit
-                    if output in already_have:
+                    if output in existing_output:
                         CHATTY(f"Output file {output} already exists. Not submitting.")
                         continue
 
@@ -599,7 +618,7 @@ class MatchConfig:
                     logbase=f'{outbase}_{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}'
                     # check for one existing output file. 
                     first_output=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}.root' # == {logbase}.root but this is more explicit
-                    if first_output in already_have:
+                    if first_output in existing_output:
                         CHATTY(f"Output file {first_output} already exists. Not submitting.")
                         continue
 
@@ -607,6 +626,7 @@ class MatchConfig:
                     
                     files_for_run[hostname].sort(key=lambda x: (x.segment)) # not needed but tidier
                     rule_matches[first_output] = [file.filename for file in files_for_run[hostname]], outbase, logbase, runnumber, 0, self.rulestem+'_'+leaf
+        INFO(f'[Parsing time ] {time.time() - now:.2g} seconds' )
 
         return rule_matches
 # ============================================================================

@@ -2,6 +2,9 @@ import pathlib
 import datetime
 import yaml
 import cProfile
+import nanoid # noqa F401
+import subprocess
+import sys
 
 # from dataclasses import fields
 from logging.handlers import RotatingFileHandler
@@ -19,6 +22,14 @@ from sphenixdbutils import test_mode as dbutils_test_mode
 
 # ============================================================================================
 
+def make_chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    # source https://stackoverflow.com/questions/312443/how-do-i-split-a-list-into-equally-sized-chunks
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+# ============================================================================================
+
 def main():
     ### digest arguments
     args = submission_args()
@@ -27,7 +38,7 @@ def main():
     test_mode = (
             dbutils_test_mode
             or args.test_mode
-            # or ( hasattr(rule, 'test_mode') and rule.test_mode )
+            # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
         )
     # No matter how we determined test_mode, make sure it is now propagated to job directories.
     # Note that further down we'll turn on transfer of the .testbed file to the worker
@@ -56,6 +67,31 @@ def main():
     RotFileHandler.setFormatter(CustomFormatter())
     slogger.addHandler(RotFileHandler)
     slogger.setLevel(args.loglevel)
+    
+    # Exit without fuss if we are already running 
+    p = subprocess.Popen(["ps","axuww"], stdout=subprocess.PIPE)
+    stdout_bytes, stderr_bytes = p.communicate() # communicate() returns bytes
+    stdout_str = stdout_bytes.decode(errors='ignore') # Decode to string
+    # debug
+    stdout_str = 'python tester.py --config run3auau/NewDST_STREAMING_run3auau_new_2024p012.yaml --rule DST_STREAMING_EVENT_run3auau_streams --runs 50229 50400'
+    
+    # Construct a search key with script name, config file, and rulename
+    # to check for other running instances with the same parameters.
+    count_already_running = 0
+    
+    for psline in stdout_str.splitlines():
+        if sys.argv[0] in psline and args.config in psline and args.rulename in psline:
+            count_already_running += 1
+
+    CHATTY ( f"Found {count_already_running} instance(s) of {sys.argv[0]} with config {args.config} and rulename {args.rulename} in the process list.")
+    if count_already_running == 0:
+        ERROR("No running instance found, including myself. That can't be right.")
+        exit(1)
+
+    if count_already_running > 1:
+        DEBUG("Looks like there's already a running instance of me. Stop.")
+        exit(0)
+
     # stdout is already added to slogger by default
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
@@ -113,8 +149,13 @@ def main():
     if run_condition != "":
         run_condition = f"\t{run_condition}\n"
     if limit_condition != "":
+        WARN( f"For testing, limiting input query to {args.limit} entries. Probably not what you want." )
         limit_condition = f"\t{limit_condition}\n"
-    rule_substitions["input_query_constraints"] = f"""{run_condition}{limit_condition}"""
+    
+    rule_substitions["file_query_constraints"] = f"""{run_condition}{limit_condition}"""
+    rule_substitions["status_query_constraints"] = f"""{run_condition.replace('runnumber','run')}{limit_condition}"""
+    DEBUG(f"Input query constraints: {rule_substitions['file_query_constraints']}")
+    DEBUG(f"Status query constraints: {rule_substitions['status_query_constraints']}")
 
     # Rest of the input substitutions
     if args.physicsmode is not None:
@@ -189,40 +230,62 @@ def main():
     
     CondorJob.job_config = rule.job_config
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
-    with open("base.sub", "w") as file:
-        file.write(str(base_job))
-        file.write("""
+    submission_dir = './tosubmit'
+    pathlib.Path( submission_dir).mkdir( parents=True, exist_ok=True )
+    pathlib.Path(parents=True, exist_ok=True )
+    subbase = f'{rule.rulestem}_{rule.outstub}_{rule.dataset}'
+    INFO(f'Submission files based on {subbase}')
+
+    # could also add {short_id}_ for a fairly collision-safe identifier
+    # short_id = nanoid.generate(size=6)
+    # print(f"Short ID: {short_id}")
+
+    # Check for and remove existing submission files for this subbase
+    existing_files =  list(pathlib.Path(submission_dir).glob(f'{subbase}*.in'))
+    existing_files += list(pathlib.Path(submission_dir).glob(f'{subbase}*.sub'))
+    
+    if existing_files or existing_files:
+        WARN(f"Removing {int(len(existing_files)/2)} existing submission file pairs for base: {subbase}")
+        for f_to_delete in existing_files: 
+            CHATTY(f"Deleting: {f_to_delete}")
+            f_to_delete.unlink()
+
+    chunk_size = 100
+    chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
+    for i, chunk in enumerate(chunked_jobs):
+        DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
+        # len(chunked_jobs) doesn't work, it's a generator
+        
+        with open(f'{submission_dir}/{subbase}_{i}.sub', "w") as file:
+            file.write(str(base_job))
+            file.write(
+f"""
 output_destination = $(output_destination)
 log = $(log)
 output = $(output)
 error = $(error)
 arguments = $(arguments)
-queue output_destination,log,output,error,arguments from jobs.in
-""")
-    
-        
-    with open("jobs.in", "w") as file:
-        i=1
-        for out_file,(in_files, outbase, logbase, run, seg, leaf) in rule_matches.items():
-            condor_job = CondorJob.make_job( output_file=out_file, 
-                                             inputs=in_files,
-                                             outbase=outbase,
-                                             logbase=logbase,
-                                             leafdir=leaf,
-                                             run=run,
-                                             seg=seg,
-                                            )        
-            # # From this file's dict, one can create files for condor_submit via the Submit class
-            # job = htcondor.Submit(condor_job.dict()) 
-            # file.writelines(str(job))
+queue output_destination,log,output,error,arguments from {subbase}_{i}.in
+""")        
+        with open(f'{submission_dir}/{subbase}_{i}.in', "w") as file:
+            for out_file,(in_files, outbase, logbase, run, seg, leaf) in chunk:
+                condor_job = CondorJob.make_job( output_file=out_file, 
+                                                inputs=in_files,
+                                                outbase=outbase,
+                                                logbase=logbase,
+                                                leafdir=leaf,
+                                                run=run,
+                                                seg=seg,
+                                                )        
+                pprint.pprint(condor_job)
+                exit()
+                # Multiple queue in a file are deprecated; multi-queue is now done by reading lines from a separate input file
+                file.write(condor_job.condor_row()) # ... and everything has to be on one line
+                # file.write("\n") # empthy lines confuse condor_submit
+    INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
 
-            # ... but that's deprecated; multi-queue is now done by reading lines from a separate input file            
-            file.write(condor_job.condor_row())
-            # file.write("\n") # empthy lines confuse condor_submit
-            
-            i+=1
-            if i > 3: 
-                exit(0)
+    INFO( "KTHXBYE!" )
+
 
     # TODO: add to sanity checks:
     # if rev==0 and build != 'new':
@@ -248,13 +311,22 @@ queue output_destination,log,output,error,arguments from jobs.in
     #     ERROR( "Sanity check failed. Exiting." )
     #     exit(1)
 
-
-    INFO( "KTHXBYE!" )
-
 # ============================================================================================
 
 if __name__ == '__main__':
     main()
     exit(0)
 
-    cProfile.run('main()')
+    cProfile.run('main()', 'sphenixprod.prof')
+    import pstats
+    p = pstats.Stats('sphenixprod.prof')
+    p.strip_dirs().sort_stats('time').print_stats(10)
+
+    # Sort the output by the following options:
+    # calls: Sort by the number of calls made.
+    # cumulative: Sort by the cumulative time spent in the function and its callees.
+    # filename: Sort by file name.
+    # nfl: Sort by name/file/line.
+    # pcalls: Sort by the number of primitive calls.
+    # stdname: Sort by standard name (default).
+    # time: Sort by the total time spent in the function itself.    #

@@ -2,3 +2,4 @@ pyodbc
 pyyaml
 # htcondor
 classad
+nanoid

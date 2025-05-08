@@ -15,8 +15,6 @@ DST_STREAMING_EVENT_run3auau_streams:
 
   job:
     script:                 run_parallel_streams.sh
-# TODO: ranges?
-#    arguments:             '$(nevents) {outbase} {logbase} $(run) $(seg) $(outdir) $(buildarg) $(tag) $(inputs) $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
     arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
@@ -24,7 +22,8 @@ DST_STREAMING_EVENT_run3auau_streams:
     payload:                ./ProdFlow/run3auau/streaming/
     rsync:                 './ProdFlow/run3auau/streaming/*'
     mem:                    4000MB
-    # batch_name:            '$(name)_$(build)_$(tag)_$(version)-singlestreams'
+    # dataset is constructed internally, essentially {build}_{dbtag}_{version}
+    batch_name:            'kolja.{rulestem}_{outstub}_{dataset}'
     priority:              '3500'
     # comment :              '---'
 

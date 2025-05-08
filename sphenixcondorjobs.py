@@ -19,8 +19,7 @@ class CondorJobConfig:
     executable:                 str = "/bin/echo"
     comment:                    str = None # arbitrary comment
     user_job_wrapper:           str = None # TODO: use this instead of executable for jobwrapper.sh?
-    # batch_name:                 Optional[str] = None 
-    batch_name:                 str = "kolja.test"
+    batch_name:                 Optional[str] = None
 
     request_disk:               str = "10GB"
     request_cpus:               str = "1"
@@ -177,6 +176,7 @@ class CondorJob:
                                                         leafdir=leafdir,
                                                         logbase=logbase,
                                                         )
+        
         return cls(
             arguments           = arguments,
             output_destination  = output_destination,
