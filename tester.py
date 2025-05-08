@@ -2,7 +2,6 @@ import pathlib
 import datetime
 import yaml
 import cProfile
-import nanoid # noqa F401
 import subprocess
 import sys
 
@@ -237,6 +236,7 @@ def main():
     INFO(f'Submission files based on {subbase}')
 
     # could also add {short_id}_ for a fairly collision-safe identifier
+    # import nanoid
     # short_id = nanoid.generate(size=6)
     # print(f"Short ID: {short_id}")
 
