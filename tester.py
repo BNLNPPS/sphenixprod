@@ -312,8 +312,8 @@ queue output_destination,log,output,error,arguments from {subbase}_{i}.in
 # ============================================================================================
 
 if __name__ == '__main__':
-    main()
-    exit(0)
+    # main()
+    # exit(0)
 
     cProfile.run('main()', 'sphenixprod.prof')
     import pstats
