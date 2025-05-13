@@ -266,7 +266,7 @@ output = $(output)
 error = $(error)
 arguments = $(arguments)
 queue output_destination,log,output,error,arguments from {subbase}_{i}.in
-""")        
+""")
         with open(f'{submission_dir}/{subbase}_{i}.in', "w") as file:
             for out_file,(in_files, outbase, logbase, run, seg, leaf) in chunk:
                 condor_job = CondorJob.make_job( output_file=out_file, 
@@ -278,7 +278,9 @@ queue output_destination,log,output,error,arguments from {subbase}_{i}.in
                                                 seg=seg,
                                                 )        
                 # Multiple queue in a file are deprecated; multi-queue is now done by reading lines from a separate input file
-                file.write(condor_job.condor_row()) # ... and everything has to be on one line
+                # file.write(condor_job.condor_row()) # ... and everything has to be on one line
+                file.write(condor_job.condor_row())
+                exit()
                 # file.write("\n") # empthy lines confuse condor_submit
 
     INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")

@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from typing import Optional, ClassVar, List
 import math
-from simpleLogger import ERROR, WARN, CHATTY, INFO, DEBUG  # noqa: F401
-
+import lipsum # noqa F401; debug
 import pprint # noqa F401
+
+from simpleLogger import ERROR, WARN, CHATTY, INFO, DEBUG  # noqa: F401
 
 # ============================================================================
 
@@ -16,7 +17,8 @@ class CondorJobConfig:
     getenv:                     str = "False"
     environment:                str = None
     # executable:                 str = "./jobwrapper.sh"
-    executable:                 str = "/bin/echo"
+    # executable:                 str = "/bin/echo"
+    executable:                 str = "dummywrapper.sh"
     comment:                    str = None # arbitrary comment
     user_job_wrapper:           str = None # TODO: use this instead of executable for jobwrapper.sh?
     batch_name:                 Optional[str] = None
@@ -143,8 +145,8 @@ class CondorJob:
     #DEBUG:
     # output:                str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).out'
     # error:                 str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).err'
-    output:                str = '/Users/eickolja/sphenix/sphenixprod/test/test.$(Process).out'
-    error:                 str = '/Users/eickolja/sphenix/sphenixprod/test/test.$(Process).err'
+    output:                str = '/sphenix/u/sphnxpro/kolja/test/test.$(Process).out'
+    error:                 str = '/sphenix/u/sphnxpro/kolja/test/test.$(Process).err'
 
     # ------------------------------------------------
     @classmethod
@@ -167,7 +169,8 @@ class CondorJob:
                                                 logbase=logbase,
                                                 run=run,
                                                 seg=seg,
-                                                inputs=','.join( inputs),
+                                                #inputs=','.join(inputs) + ",".join(lipsum.generate_words(12000).split()), # for testing, fill up with lorem ipsum
+                                                inputs=','.join(inputs),
                                                 )
         output_destination  = cls.job_config.output_destination_tmpl.format(rungroup=rungroup,
                                                                         leafdir=leafdir,

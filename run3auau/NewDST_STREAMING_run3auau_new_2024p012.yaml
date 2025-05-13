@@ -15,7 +15,7 @@ DST_STREAMING_EVENT_run3auau_streams:
 
   job:
     script:                 run_parallel_streams.sh
-    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} $(ranges) {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
+    arguments:             '{nevents} {outbase} {logbase} {run} {seg} {outdir} {buildarg} {tag} {inputs} None {neventsper} {logdir} {comment} {histdir} {PWD} {rsync}'
     output_destination:    '{logdir}'
     log:                   '{condor}/{logbase}.condor'
     neventsper:             10000

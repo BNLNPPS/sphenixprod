@@ -301,7 +301,7 @@ class RuleConfig:
                  )
 
         ### Add to transfer list
-        rsync       = job_data["rsync"] + rule_substitions.get("append_to_rsync", "")
+        rsync       = job_data["rsync"] + rule_substitions.get("append2rsync", "")
         neventsper  = job_data["neventsper"]
         comment     = job_data.get("comment", None)
 
