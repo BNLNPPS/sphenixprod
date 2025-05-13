@@ -6,6 +6,7 @@ odbc_test.ini
 # *.yaml
 *.list
 *.prof
+.testbed
 
 # For MacOS:
 .DS_Store
