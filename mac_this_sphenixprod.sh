@@ -49,14 +49,19 @@ parse_git_branch() {
          pstatus="\e[32m"
       fi
    else
-      pbranch="NONE"
+      pbranch=""
       pstatus="\e[31m"
   fi
   
    # The output needs to include the leading space and the yellow color,
    # and ensure all internal ANSI codes are bracketed for correct prompt width calculation.
-   # Format: [Yellow Space] [Git Status Color] [prod:branch] [Git Status Color] [ProdFlow Status Color] [prodflow:pbranch] [ProdFlow Status Color] [Reset Color]
-   echo -e "${branch_color_status} prod:${branch} ${pstatus} prodflow:${pbranch} \e[0m"
+   gitstatus="${branch_color_status} prod:${branch}\e[0m"
+   if [ -n "$pbranch" ]; then
+      #status="${status} \e[0;33mprodflow:${pbranch}\e[0m"
+      gitstatus="${gitstatus} ${pstatus} prodflow:${pbranch}"
+   fi
+   echo -e "${gitstatus}\e[0m"
+   # echo -e "${branch_color_status} prod:${branch} ${pstatus} prodflow:${pbranch} \e[0m"
 }
 
 if [[ -n "$BASH_VERSION" ]]; then
