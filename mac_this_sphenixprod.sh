@@ -62,23 +62,11 @@ parse_git_branch() {
 if [[ -n "$BASH_VERSION" ]]; then
    # Bash prompt
    PS1="\u@\h \$(parse_git_branch)\W> "
-
-   #PS1="\[\e[36m\]\u@\h\[\e[33m\]\$(parse_git_branch)x\[\e[32m\]\[\e[34m\][\W/]> \[\e[0m\]"
-   #PS1="\[\e[36m\]me@\h\[\e[33m\]\[\e[1;34m\][\W/]> \[\e[0m\]"
+   git config --global user.name "Kolja Kauder"
+   git config --global user.email "kkauder@gmail.com"    
 elif [[ -n "$ZSH_VERSION" ]]; then
    # Zsh prompt
    PS1="%{[36m%}me@%m%{[33m%}%{[1;34m%}[%1~/]> %{[0m%}"
    #PS1='%n@%m $(parse_git_branch) %1~> '
-   
-
 fi
-
-# # Specialized settings for individual users of sphnxbuild
-# # Identified from ssh agent forwarding
-# if [[ `ssh-add -l` =~ "kolja" ]] ; then
-#     echo "Hello Kolja"    
-#     git config --global user.name "Kolja Kauder"
-#     git config --global user.email "kkauder@gmail.com"    
-#     #git config --global push.default simple    
-# fi
 
