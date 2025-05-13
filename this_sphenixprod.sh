@@ -47,11 +47,17 @@ parse_git_branch() {
          pstatus="\e[32m"
       fi
    else
-      pbranch="NONE"
+      pbranch=""
       pstatus="\e[31m"
   fi
   
-   echo -e "\[${branch_color_status}\]prod:${branch}\[\e[0m\] \[${pstatus}\]prodflow:${pbranch}\[\e[0m\]"
+   gitstatus="${branch_color_status} prod:${branch}\e[0m"
+   if [ -n "$pbranch" ]; then
+      #status="${status} \e[0;33mprodflow:${pbranch}\e[0m"
+      gitstatus="${gitstatus} ${pstatus} prodflow:${pbranch}"
+   fi
+   echo -e "${gitstatus}\e[0m"
+   #echo -e "\[${branch_color_status}\]prod:${branch}\[\e[0m\] \[${pstatus}\]prodflow:${pbranch}\[\e[0m\]"
 }
 
 PS1="\u@\h $(parse_git_branch) \W> "
