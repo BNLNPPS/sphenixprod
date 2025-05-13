@@ -35,7 +35,7 @@ echo Using $(python --version)
 parse_git_branch() {
    branch=$( git -C ${SCRIPT_DIR} rev-parse --abbrev-ref HEAD  2> /dev/null )
    local branch_color_status="\e[31m" # red is bad
-   if [ -z "$(git -C ${SCRIPT_DIR} status --porcelain)" ]; then
+   if [ -z "$(git -C ${SCRIPT_DIR} status --porcelain -uno)" ]; then
       branch_color_status="\e[32m" # green is good
    fi
    pbranch=""
@@ -43,7 +43,7 @@ parse_git_branch() {
    if [ -e ProdFlow ]; then
       pbranch=$( git -C ./ProdFlow rev-parse --abbrev-ref HEAD  2> /dev/null )
       pstatus="\e[31m"
-      if [ -z "$(git -C ./ProdFlow status --porcelain)" ]; then
+      if [ -z "$(git -C ./ProdFlow status --porcelain -uno)" ]; then
          pstatus="\e[32m"
       fi
    else
