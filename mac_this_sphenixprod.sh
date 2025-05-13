@@ -72,6 +72,6 @@ if [[ -n "$BASH_VERSION" ]]; then
 elif [[ -n "$ZSH_VERSION" ]]; then
    # Zsh prompt
    #PS1="%{[36m%}me@%m%{[33m%}%{[1;34m%}[%1~/]> %{[0m%}"
-   PS1='%n@%m $(parse_git_branch) %1~> '
+   PS1='%n@%m$(parse_git_branch) %1~> '
 fi
 
