@@ -2,10 +2,10 @@
 odbc.ini
 odbc_prod.ini
 odbc_test.ini
-.slurp
-*.yaml
+# .slurp
+# *.yaml
 *.list
-
+*.prof
 
 # For MacOS:
 .DS_Store
