@@ -4,7 +4,7 @@ import argparse
 def submission_args():
     """Handle command line tedium for submitting jobs."""
 
-    arg_parser = argparse.ArgumentParser( prog='tester.py',
+    arg_parser = argparse.ArgumentParser( prog='create_submission.py',
                     description='"Production script to submit jobs to the batch system for sPHENIX."',
     #               epilog=''
                     )

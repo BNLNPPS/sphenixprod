@@ -1,3 +1,5 @@
+#!/bin/env python
+
 import pathlib
 import datetime
 import yaml
@@ -72,7 +74,7 @@ def main():
     stdout_bytes, stderr_bytes = p.communicate() # communicate() returns bytes
     stdout_str = stdout_bytes.decode(errors='ignore') # Decode to string
     # debug
-    stdout_str = 'python tester.py --config run3auau/NewDST_STREAMING_run3auau_new_2024p012.yaml --rule DST_STREAMING_EVENT_run3auau_streams --runs 50229 50400'
+    #stdout_str = 'python tester.py --config run3auau/NewDST_STREAMING_run3auau_new_2024p012.yaml --rule DST_STREAMING_EVENT_run3auau_streams --runs 50229 50400'
     
     # Construct a search key with script name, config file, and rulename
     # to check for other running instances with the same parameters.
@@ -317,9 +319,27 @@ if __name__ == '__main__':
     # main()
     # exit(0)
 
-    cProfile.run('main()', 'sphenixprod.prof')
+    # profiler = cProfile.Profile()
+    # profiler.enable()
+    # print('hello')
+    # main()  # Call your main function    
+    # print('world')
+    # profiler.disable()
+
+    # # Create a StringIO object to capture pstats output
+    # import pstats
+    # import io
+    # s = io.StringIO()
+    # ps = pstats.Stats(profiler, stream=s)  # Pass the profiler object and the stream
+    # ps.strip_dirs().sort_stats('time').print_stats(10)
+
+    # The stats report is now in the string s.getvalue()
+    # print(s.getvalue()) # You can print it, save it, or process it further
+    # WARN(f"Profiling statistics:\n{s.getvalue()}")
+
+    cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats
-    p = pstats.Stats('sphenixprod.prof')
+    p = pstats.Stats('/tmp/sphenixprod.prof')
     p.strip_dirs().sort_stats('time').print_stats(10)
 
     # Sort the output by the following options:
