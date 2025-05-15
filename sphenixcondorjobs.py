@@ -16,9 +16,7 @@ class CondorJobConfig:
     universe:                   str = "vanilla"
     getenv:                     str = "False"
     environment:                str = None
-    # executable:                 str = "./jobwrapper.sh"
-    # executable:                 str = "/bin/echo"
-    executable:                 str = "dummywrapper.sh"
+    executable:                 str = "/bin/echo"
     comment:                    str = None # arbitrary comment
     user_job_wrapper:           str = None # TODO: use this instead of executable for jobwrapper.sh?
     batch_name:                 Optional[str] = None
@@ -55,10 +53,7 @@ class CondorJobConfig:
     transfererr:                str = "false"
     transfer_input_files:       str = None
     
-    script:                     str = None # run script on the worker node
-    payload:                    str = None # Working directory on the node; transferred by condor
     neventsper:                 int = "0" # number of events per job
-    rsync:                      str = None # additional files to rsync to the node
 
     arguments_tmpl:             str = None
     output_destination_tmpl:    str = None
@@ -143,10 +138,8 @@ class CondorJob:
     run:                   int
     seg:                   int
     #DEBUG:
-    # output:                str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).out'
-    # error:                 str = '/sphenix/u/sphnxpro/kolja/sphenixprod/test/test.$(Process).err'
-    output:                str = '/sphenix/u/sphnxpro/kolja/test/test.$(Process).out'
-    error:                 str = '/sphenix/u/sphnxpro/kolja/test/test.$(Process).err'
+    output:                str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(Process).out'
+    error:                 str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(Process).err'
 
     # ------------------------------------------------
     @classmethod

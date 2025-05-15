@@ -25,8 +25,6 @@ def submission_args():
     exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO', help="Specific logging level (CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL)" )
     
     arg_parser.add_argument( '--sublogdir', dest='sublogdir', default=None, help="Directory for submission script logging (defaults under /tmp)" )
-    # arg_parser.add_argument( '--log', dest='log', default=None, help="Log file name (defaults to stdout)" )
-    # arg_parser.add_argument( "--batch", default=False, action="store_true",help="Batch mode...")
     ## TODO dbinput is now the default, different forms should be deprecated
     arg_parser.add_argument( "--dbinput", default=True, action="store_true",help="Passes input filelist through the production status db rather than the argument list of the production script." )
     arg_parser.add_argument( "--no-dbinput", dest="dbinput", action="store_false",help="Unsets dbinput flag." )

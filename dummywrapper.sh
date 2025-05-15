@@ -82,14 +82,17 @@ echo "Setting up Production software for for ${OS}"
 
 # Set up environment
 source /opt/sphenix/core/bin/sphenix_setup.sh -n $build_argument
-export PATH=${PATH}:${HOME}/bin
+#export PATH=${PATH}:${HOME}/bin # $HOME isn't defined
 # echo env: `env`
 
 #TODO: Need cupsid - assigned at job registration in the prod db for efficient updates
 # echo cupsid:     ${cupsid}
 
+echo home is ${HOME}
+echo _CONDOR_SCRATCH_DIR is $_CONDOR_SCRATCH_DIR
+
 # stage in the payload files
-cd $_CONDOR_SCRATCH
+cd $_CONDOR_SCRATCH_DIR
 echo Copying payload data to `pwd`
 for f in ${condor_rsync}; do
     echo $f

@@ -1,6 +1,6 @@
 #!/bin/env python
 
-import pathlib
+from pathlib import Path
 import datetime
 import yaml
 import cProfile
@@ -44,7 +44,7 @@ def main():
     # No matter how we determined test_mode, make sure it is now propagated to job directories.
     # Note that further down we'll turn on transfer of the .testbed file to the worker
     if test_mode:
-        pathlib.Path('.testbed').touch()
+        Path('.testbed').touch()
 
     #################### Set up submission logging before going any further
     if args.sublogdir:
@@ -56,7 +56,7 @@ def main():
             sublogdir='/tmp/sphenixprod/sphenixprod/'
     sublogdir += f"{args.rulename}".replace('.yaml','')
 
-    pathlib.Path(sublogdir).mkdir( parents=True, exist_ok=True )
+    Path(sublogdir).mkdir( parents=True, exist_ok=True )
     RotFileHandler = RotatingFileHandler(
         filename=f"{sublogdir}/{str(datetime.datetime.today().date())}.log",
         mode='a',
@@ -112,16 +112,22 @@ def main():
     # constraint constructions are visibly handled away from the RuleConfig class
     rule_substitions = {}
     rule_substitions["nevents"] = args.nevents
-
-    #  Force copy our own files to the worker:
+    
+    payload_list=[]
+    # from command line
+    if args.append2rsync:
+        payload_list.insert(args.append2rsync)
+        
+    #  Copy our own files to the worker:
     # .testbed, .slurp (deprecated) indicate test mode
-    append2rsync=""
-    if args.append2rsync is not None:
-        append2rsync = ","+args.append2rsync+ ",.testbed"+ ",.slurp/"
-    else:
-        append2rsync = ",.testbed"+ ",.slurp/"
-    DEBUG(f"Addtional resources to be copied to the worker: {append2rsync}")
-    rule_substitions["append2rsync"] = append2rsync
+    if Path(".testbed").exists():
+        payload_list += [str(Path('.testbed').resolve())]
+    if Path(".slurp").exists():
+        WARN('Using a ".slurp" file or directory is deprecated')
+        payload_list += [str(Path('.slurp').resolve())]
+
+    DEBUG(f"Addtional resources to be copied to the worker: {payload_list}")
+    rule_substitions["payload_list"] = payload_list
 
     ### Which runs to process?
     run_condition = None
@@ -232,8 +238,8 @@ def main():
     CondorJob.job_config = rule.job_config
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
     submission_dir = './tosubmit'
-    pathlib.Path( submission_dir).mkdir( parents=True, exist_ok=True )
-    pathlib.Path(parents=True, exist_ok=True )
+    Path( submission_dir).mkdir( parents=True, exist_ok=True )
+    Path(parents=True, exist_ok=True )
     subbase = f'{rule.rulestem}_{rule.outstub}_{rule.dataset}'
     INFO(f'Submission files based on {subbase}')
 
@@ -243,16 +249,16 @@ def main():
     # print(f"Short ID: {short_id}")
 
     # Check for and remove existing submission files for this subbase
-    existing_files =  list(pathlib.Path(submission_dir).glob(f'{subbase}*.in'))
-    existing_files += list(pathlib.Path(submission_dir).glob(f'{subbase}*.sub'))
+    existing_sub_files =  list(Path(submission_dir).glob(f'{subbase}*.in'))
+    existing_sub_files += list(Path(submission_dir).glob(f'{subbase}*.sub'))
     
-    if existing_files or existing_files:
-        WARN(f"Removing {int(len(existing_files)/2)} existing submission file pairs for base: {subbase}")
-        for f_to_delete in existing_files: 
+    if existing_sub_files:
+        WARN(f"Removing {int(len(existing_sub_files)/2)} existing submission file pairs for base: {subbase}")
+        for f_to_delete in existing_sub_files: 
             CHATTY(f"Deleting: {f_to_delete}")
-            f_to_delete.unlink()
+            Path(f_to_delete) # could unlink the entire directory too
 
-    chunk_size = 1000
+    chunk_size = 10
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
@@ -280,10 +286,9 @@ queue output_destination,log,output,error,arguments from {subbase}_{i}.in
                                                 seg=seg,
                                                 )        
                 # Multiple queue in a file are deprecated; multi-queue is now done by reading lines from a separate input file
-                # file.write(condor_job.condor_row()) # ... and everything has to be on one line
+                # and everything has to be on one line
+                # Note: Empthy lines or comment lines confuse condor_submit
                 file.write(condor_job.condor_row())
-                exit()
-                # file.write("\n") # empthy lines confuse condor_submit
 
     INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
     INFO( "KTHXBYE!" )
@@ -298,11 +303,6 @@ queue output_destination,log,output,error,arguments from {subbase}_{i}.in
     #     logging.error( 'production version must be zero for new build' )
     #     result = False
 
-    # TODO: add to sanity check
-    #  payload should definitely be part of the rsync list but the yaml does that explicitly instead, e.g.
-    #  payload :   ./ProdFlow/run3auau/streaming/
-    #  rsync   : "./ProdFlow/run3auau/streaming/*"
-
     # TODO: Find the right class to store update, updateDb, etc.
     # update    = kwargs.get('update',    True ) # update the DB
     # updateDb= not args.submit
@@ -316,26 +316,8 @@ queue output_destination,log,output,error,arguments from {subbase}_{i}.in
 # ============================================================================================
 
 if __name__ == '__main__':
-    # main()
-    # exit(0)
-
-    # profiler = cProfile.Profile()
-    # profiler.enable()
-    # print('hello')
-    # main()  # Call your main function    
-    # print('world')
-    # profiler.disable()
-
-    # # Create a StringIO object to capture pstats output
-    # import pstats
-    # import io
-    # s = io.StringIO()
-    # ps = pstats.Stats(profiler, stream=s)  # Pass the profiler object and the stream
-    # ps.strip_dirs().sort_stats('time').print_stats(10)
-
-    # The stats report is now in the string s.getvalue()
-    # print(s.getvalue()) # You can print it, save it, or process it further
-    # WARN(f"Profiling statistics:\n{s.getvalue()}")
+    main()
+    exit(0)
 
     cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats

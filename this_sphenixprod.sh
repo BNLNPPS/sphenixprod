@@ -60,7 +60,8 @@ parse_git_branch() {
    #echo -e "\[${branch_color_status}\]prod:${branch}\[\e[0m\] \[${pstatus}\]prodflow:${pbranch}\[\e[0m\]"
 }
 
-PS1="\u@\h $(parse_git_branch) \W> "
+# PS1="\u@\h $(parse_git_branch) \W> "
+PS1="\u@\h \W> "
 
 # Specialized settings for individual users of sphnxbuild
 # Identified from ssh agent forwarding

@@ -5,7 +5,10 @@ from typing import Dict, List, Any, Optional
 import itertools
 import operator
 import time
-import pathlib
+from pathlib import Path
+import glob
+import stat
+import subprocess
 import pprint # noqa: F401
 
 from sphenixdbutils import cnxn_string_map, dbQuery
@@ -54,6 +57,27 @@ _default_filesystem = {
     ,   'histdir' : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist"
     ,   'condor'  :                          "/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log"
 }
+
+# ============================================================================
+def is_executable(file_path):
+  """
+    Checks if a file is executable.
+
+    Args:
+        file_path (str or Path): The path to the file.
+
+    Returns:
+        bool: True if the file is executable, False otherwise.
+  """
+  path = Path(file_path)
+    
+  if not path.is_file():
+    return False
+
+  st = path.stat()
+  return bool(st.st_mode & stat.S_IXUSR or
+              st.st_mode & stat.S_IXGRP or
+              st.st_mode & stat.S_IXOTH)
 
 # ============================================================================
 def check_params(params_data: Dict[str, Any], required: List[str], optional: List[str] ) -> bool:
@@ -182,7 +206,11 @@ class RuleConfig:
 
     # ------------------------------------------------
     @classmethod
-    def from_yaml(cls, yaml_data: Dict[str, Any], rule_name: str, rule_substitions=None) -> "RuleConfig":
+    def from_yaml(cls,
+                  yaml_file: str, #  Used for paths
+                  yaml_data: Dict[str, Any],
+                  rule_name: str,
+                  rule_substitions=None) -> "RuleConfig":
         """
         Constructs a RuleConfig object from a YAML data dictionary.
 
@@ -292,7 +320,7 @@ class RuleConfig:
         job_data = rule_data.get("job", {})
         check_params(job_data
                     , required=[
-                    "script", "payload", "neventsper", "rsync", "mem",
+                    "script", "payload", "neventsper", "payload", "mem",
                     "arguments", "output_destination","log","priority",
                     ]
                     , optional=["batch_name", "comment",
@@ -300,10 +328,45 @@ class RuleConfig:
                     ]
                  )
 
-        ### Add to transfer list
-        rsync       = job_data["rsync"] + rule_substitions.get("append2rsync", "")
-        neventsper  = job_data["neventsper"]
-        comment     = job_data.get("comment", None)
+        # Payload code etc. Prepend by the yaml file's path unless they are direct
+        yaml_path = Path(yaml_file).parent.resolve()            
+        payload_list = job_data["payload"] + rule_substitions.get("payload_list")
+        for i,loc in enumerate(payload_list):
+            if not loc.startswith("/"):
+                payload_list[i]= f'{yaml_path}/{loc}'
+        DEBUG(f'List of payload items is {payload_list}')
+
+        # Note: If you use globs in the payload list,
+        # the executable will (almost certainly) copy those sub-files and subdirectories individually to the working directory
+        # But we must have a fully qualified working path to the executable at submission time
+        # because that script will execute the actual payload copy on the node.
+        # Bit of an annoying walk with python tools, so use unix find instead
+        script = job_data["script"]
+        if not script.startswith("/"): # Search in the payload
+            p = subprocess.Popen(f'/usr/bin/find {" ".join(payload_list)} -type f',
+                                 shell=True, # needed to expand "*"
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = p.communicate()
+            allfiles = stdout.decode(errors='ignore').split()
+            errfiles = stderr.decode(errors='ignore').splitlines()
+            for f in allfiles:
+                if script == Path(f).name:
+                    script = f
+                    break;
+        INFO(f'Full path to script is {script}')
+        if not Path(script).exists() :
+            ERROR(f"Executable {script} does not exist")
+            exit(1)
+        if not is_executable(Path(script)):
+            ERROR(f"{script} is not executable")
+            exit(1)
+        if len(errfiles)>0 :
+            WARN("The following errors occured while searching the payload:")
+            for errf in errfiles:
+                WARN(errf)
+
+        neventsper   = job_data["neventsper"]
+        comment      = job_data.get("comment", None)
 
         # Partially fill rule_substitions into the job data
         for field in 'batch_name', 'arguments','output_destination','log':
@@ -312,9 +375,9 @@ class RuleConfig:
                 subsval = subsval.format(
                           **rule_substitions
                         , **filesystem
-                        , PWD=pathlib.Path(".").absolute()
+                        , PWD=Path(".").resolve()
                         , **params_data
-                        , rsync=rsync
+                        , payload=",".join(payload_list)
                         , comment=comment
                         , neventsper=neventsper
                         , buildarg=build_string
@@ -331,13 +394,11 @@ class RuleConfig:
             CHATTY(f"After substitution, {field} is {subsval}")
 
             job_config=CondorJobConfig(
-                script=job_data["script"],
-                payload=job_data["payload"],
+                executable=script,
                 request_memory=job_data["mem"],
                 request_disk=job_data.get("request_disk", "10GB"),
                 comment=comment,
                 neventsper=neventsper,
-                rsync=rsync,
                 priority=job_data["priority"],
                 batch_name=job_data.get("batch_name"),
                 arguments_tmpl=job_data["arguments"],
@@ -382,7 +443,10 @@ class RuleConfig:
         except FileNotFoundError:
             raise FileNotFoundError(f"YAML file not found: {yaml_file}")
 
-        return cls.from_yaml(yaml_data, rule_name, rule_substitions)
+        return cls.from_yaml(yaml_file=yaml_file,
+                             yaml_data=yaml_data,
+                             rule_name=rule_name,
+                             rule_substitions=rule_substitions)
 
 # ============================================================================
 
