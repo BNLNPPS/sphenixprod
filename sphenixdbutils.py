@@ -53,21 +53,37 @@ cnxn_string_map = {
 
 # Hack to test locally on Mac
 if os.uname().sysname=='Darwin' :
-    for key in cnxn_string_map.keys() :
-        DEBUG(f"Changing {key} to use DSN=eickolja")
-        cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;READONLY=True;UID=eickolja'
+    cnxn_string_map = {
+        'fcw'         : 'DSN=filecatalogdb;UID=eickolja',
+        'fcr'         : 'DSN=filecatalogdb;READONLY=True;UID=eickolja',
+        'statr'       : 'DSN=productiondb;READONLY=True;UID=eickolja',
+        'statw'       : 'DSN=productiondb;UID=eickolja',
+        'rawr'        : 'DSN=rawdatacatalogdb;READONLY=True;UID=eickolja',
+    }
+    # for key in cnxn_string_map.keys() :
+    #     DEBUG(f"Changing {key} to use DSN=eickolja")
+    #     cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;READONLY=True;UID=eickolja'
 
 # Hack to use local PostgreSQL database from inside a docker container
 if os.path.exists('/.dockerenv') :
-    for key in cnxn_string_map.keys() :
-        DEBUG(f"Changing {key} to use DSN=eickolja")
-        cnxn_string_map[key] = 'DRIVER=PostgreSQL;SERVER=host.docker.internal;DSN=eickolja;READONLY=True;UID=eickolja'
+    driverstring='DRIVER=PostgreSQL;SERVER=host.docker.internal;'
+    cnxn_string_map = {
+        'fcw'         : f'{driverstring}DSN=filecatalogdb;UID=eickolja',
+        'fcr'         : f'{driverstring}DSN=filecatalogdb;READONLY=True;UID=eickolja',
+        'statr'       : f'{driverstring}DSN=productiondb;READONLY=True;UID=eickolja',
+        'statw'       : f'{driverstring}DSN=productiondb;UID=eickolja',
+        'rawr'        : f'{driverstring}DSN=rawdatacatalogdb;READONLY=True;UID=eickolja',
+    }
+    # for key in cnxn_string_map.keys() :
+    #     DEBUG(f"Changing {key} to use DSN=eickolja")
+    #     cnxn_string_map[key] = 'DRIVER=PostgreSQL;SERVER=host.docker.internal;DSN=eickolja;READONLY=True;UID=eickolja'
 
 # ============================================================================================
-def printDbInfo( cnxn, title ):
-    name=cnxn.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
-    serv=cnxn.getinfo(pyodbc.SQL_SERVER_NAME)
-    print(f"Connected {name} from {serv} as {title}")
+def printDbInfo( cnxn_string, title ):
+    conn = pyodbc.connect( cnxn_string )
+    name=conn.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
+    serv=conn.getinfo(pyodbc.SQL_SERVER_NAME)
+    print(f"with {cnxn_string}\n   connected {name} from {serv} as {title}")
 
 # ============================================================================================
 def dbQuery( cnxn_string, query, ntries=10 ):
