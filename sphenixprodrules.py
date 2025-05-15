@@ -6,12 +6,11 @@ import itertools
 import operator
 import time
 from pathlib import Path
-import glob
 import stat
 import subprocess
 import pprint # noqa: F401
 
-from sphenixdbutils import cnxn_string_map, dbQuery
+from sphenixdbutils import cnxn_string_map, dbQuery, printDbInfo
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJobConfig
@@ -504,6 +503,10 @@ class MatchConfig:
         ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
         exist_query  = f"""select filename from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
         exist_query += self.input_config.file_query_constraints
+        for k,v in cnxn_string_map.items():
+            printDbInfo( v, k )
+        exit(1)
+        
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
