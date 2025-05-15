@@ -1,18 +1,16 @@
 if echo "$SHELL" | grep -q bash ; then
-   UsingBash=true
+   UsingBash="BashTrue"
 fi
-
 if echo "$SHELL" | grep -q zsh ; then
-   UsingZsh=true
+   UsingZsh="ZshTrue"
 fi
-
-if ! $UsingBash && ! $UsingZsh  ; then
+if [ -z "$UsingBash" ] && [ -z "$UsingZsh" ]; then
    echo "This script must be run in bash or zsh"
    return 1
 fi
 
-if $UsingBash ; then
-   echo "Running in bash, presumably in docker. Setting up the venv"
+if [ $UsingBash ]; then
+   echo "Running in bash, presumably in docker. Setting up venvdocker"
    if [ -z "$VIRTUAL_ENV" ]; then
       source /Users/eickolja/sphenix/venvdocker/bin/activate
    else
@@ -20,9 +18,18 @@ if $UsingBash ; then
    fi
 fi
 
+if [ $UsingZsh ]; then
+   echo "Running in zsh. Setting up venvsphenix"
+   if [ -z "$VIRTUAL_ENV" ]; then
+      source /Users/eickolja/sphenix/venvsphenix/bin/activate
+   else
+      echo "Using existing virtual environment: $VIRTUAL_ENV"
+   fi
+fi
+
 echo "Setting up Test environment for sPHENIX Production on a Mac possibly inside Docker on Mac)."
-echo WARNING: This script is meant for testing on a MacOS system without connection to the production system
-echo WARNING: It is not meant for, and will not work in, production use.
+# echo WARNING: This script is meant for testing on a MacOS system without connection to the production system
+# echo WARNING: It is not meant for, and will not work in, production use.
 
 # This is the directory of the script (but no symlinks allowed)
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
@@ -66,12 +73,13 @@ parse_git_branch() {
 
 if [[ -n "$BASH_VERSION" ]]; then
    # Bash prompt
-   PS1="\u@\h \$(parse_git_branch)\W> "
+   #PS1="\u@\h \$(parse_git_branch)\W> "
+   PS1="\e[36m\u@\h \e[33m\W>\e[0m "
    git config --global user.name "Kolja Kauder"
    git config --global user.email "kkauder@gmail.com"    
 elif [[ -n "$ZSH_VERSION" ]]; then
    # Zsh prompt
-   #PS1="%{[36m%}me@%m%{[33m%}%{[1;34m%}[%1~/]> %{[0m%}"
-   PS1='%n@%m$(parse_git_branch) %1~> '
+   PS1="%{[36m%}me@%m%{[33m%}%{[1;33m%} [%1~/]> %{[0m%}"
+   #PS1='%n@%m$(parse_git_branch) %1~> '
 fi
 
