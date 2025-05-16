@@ -72,7 +72,6 @@ parse_git_branch() {
    # echo -e "${branch_color_status} prod:${branch} ${pstatus} prodflow:${pbranch} \e[0m"
 }
 
-
 if [[ "$-" == *i* ]]; then
    echo "Interactive shell"
 else

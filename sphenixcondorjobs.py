@@ -168,8 +168,10 @@ class CondorJob:
         """
         Constructs a CondorJob instance.
         """
-
-        rungroup=cls.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
+        # Overwrite the input file list. We could hand it over but using the db on the nodes is preferred
+        inputs = [ "UsingDbInput" ] # + ",".join(lipsum.generate_words(12000).split()), # for testing, fill up with lorem ipsum
+        # Group blocks of 100 runnumbers together to control directory size
+        rungroup=cls.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100)) 
         arguments = cls.job_config.arguments_tmpl.format(rungroup=rungroup,
                                                 leafdir=leafdir,
                                                 neventsper=cls.job_config.neventsper,
@@ -178,12 +180,12 @@ class CondorJob:
                                                 run=run,
                                                 seg=seg,
                                                 daqhost=daqhost,
-                                                inputs=','.join(inputs), # + ",".join(lipsum.generate_words(12000).split()), # for testing, fill up with lorem ipsum
+                                                inputs=','.join(inputs),
                                                 )
         outdir    = cls.job_config.filesystem['outdir'] .format(rungroup=rungroup, leafdir=leafdir)
         finaldir  = cls.job_config.filesystem['finaldir'].format(rungroup=rungroup, leafdir=leafdir)
         log       = cls.job_config.log_tmpl.format(rungroup=rungroup, leafdir=leafdir, logbase=logbase)
-        log = "/Users/eickolja/sphenix/condorlog/" # TODO: remove this line, it is for testing only
+        log = "/Users/eickolja/sphenix/condorlog/" # TODO: remove/fix this line, it is for testing only
         
         return cls(
             arguments           = arguments,
