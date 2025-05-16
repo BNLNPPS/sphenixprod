@@ -39,6 +39,7 @@ export PATH=${PATH}:${HOME}/bin:./bin
 export ODBCINI=./odbc.ini
 export PYTHONPATH=${PYTHONPATH}:${SCRIPT_DIR}
 export PATH=${PATH}:${SCRIPT_DIR}
+
 echo Using $(python --version)
 
 parse_git_branch() {
@@ -71,10 +72,19 @@ parse_git_branch() {
    # echo -e "${branch_color_status} prod:${branch} ${pstatus} prodflow:${pbranch} \e[0m"
 }
 
+
+if [[ "$-" == *i* ]]; then
+   echo "Interactive shell"
+else
+   echo "Non-interactive shell"
+   return 0
+fi
+
 if [[ -n "$BASH_VERSION" ]]; then
    # Bash prompt
    #PS1="\u@\h \$(parse_git_branch)\W> "
-   PS1="\e[36m\u@\h \e[33m\W>\e[0m "
+   #PS1="\e[36m\u@\h \e[33m\W>\e[0m "
+   PS1="\u@\h \W> "
    git config --global user.name "Kolja Kauder"
    git config --global user.email "kkauder@gmail.com"    
 elif [[ -n "$ZSH_VERSION" ]]; then

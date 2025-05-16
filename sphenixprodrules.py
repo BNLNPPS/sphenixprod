@@ -9,14 +9,15 @@ from pathlib import Path
 import stat
 import subprocess
 import pprint # noqa: F401
+import os
 
-from sphenixdbutils import cnxn_string_map, dbQuery, printDbInfo
+from sphenixdbutils import cnxn_string_map, dbQuery
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJobConfig
 
 from collections import namedtuple
-FileHostRunSegTran = namedtuple('FileHostRunSeg',['filename','hostname','runnumber','segment','transferred_to_sdcc'])
+FileHostRunSegStat = namedtuple('FileHostRunSeg',['filename','daqhost','runnumber','segment','status'])
 
 """ This file contains the dataclasses for the rule configuration and matching.
     It encapsulates what is tedious but hopefully easily understood instantiation
@@ -51,11 +52,22 @@ pSEGFMT = SEGFMT.replace('%','').replace('i','d')
 # /sphenix/lustre01/sphnxpro/{prodmode} / {period}  / {runtype} / dataset={build}_{dbtag}_{version} / {leafdir}       /     {rungroup}       /dst
 # /sphenix/lustre01/sphnxpro/production / run3auau  /  cosmics  /        new_nocdbtag_v000          / DST_CALOFITTING / run_00057900_00058000/dst
 _default_filesystem = {
-        'outdir'  :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst"
-    ,   'logdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log"
-    ,   'histdir' : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist"
-    ,   'condor'  :                          "/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log"
+    'outdir'   :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/dstlake/",
+    'finaldir' :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
+    'logdir'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+    'histdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
+    'condor'   :                          "/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
 }
+
+if os.uname().sysname!='Darwin' :
+    _default_filesystem = {
+        'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/dstlake/",
+        'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
+        'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+        'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
+        'condor'  :               "/Users/eickolja/sphenix/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+    }
+
 
 # ============================================================================
 def is_executable(file_path):
@@ -192,7 +204,6 @@ class RuleConfig:
     ### Optional fields have to be down here to allow for default values
     physicsmode: str     # cosmics, commissioning, physics (default: physics)
     outstub: str         # run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory (default: period)
-    filesystem: dict     # base filesystem paths - placeholders to be filled in at job creation time (default: _default_filesystem)
 
     # ------------------------------------------------
     def dict(self) -> Dict[str, Any]:
@@ -234,7 +245,7 @@ class RuleConfig:
         params_data = rule_data.get("params", {})
         check_params(params_data
                     , required=["rulestem", "period",  "build", "dbtag", "version"]
-                    , optional=["outstub", "filesystem", "physicsmode"] )
+                    , optional=["outstub", "physicsmode"] )
 
         ### Fill derived data fields
         build_string=params_data["build"].replace(".","")
@@ -243,7 +254,7 @@ class RuleConfig:
         dataset = f'{build_string}_{params_data["dbtag"]}_{version_string}'
 
         ### outbase and logbase can depend on the leaf (aka stream or host) name.
-        ### Until end of April, we had things like leaf TPC20 =~ hostname ebdc20, 
+        ### Until end of April, we had things like leaf TPC20 =~ daqhost ebdc20, 
         ### but going forward the two may become equal or only differ in capitalization
         ### Details are handled in the sphenixjobdicts module. 
         ### Using the database field names where possible, we have
@@ -264,25 +275,6 @@ class RuleConfig:
         physicsmode = params_data.get("physicsmode", "physics")
         physicsmode = rule_substitions.get("physicsmode", physicsmode)
         comment = params_data.get("comment", None)
-        # Filesystem paths contain placeholders for substitution
-        filesystem = rule_data.get("filesystem")
-        if filesystem is None:
-            INFO("Using default filesystem paths")
-            filesystem = _default_filesystem
-        else:
-            WARN("Using custom filesystem paths from YAML file")
-
-        # Partial substitutions are possible, but not easier to read
-        # from functools import partial; s = partial("{foo} {bar}".format, foo="FOO"); print(s(bar ="BAR"))
-        for key in filesystem:
-            filesystem[key]=filesystem[key].format( prodmode=rule_substitions["prodmode"],
-                                                    period=params_data["period"],
-                                                    physicsmode=physicsmode,
-                                                    dataset=dataset,
-                                                    leafdir='{leafdir}',
-                                                    rungroup='{rungroup}',
-                                                    )
-            DEBUG(f"Filesystem: {key} is {filesystem[key]}")
 
         ###### Now create InputConfig and CondorJobConfig
         # Extract and validate input_config
@@ -320,9 +312,9 @@ class RuleConfig:
         check_params(job_data
                     , required=[
                     "script", "payload", "neventsper", "payload", "mem",
-                    "arguments", "output_destination","log","priority",
+                    "arguments", "log","priority",
                     ]
-                    , optional=["batch_name", "comment",
+                    , optional=["batch_name", "comment","filesystem", 
                         # "accounting_group","accounting_group_user",
                     ]
                  )
@@ -334,6 +326,27 @@ class RuleConfig:
             if not loc.startswith("/"):
                 payload_list[i]= f'{yaml_path}/{loc}'
         DEBUG(f'List of payload items is {payload_list}')
+
+        # # Filesystem paths contain placeholders for substitution
+        filesystem = job_data.get("filesystem")
+        if filesystem is None:
+            INFO("Using default filesystem paths")
+            filesystem = _default_filesystem
+        else:
+            WARN("Using custom filesystem paths from YAML file")
+
+        # Partial substitutions are possible, but not easier to read
+        # from functools import partial; s = partial("{foo} {bar}".format, foo="FOO"); print(s(bar ="BAR"))
+        for key in filesystem:
+            filesystem[key]=filesystem[key].format( prodmode=rule_substitions["prodmode"],
+                                                    period=params_data["period"],
+                                                    physicsmode=physicsmode,
+                                                    dataset=dataset,
+                                                    leafdir='{leafdir}',
+                                                    rungroup='{rungroup}',
+                                                    )
+            DEBUG(f"Filesystem: {key} is {filesystem[key]}")
+
 
         # Note: If you use globs in the payload list,
         # the executable will (almost certainly) copy those sub-files and subdirectories individually to the working directory
@@ -351,7 +364,7 @@ class RuleConfig:
             for f in allfiles:
                 if script == Path(f).name:
                     script = f
-                    break;
+                    break
         INFO(f'Full path to script is {script}')
         if not Path(script).exists() :
             ERROR(f"Executable {script} does not exist")
@@ -368,13 +381,12 @@ class RuleConfig:
         comment      = job_data.get("comment", None)
 
         # Partially fill rule_substitions into the job data
-        for field in 'batch_name', 'arguments','output_destination','log':
+        for field in 'batch_name', 'arguments','log':
             subsval = job_data.get(field)
             if isinstance(subsval, str): # don't try changing None or dictionaries
                 subsval = subsval.format(
                           **rule_substitions
                         , **filesystem
-                        , PWD=Path(".").resolve()
                         , **params_data
                         , payload=",".join(payload_list)
                         , comment=comment
@@ -387,6 +399,7 @@ class RuleConfig:
                         , logbase='{logbase}'
                         , run='{run}'
                         , seg='{seg}'
+                        , daqhost='{daqhost}'
                         , inputs='{inputs}'
                 )
             job_data[field] = subsval
@@ -401,8 +414,8 @@ class RuleConfig:
                 priority=job_data["priority"],
                 batch_name=job_data.get("batch_name"),
                 arguments_tmpl=job_data["arguments"],
-                output_destination_tmpl=job_data["output_destination"],
                 log_tmpl=job_data["log"],
+                filesystem=filesystem,
             )
 
         ### With all preparations done, construct the constant RuleConfig object
@@ -418,7 +431,6 @@ class RuleConfig:
             dataset=dataset,
             input_config=input_config,
             job_config=job_config,
-            filesystem=filesystem,
             physicsmode=physicsmode,
         )
 
@@ -499,14 +511,10 @@ class MatchConfig:
         dst_type_template += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
         dst_type_template += '_%'
         # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
-        # exist_query  = f"""select filename, -1 as hostname,runnumber,segment from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
+        # exist_query  = f"""select filename, -1 as daqhost,runnumber,segment from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
         ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
         exist_query  = f"""select filename from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
         exist_query += self.input_config.file_query_constraints
-        for k,v in cnxn_string_map.items():
-            printDbInfo( v, k )
-        exit(1)
-        
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
@@ -535,7 +543,7 @@ class MatchConfig:
 
         # Manipulate the input types to match the database
         if 'raw' in self.input_config.db:
-            descriminator='hostname'
+            descriminator='daqhost'
             in_types.insert(0,'gl1daq') # all raw daq files need an extra GL1 file
         else:
             descriminator='dsttype'
@@ -545,22 +553,21 @@ class MatchConfig:
         in_types_str = f'( QUOTE{"QUOTE,QUOTE".join(in_types)}QUOTE )'
         in_types_str = in_types_str.replace("QUOTE","'")
 
-        # Need transferred_to_sdcc to be true for all files in a given run,host combination
+        # Need status==1 for all files in a given run,host combination
         # Easier to check that below than in SQL
-        infile_query = f'select filename,{descriminator} as hostname,runnumber,segmentplaceholder as segment, transferred_to_sdcc from {self.input_config.table} where \n\t{descriminator} in {in_types_str}\n'
+        infile_query = f'select filename,{descriminator} as daqhost,runnumber,segment,status from {self.input_config.table} where \n\t{descriminator} in {in_types_str}\n'
         infile_query += self.input_config.file_query_constraints
 
-        if 'raw' in self.input_config.db: # Raw daq uses sequence instead
-            infile_query=infile_query.replace('segmentplaceholder','sequence')
-            infile_query+= f" and filename like '%bbox%{self.physicsmode}%'"
+        if 'raw' in self.input_config.db:
+            #infile_query+= f" and filename like '%bbox%{self.physicsmode}%'"
+            infile_query+= f" and dataset='{self.physicsmode}'" ## TODO
         else:
-            infile_query=infile_query.replace('segmentplaceholder','segment')
-            infile_query=infile_query.replace('transferred_to_sdcc','\'1\' as transferred_to_sdcc')
+            infile_query=infile_query.replace('status','\'1\' as status')
 
         DEBUG(f"Input file query is:\n{infile_query}")
         db_result = dbQuery( cnxn_string_map[ self.input_config.db ], infile_query ).fetchall()
         # TODO: Support rule.printquery
-        in_files = [ FileHostRunSegTran(c.filename,c.hostname,c.runnumber,c.segment,c.transferred_to_sdcc) for c in db_result ]
+        in_files = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
 
         INFO(f"Total number of available input files: {len(in_files)}")
         if len(in_files) > 0 :
@@ -586,10 +593,10 @@ class MatchConfig:
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
             CHATTY(f"First line: \n{candidates[0]}")
 
-            ######## Cut up the candidates into streams/hostnames
-            candidates.sort(key=lambda x: (x.runnumber, x.hostname)) # itertools.groupby depends on data being sorted
+            ######## Cut up the candidates into streams/daqhosts
+            candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
             files_for_run = { k : list(g) for
-                           k, g in itertools.groupby(candidates, operator.attrgetter('hostname')) }
+                           k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
             # Removing  the files we just _could_ be useful to shorten the search space
             # for the next iteration. But this is NOT the way to do it, turned out to be the slowest part of the code
             # in_files = [ f for f in in_files if f.runnumber != runnumber ]
@@ -669,11 +676,11 @@ class MatchConfig:
                     exit(-1)
                 CHATTY(f'\ninput_stem is a dictionary, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
                 
-                # Every runnumber has exactly one output file, and a gaggle of input files with matching hostname
+                # Every runnumber has exactly one output file, and a gaggle of input files with matching daqhost
                 # Sort and group the input files by host
-                for leaf, hostname in input_stem.items():
-                    if hostname not in files_for_run:
-                        DEBUG(f"No inputs from {hostname} for run {runnumber}.")
+                for leaf, daqhost in input_stem.items():
+                    if daqhost not in files_for_run:
+                        DEBUG(f"No inputs from {daqhost} for run {runnumber}.")
                         continue
                     
                     dsttype = f'{self.rulestem}_{leaf}'
@@ -689,10 +696,10 @@ class MatchConfig:
                         CHATTY(f"Output file {first_output} already exists. Not submitting.")
                         continue
 
-                    CHATTY(f"Creating {first_output} for run {runnumber} with {len(files_for_run[hostname])} input files")
+                    CHATTY(f"Creating {first_output} for run {runnumber} with {len(files_for_run[daqhost])} input files")
                     
-                    files_for_run[hostname].sort(key=lambda x: (x.segment)) # not needed but tidier
-                    rule_matches[first_output] = [file.filename for file in files_for_run[hostname]], outbase, logbase, runnumber, 0, self.rulestem+'_'+leaf
+                    files_for_run[daqhost].sort(key=lambda x: (x.segment)) # not needed but tidier
+                    rule_matches[first_output] = [file.filename for file in files_for_run[daqhost]], outbase, logbase, runnumber, 0, daqhost, self.rulestem+'_'+leaf
         INFO(f'[Parsing time ] {time.time() - now:.2g} seconds' )
 
         return rule_matches

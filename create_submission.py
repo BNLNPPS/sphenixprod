@@ -20,6 +20,7 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
 from sphenixcondorjobs import CondorJob
 from sphenixdbutils import test_mode as dbutils_test_mode
+import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
 
 # ============================================================================================
 
@@ -118,8 +119,12 @@ def main():
     if args.append2rsync:
         payload_list.insert(args.append2rsync)
         
-    #  Copy our own files to the worker:
-    # .testbed, .slurp (deprecated) indicate test mode
+    ### Copy our own files to the worker:
+    # For database access:
+    payload_list += [ importlib.util.find_spec('sphenixdbutils').origin ]
+    
+
+    # .testbed, .slurp (deprecated): indicate test mode
     if Path(".testbed").exists():
         payload_list += [str(Path('.testbed').resolve())]
     if Path(".slurp").exists():
@@ -146,8 +151,6 @@ def main():
     if args.limit:
         limit_condition = f"limit {args.limit}"
         WARN(f"Limiting input query to {args.limit} entries.")
-
-    # TODO: this is where the run cursor pickup logic should go, if kept
 
     DEBUG( f"Run condition is \"{run_condition}\"" )
     if limit_condition != "":
@@ -224,8 +227,9 @@ def main():
     rule_matches=match_config.matches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
         
-    for out_file,(in_files, outbase, logbase, run, seg, leaf) in rule_matches.items():
-        CHATTY(f"Run:    {run}, Seg:    {seg}, Stream: {leaf}")
+    for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in rule_matches.items():
+        CHATTY(f"Run:     {run}, Seg:  {seg}")
+        CHATTY(f"daqhost:    {daqhost}, Leaf:    {leaf}")
         CHATTY(f"Outbase: {outbase}  Output: {out_file}")
         CHATTY(f"Logbase: {logbase}")
         CHATTY(f"nInput:  {len(in_files)}\n")
@@ -235,15 +239,13 @@ def main():
         WARN("Exiting early.")
         exit(0)
     
-    CondorJob.job_config = rule.job_config
-    base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
-    submission_dir = './tosubmit'
+    submission_dir = Path('./tosubmit').resolve()
     Path( submission_dir).mkdir( parents=True, exist_ok=True )
     Path(parents=True, exist_ok=True )
     subbase = f'{rule.rulestem}_{rule.outstub}_{rule.dataset}'
     INFO(f'Submission files based on {subbase}')
 
-    # could also add {short_id}_ for a fairly collision-safe identifier
+    # For a fairly collision-safe identifier that could be used to not trample on existing files:
     # import nanoid
     # short_id = nanoid.generate(size=6)
     # print(f"Short ID: {short_id}")
@@ -251,32 +253,34 @@ def main():
     # Check for and remove existing submission files for this subbase
     existing_sub_files =  list(Path(submission_dir).glob(f'{subbase}*.in'))
     existing_sub_files += list(Path(submission_dir).glob(f'{subbase}*.sub'))
-    
     if existing_sub_files:
         WARN(f"Removing {int(len(existing_sub_files)/2)} existing submission file pairs for base: {subbase}")
         for f_to_delete in existing_sub_files: 
             CHATTY(f"Deleting: {f_to_delete}")
             Path(f_to_delete) # could unlink the entire directory too
 
+    # Header for all submission files
+    CondorJob.job_config = rule.job_config
+    base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
+
+    # Individual submission file pairs are created to handle chunks of jobs
     chunk_size = 10
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
         # len(chunked_jobs) doesn't work, it's a generator
-        
         with open(f'{submission_dir}/{subbase}_{i}.sub', "w") as file:
             file.write(str(base_job))
             file.write(
 f"""
-output_destination = $(output_destination)
 log = $(log)
 output = $(output)
 error = $(error)
 arguments = $(arguments)
-queue output_destination,log,output,error,arguments from {subbase}_{i}.in
+queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
 """)
         with open(f'{submission_dir}/{subbase}_{i}.in', "w") as file:
-            for out_file,(in_files, outbase, logbase, run, seg, leaf) in chunk:
+            for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in chunk:
                 condor_job = CondorJob.make_job( output_file=out_file, 
                                                 inputs=in_files,
                                                 outbase=outbase,
@@ -284,23 +288,29 @@ queue output_destination,log,output,error,arguments from {subbase}_{i}.in
                                                 leafdir=leaf,
                                                 run=run,
                                                 seg=seg,
+                                                daqhost=daqhost,
                                                 )        
                 # Multiple queue in a file are deprecated; multi-queue is now done by reading lines from a separate input file
                 # and everything has to be on one line
                 # Note: Empthy lines or comment lines confuse condor_submit
                 file.write(condor_job.condor_row())
 
-    INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
+    if len(rule_matches) ==0 :
+        INFO("No jobs to submit.")
+    else:
+        INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
+    
+    # Done!
     INFO( "KTHXBYE!" )
 
 
     # TODO: add to sanity checks:
     # if rev==0 and build != 'new':
-    #     logging.error( f'production version must be nonzero for fixed builds' )
+    #     ERROR( f'production version must be nonzero for fixed builds' )
     #     result = False
 
     # if rev!=0 and build == 'new':
-    #     logging.error( 'production version must be zero for new build' )
+    #     ERROR.error( 'production version must be zero for new build' )
     #     result = False
 
     # TODO: Find the right class to store update, updateDb, etc.

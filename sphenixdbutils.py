@@ -1,5 +1,5 @@
 import pyodbc
-import pathlib
+from pathlib import Path
 import pprint # noqa: F401
 
 import time
@@ -21,13 +21,13 @@ Also, it needs a robust way to establish things like testbed vs. production mode
 ### TODO: ".slurp" is outdated as a name, just using it for backward compatibility
 test_mode = ( 
         False
-        or 'testbed' in str(pathlib.Path(".").absolute()).lower()
-        or pathlib.Path(".slurp/testbed").is_file() # deprecated
-        or pathlib.Path(".testbed").is_file()
-        or pathlib.Path("SPHNX_TESTBED_MODE").is_file()
+        or 'testbed' in str(Path(".").absolute()).lower()
+        or Path(".slurp/testbed").exists() # deprecated
+        or Path(".testbed").exists()
+        or Path("SPHNX_TESTBED_MODE").exists()
     )
 
-prod_mode = pathlib.Path("SPHNX_PRODUCTION_MODE").is_file()
+prod_mode = Path("SPHNX_PRODUCTION_MODE").exists()
 if ( prod_mode ):
     dsnprodr = 'Production_read'
     dsnprodw = 'Production_write'
@@ -54,25 +54,25 @@ cnxn_string_map = {
 # Hack to test locally on Mac
 if os.uname().sysname=='Darwin' :
     cnxn_string_map = {
-        'fcw'         : 'DSN=filecatalogdb;UID=eickolja',
-        'fcr'         : 'DSN=filecatalogdb;READONLY=True;UID=eickolja',
-        'statr'       : 'DSN=productiondb;READONLY=True;UID=eickolja',
-        'statw'       : 'DSN=productiondb;UID=eickolja',
-        'rawr'        : 'DSN=rawdatacatalogdb;READONLY=True;UID=eickolja',
+        'fcw'         : 'DATABASE=filecatalogdb;UID=eickolja',
+        'fcr'         : 'DATABASE=filecatalogdb;READONLY=True;UID=eickolja',
+        'statr'       : 'DATABASE=productiondb;READONLY=True;UID=eickolja',
+        'statw'       : 'DATABASE=productiondb;UID=eickolja',
+        'rawr'        : 'DATABASE=rawdatacatalogdb;READONLY=True;UID=eickolja',
     }
     # for key in cnxn_string_map.keys() :
     #     DEBUG(f"Changing {key} to use DSN=eickolja")
     #     cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;READONLY=True;UID=eickolja'
 
 # Hack to use local PostgreSQL database from inside a docker container
-if os.path.exists('/.dockerenv') :
+if Path('/.dockerenv').exists() :
     driverstring='DRIVER=PostgreSQL;SERVER=host.docker.internal;'
     cnxn_string_map = {
-        'fcw'         : f'{driverstring}DSN=filecatalogdb;UID=eickolja',
-        'fcr'         : f'{driverstring}DSN=filecatalogdb;READONLY=True;UID=eickolja',
-        'statr'       : f'{driverstring}DSN=productiondb;READONLY=True;UID=eickolja',
-        'statw'       : f'{driverstring}DSN=productiondb;UID=eickolja',
-        'rawr'        : f'{driverstring}DSN=rawdatacatalogdb;READONLY=True;UID=eickolja',
+        'fcw'         : f'{driverstring}DATABASE=filecatalogdb;UID=eickolja',
+        'fcr'         : f'{driverstring}DATABASE=filecatalogdb;READONLY=True;UID=eickolja',
+        'statr'       : f'{driverstring}DATABASE=productiondb;READONLY=True;UID=eickolja',
+        'statw'       : f'{driverstring}DATABASE=productiondb;UID=eickolja',
+        'rawr'        : f'{driverstring}DATABASE=rawdatacatalogdb;READONLY=True;UID=eickolja',
     }
     # for key in cnxn_string_map.keys() :
     #     DEBUG(f"Changing {key} to use DSN=eickolja")

@@ -60,6 +60,13 @@ parse_git_branch() {
    #echo -e "\[${branch_color_status}\]prod:${branch}\[\e[0m\] \[${pstatus}\]prodflow:${pbranch}\[\e[0m\]"
 }
 
+if [[ "$-" == *i* ]]; then
+   echo "Interactive shell"
+else
+   echo "Non-interactive shell"
+   return 0
+fi
+
 # PS1="\u@\h $(parse_git_branch) \W> "
 PS1="\u@\h \W> "
 

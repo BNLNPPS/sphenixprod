@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional, ClassVar, List
 import math
-import lipsum # noqa F401; debug
-import pprint # noqa F401
+from pathlib import Path
+import pprint # noqa: F401
 
 from simpleLogger import ERROR, WARN, CHATTY, INFO, DEBUG  # noqa: F401
 
@@ -56,9 +56,9 @@ class CondorJobConfig:
     neventsper:                 int = "0" # number of events per job
 
     arguments_tmpl:             str = None
-    output_destination_tmpl:    str = None
     log_tmpl:                   str = None
     rungroup_tmpl:              str = "run_{a:08d}_{b:08d}"
+    filesystem:                 dict = None  # base filesystem paths - placeholders to be filled in at job creation time (default: _default_filesystem)
 
     def condor_dict(self) -> dict:
         """
@@ -90,6 +90,7 @@ class CondorJobConfig:
             'should_transfer_files',
             'when_to_transfer_output',
             'transfer_output_files',
+            'output_destination',
             'transfer_output_remaps',
             'transfer_input_files',
             'accounting_group', # Keep last as they are often None/unused now
@@ -126,20 +127,31 @@ class CondorJob:
     job_config:            ClassVar[CondorJobConfig]
 
     # --- Instance Variables (Specific to each job) ---
-    arguments:             str
-    output_destination:    str
+    arguments:              str
+    outdir:                 str  # where the DST files are written to
+    finaldir:               str  # where the DST files are eventually moved to by a spider - currently unused, the spider should know
     # output:                str = None 
     # error:                 str = None
-    log:                   str
-    output_file:           str           # Output file for the job --> not used directly except for bookkeeping
-    inputs:                List[str]     # List of input files for the job
-    outbase:               str           # Base name for the output file
-    logbase:               str           # Base name for the log file
-    run:                   int
-    seg:                   int
-    #DEBUG:
-    output:                str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(Process).out'
-    error:                 str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(Process).err'
+    log:                    str
+    output_file:            str           # Output file for the job --> not used directly except for bookkeeping
+    inputs:                 List[str]     # List of input files for the job
+    outbase:                str           # Base name for the output file
+    logbase:                str           # Base name for the log file
+    run:                    int
+    seg:                    int
+    daqhost:                str
+    #DEBUG - in production, this should be set to None. Too IO intensive.
+    if Path('/.dockerenv').exists() :
+        WARN("Running in docker")
+        output:                str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test/test.$(Process).out'
+        error:                 str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test/test.$(Process).err'
+    else:
+        output:                str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(Process).out'
+        error:                 str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(Process).err'
+    for logdir in Path(output).parent, Path(error).parent:
+        Path(logdir).mkdir( parents=True, exist_ok=True )
+    #/DEBUG
+        
 
     # ------------------------------------------------
     @classmethod
@@ -149,7 +161,10 @@ class CondorJob:
                 outbase: str,
                 logbase: str,
                 leafdir: str,
-                run: int, seg: int):
+                run: int, 
+                seg: int,
+                daqhost: str,
+                ) -> 'CondorJob':
         """
         Constructs a CondorJob instance.
         """
@@ -162,20 +177,18 @@ class CondorJob:
                                                 logbase=logbase,
                                                 run=run,
                                                 seg=seg,
-                                                #inputs=','.join(inputs) + ",".join(lipsum.generate_words(12000).split()), # for testing, fill up with lorem ipsum
-                                                inputs=','.join(inputs),
+                                                daqhost=daqhost,
+                                                inputs=','.join(inputs), # + ",".join(lipsum.generate_words(12000).split()), # for testing, fill up with lorem ipsum
                                                 )
-        output_destination  = cls.job_config.output_destination_tmpl.format(rungroup=rungroup,
-                                                                        leafdir=leafdir,
-                                                                        )
-        log                 = cls.job_config.log_tmpl.format(rungroup=rungroup,
-                                                        leafdir=leafdir,
-                                                        logbase=logbase,
-                                                        )
+        outdir    = cls.job_config.filesystem['outdir'] .format(rungroup=rungroup, leafdir=leafdir)
+        finaldir  = cls.job_config.filesystem['finaldir'].format(rungroup=rungroup, leafdir=leafdir)
+        log       = cls.job_config.log_tmpl.format(rungroup=rungroup, leafdir=leafdir, logbase=logbase)
+        log = "/Users/eickolja/sphenix/condorlog/" # TODO: remove this line, it is for testing only
         
         return cls(
             arguments           = arguments,
-            output_destination  = output_destination,
+            outdir              = outdir,
+            finaldir            = finaldir,
             log                 = log,
             outbase             = outbase,
             logbase             = logbase,
@@ -183,6 +196,7 @@ class CondorJob:
             inputs              = inputs,
             run                 = run,
             seg                 = seg,
+            daqhost             = daqhost,
         )
 
     # ------------------------------------------------
@@ -195,11 +209,12 @@ class CondorJob:
         data = {}
         # Add instance-specific fields
         data.update({
-            'arguments':             self.arguments,
-            'output_destination':    self.output_destination,
-            'log':                   self.log,
-            'output':                self.output,
-            'error':                 self.error,
+            'arguments':    self.arguments,
+            'outdir':       self.outdir,
+            'finaldir':     self.finaldir,
+            'log':          self.log,
+            'output':       self.output,
+            'error':        self.error,
         })
 
         # Filter out any potential None values if necessary, though current
@@ -209,7 +224,7 @@ class CondorJob:
         # ------------------------------------------------
     def condor_row(self):
         """
-        Returns a one line string suitable for queue a,b,... from jobs.ini 
+        Returns a one line string suitable for queue a,b,... from jobrows.in
         FIXME: None values?
         """
         # data = self.job_config.condor_dict() # Repeat base config for each job
@@ -218,7 +233,6 @@ class CondorJob:
         # arguments _must_ come last because it can contain spaces and errors
         # and condor's multi-queue from file mechanism only accepts that as the last, catchall, input 
         data.update({
-            'output_destination':    self.output_destination,
             'log':                   self.log,
             'output':                self.output,
             'error':                 self.error,
