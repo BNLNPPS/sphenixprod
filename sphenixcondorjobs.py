@@ -186,6 +186,8 @@ class CondorJob:
         finaldir  = cls.job_config.filesystem['finaldir'].format(rungroup=rungroup, leafdir=leafdir)
         log       = cls.job_config.log_tmpl.format(rungroup=rungroup, leafdir=leafdir, logbase=logbase)
         log = "/Users/eickolja/sphenix/condorlog/" # TODO: remove/fix this line, it is for testing only
+        log = '/sphenix/data/data02/sphnxpro/scratch/kolja/condorlog/' # TODO: remove/fix this line, it is for testing only
+
         
         return cls(
             arguments           = arguments,
