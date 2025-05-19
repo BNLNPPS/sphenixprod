@@ -122,8 +122,8 @@ def main():
     ### Copy our own files to the worker:
     # For database access:
     payload_list += [ importlib.util.find_spec('sphenixdbutils').origin ]
+    payload_list += [ importlib.util.find_spec('simpleLogger').origin ]
     
-
     # .testbed, .slurp (deprecated): indicate test mode
     if Path(".testbed").exists():
         payload_list += [str(Path('.testbed').resolve())]
@@ -264,7 +264,7 @@ def main():
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
 
     # Individual submission file pairs are created to handle chunks of jobs
-    chunk_size = 10
+    chunk_size = 1000
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
