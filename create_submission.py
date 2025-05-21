@@ -5,8 +5,6 @@ import datetime
 import yaml
 import cProfile
 import subprocess
-import itertools
-import operator
 import sys
 
 # from dataclasses import fields
@@ -268,6 +266,8 @@ def main():
     CondorJob.job_config = rule.job_config
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
 
+    # import itertools
+    # import operator
     # all_matches=rule_matches.items()
     # # pprint.pprint(list(all_matches)[0])
     # # exit()
