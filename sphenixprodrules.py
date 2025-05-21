@@ -59,14 +59,14 @@ _default_filesystem = {
     'condor'   :                          "/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
 }
 
-# if os.uname().sysname!='Darwin' :
-#     _default_filesystem = {
-#         'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/dstlake/",
-#         'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
-#         'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
-#         'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
-#         'condor'  :               "/Users/eickolja/sphenix/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
-#     }
+if 'minicondor' in os.uname().nodename or 'local' in os.uname().nodename: # Mac 
+    _default_filesystem = {
+        'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/",
+        'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
+        'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+        'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
+        'condor'  :               "/Users/eickolja/sphenix/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+    }
 
 
 # ============================================================================
@@ -321,7 +321,7 @@ class RuleConfig:
 
         # Payload code etc. Prepend by the yaml file's path unless they are direct
         yaml_path = Path(yaml_file).parent.resolve()            
-        payload_list = job_data["payload"] + rule_substitions.get("payload_list")
+        payload_list = job_data["payload"] + rule_substitions.get("payload_list",[])
         for i,loc in enumerate(payload_list):
             if not loc.startswith("/"):
                 payload_list[i]= f'{yaml_path}/{loc}'
@@ -346,7 +346,7 @@ class RuleConfig:
                                                     rungroup='{rungroup}',
                                                     )
             DEBUG(f"Filesystem: {key} is {filesystem[key]}")
-            Path(filesystem[key]).mkdir( parents=True, exist_ok=True )
+            #Path(filesystem[key]).mkdir( parents=True, exist_ok=True )
 
         # Note: If you use globs in the payload list,
         # the executable will (almost certainly) copy those sub-files and subdirectories individually to the working directory
