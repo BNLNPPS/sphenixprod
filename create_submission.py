@@ -5,6 +5,8 @@ import datetime
 import yaml
 import cProfile
 import subprocess
+import itertools
+import operator
 import sys
 
 # from dataclasses import fields
@@ -115,22 +117,25 @@ def main():
     rule_substitions["nevents"] = args.nevents
     
     payload_list=[]
-    # from command line
-    if args.append2rsync:
-        payload_list.insert(args.append2rsync)
-        
     ### Copy our own files to the worker:
-    # For database access:
+    # For database access - from _production script_ directory
+    script_path = Path(__file__).parent.resolve()
     payload_list += [ importlib.util.find_spec('sphenixdbutils').origin ]
     payload_list += [ importlib.util.find_spec('simpleLogger').origin ]
+    payload_list += [ f"{script_path}/stageout.sh" ]
+    payload_list += [ f"{script_path}/GetEntries.C" ]
     
-    # .testbed, .slurp (deprecated): indicate test mode
+    # .testbed, .slurp (deprecated): indicate test mode -- Search in the _submission_ directory
     if Path(".testbed").exists():
         payload_list += [str(Path('.testbed').resolve())]
     if Path(".slurp").exists():
         WARN('Using a ".slurp" file or directory is deprecated')
         payload_list += [str(Path('.slurp').resolve())]
 
+    # from command line - the order means these can overwrite the default files from above
+    if args.append2rsync:
+        payload_list.insert(args.append2rsync)
+        
     DEBUG(f"Addtional resources to be copied to the worker: {payload_list}")
     rule_substitions["payload_list"] = payload_list
 
@@ -263,8 +268,18 @@ def main():
     CondorJob.job_config = rule.job_config
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
 
+    # all_matches=rule_matches.items()
+    # # pprint.pprint(list(all_matches)[0])
+    # # exit()
+    # # split by runnumber
+    # matches_by_run = {k : list(g) for k, g in itertools.groupby(all_matches, operator.attrgetter('runnumber'))}
+    # for runnumber in matches_by_run:
+    #    matches = matches_by_run[runnumber]
+    #    print(matches)
+    #    exit()
+
     # Individual submission file pairs are created to handle chunks of jobs
-    chunk_size = 1000
+    chunk_size = 500
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")

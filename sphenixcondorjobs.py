@@ -140,14 +140,14 @@ class CondorJob:
     run:                    int
     seg:                    int
     daqhost:                str
-    #DEBUG - in production, this should be set to None. Too IO intensive.
+    #DEBUG - Too IO intensive. In production, this should be set to None or the local directory
     if Path('/.dockerenv').exists() :
         WARN("Running in docker")
-        output:                str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test/test.$(Process).out'
-        error:                 str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test/test.$(Process).err'
+        output:                str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test/test.$(ClusterId).$(Process).out'
+        error:                 str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test/test.$(ClusterId).$(Process).err'
     else:
-        output:                str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(Process).out'
-        error:                 str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(Process).err'
+        output:                str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(ClusterId).$(Process).out'
+        error:                 str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(ClusterId).$(Process).err'
     for logdir in Path(output).parent, Path(error).parent:
         Path(logdir).mkdir( parents=True, exist_ok=True )
     #/DEBUG

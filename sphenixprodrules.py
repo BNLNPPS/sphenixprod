@@ -59,14 +59,14 @@ _default_filesystem = {
     'condor'   :                          "/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
 }
 
-if os.uname().sysname!='Darwin' :
-    _default_filesystem = {
-        'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/dstlake/",
-        'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
-        'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
-        'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
-        'condor'  :               "/Users/eickolja/sphenix/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
-    }
+# if os.uname().sysname!='Darwin' :
+#     _default_filesystem = {
+#         'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/dstlake/",
+#         'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
+#         'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+#         'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
+#         'condor'  :               "/Users/eickolja/sphenix/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+#     }
 
 
 # ============================================================================
@@ -346,7 +346,7 @@ class RuleConfig:
                                                     rungroup='{rungroup}',
                                                     )
             DEBUG(f"Filesystem: {key} is {filesystem[key]}")
-
+            Path(filesystem[key]).mkdir( parents=True, exist_ok=True )
 
         # Note: If you use globs in the payload list,
         # the executable will (almost certainly) copy those sub-files and subdirectories individually to the working directory
