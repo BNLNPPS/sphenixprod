@@ -61,7 +61,8 @@ parse_git_branch() {
 }
 
 if [[ "$-" == *i* ]]; then
-   echo "Interactive shell"
+   # echo "Interactive shell"
+   : # nop
 else
    echo "Non-interactive shell"
    return 0

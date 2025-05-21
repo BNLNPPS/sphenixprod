@@ -27,7 +27,7 @@ if [ $UsingZsh ]; then
    fi
 fi
 
-echo "Setting up Test environment for sPHENIX Production on a Mac possibly inside Docker on Mac)."
+echo "Setting up Test environment for sPHENIX Production (possibly inside Docker) on Mac."
 # echo WARNING: This script is meant for testing on a MacOS system without connection to the production system
 # echo WARNING: It is not meant for, and will not work in, production use.
 
@@ -73,7 +73,8 @@ parse_git_branch() {
 }
 
 if [[ "$-" == *i* ]]; then
-   echo "Interactive shell"
+   #echo "Interactive shell"
+   : # nop
 else
    echo "Non-interactive shell"
    return 0
