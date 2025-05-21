@@ -262,7 +262,7 @@ def main():
         WARN(f"Removing {int(len(existing_sub_files)/2)} existing submission file pairs for base: {subbase}")
         for f_to_delete in existing_sub_files: 
             CHATTY(f"Deleting: {f_to_delete}")
-            Path(f_to_delete) # could unlink the entire directory too
+            Path(f_to_delete).unlink() # could unlink the entire directory instead
 
     # Header for all submission files
     CondorJob.job_config = rule.job_config
