@@ -1,4 +1,4 @@
-#!/bin/env python
+#!/usr/bin/env python
 
 from pathlib import Path
 import datetime
@@ -7,6 +7,7 @@ import cProfile
 import subprocess
 import sys
 import shutil
+import math
 
 # from dataclasses import fields
 from logging.handlers import RotatingFileHandler
@@ -14,7 +15,7 @@ import pprint # noqa F401
 
 from argparsing import submission_args
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring
+from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring, inputs_from_output
 from sphenixdbutils import test_mode as dbutils_test_mode
 
 # ============================================================================================
@@ -101,39 +102,6 @@ def main():
     rule_substitions = {}
     rule_substitions["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
 
-    ### Which runs to process?
-    run_condition = None
-    if args.runlist:
-        INFO(f"Processing runs from file: {args.runlist}")
-        run_condition = f"and runnumber in ( {extract_numbers_to_commastring(args.runlist)} )"
-    elif args.runs:
-        INFO(f"Processing run (range): {args.runs}")
-        run_condition = list_to_condition(args.runs, "runnumber")
-    else:
-        ERROR("No runs specified.")
-        exit(1)
-
-    # Limit the number of results from the query?
-    limit_condition = ""
-    if args.limit:
-        limit_condition = f"limit {args.limit}"
-        WARN(f"Limiting input query to {args.limit} entries.")
-
-    DEBUG( f"Run condition is \"{run_condition}\"" )
-    if limit_condition != "":
-        DEBUG( f"Limit condition is \"{limit_condition}\"" )
-
-    if run_condition != "":
-        run_condition = f"\t{run_condition}\n"
-    if limit_condition != "":
-        WARN( f"For testing, limiting input query to {args.limit} entries. Probably not what you want." )
-        limit_condition = f"\t{limit_condition}\n"
-    
-    rule_substitions["file_query_constraints"] = f"""{run_condition}{limit_condition}"""
-    rule_substitions["status_query_constraints"] = f"""{run_condition.replace('runnumber','run')}{limit_condition}"""
-    DEBUG(f"Input query constraints: {rule_substitions['file_query_constraints']}")
-    DEBUG(f"Status query constraints: {rule_substitions['status_query_constraints']}")
-
     # Rest of the input substitutions
     if args.physicsmode is not None:
         rule_substitions["physicsmode"] = args.physicsmode # e.g. physics
@@ -192,20 +160,56 @@ def main():
     foundfiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
 
     # Extract information encoded in the file name
+    input_stem = inputs_from_output[rule.rulestem]
+    INFO(f"Input stem: {input_stem}")
+    outstub = rule.outstub
+    INFO(f"Output stub: {outstub}")
+
+    dst_type_template = f'{rule.rulestem}'
+    if 'raw' in rule.input_config.db:
+        dst_type_template += '_{host}'
+    #dst_type_template += f'_{rule.outstub}' # DST_STREAMING_EVENT_%_run3auau
+    dst_types = { f'{dst_type_template}'.format(host=host) for host in input_stem.keys() }
+    INFO(f"Destination type template: {dst_type_template}")
+    INFO(f"Destination types: {dst_types}")
+
+    #exit()
     for file in foundfiles:
         try:
-            fullpath,_,nevents,_,md5,_,dbid = file.split(':')
+            fullpath,_,nevents,_,first,_,last,_,md5,_,dbid = file.split(':')
         except Exception as e:
-            ERROR(f"Error: {e}")
+            WARN("Parse error. Skipped")
+            DEBUG(f"Error: {e}")
             continue
-        print(f"File: {Path(fullpath).name}")
+        basename=Path(fullpath).name
+
+        # Check if we recognize the file name
+        leaf=None
+        for dst_type in dst_types:
+            if basename.startswith(dst_type):
+                leaf=dst_type
+                break
+        if leaf is None:
+            WARN(f"Unknown file name: {basename}")
+            continue
+        
+        # Extract runnumber from the file name
+        # Note: I don't love this. It assumes a rigid file name format, and it eats time for every file.
+        # Logic: first split is at new_nocdbtag_v000, second split isolates the run number, which is between two dashes
+        run = int(basename.split(rule.dataset)[1].split('-')[1])
+        rungroup=rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
+        # Final destination
+        outlocation = outlocation.format( leafdir=leaf, rungroup=rungroup )
+
+        print(f"File: {basename}")
         print(f"  nevents: {nevents}")
+        print(f"  first: {first}")
+        print(f"  last: {last}")
         print(f"  md5: {md5}")
-        print(f"  dbid: {dbid}")
-
-
+        print(f"  dbid: {dbid}")    
+        print(f"  run: {run}")
+        print(f"  Final destination: {outlocation}")
     
-
     exit(0)
 
 # ============================================================================================
