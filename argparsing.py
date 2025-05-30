@@ -12,10 +12,12 @@ def submission_args():
     arg_parser = argparse.ArgumentParser()
 
     # General arguments
-    arg_parser.add_argument( '--dry-run', '--no-submit', help="Job will not be submitted, DBs notupdated. Just print things", dest="submit", action="store_false")     # would be nice to allow -n for dry run but that's currently occupied by nevents
+    arg_parser.add_argument( '--dryrun', '--no-submit', '-n',
+                             help="Job will not be submitted, DBs not updated. Just print things", dest="dryrun", action="store_true")
     arg_parser.add_argument( '--test-mode',dest="test_mode",default=False,help="Sets testing mode, which will mangle DST names and directory paths.",action="store_true")
     arg_parser.add_argument( "--force", "--doit", dest="force", action="store_true" ) #TODO: deprecate doit
     arg_parser.add_argument( '--print-query',dest='printquery',help="Print the query after parameter substitution and exit", action="store_true")
+    arg_parser.add_argument( '--andgo',dest='andgo',help="Submit condor jobs at the end", action="store_true")
     
     vgroup = arg_parser.add_argument_group('Logging level')
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()
@@ -38,9 +40,9 @@ def submission_args():
     exclusive_rgroup.add_argument( '--runs', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=['56900'] )
     exclusive_rgroup.add_argument( '--runlist', help="Flat text file containing list of runs to process, separated by whitespace / newlines.", default=None )
     # arg_parser.add_argument( '--segments', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=[] )
-    arg_parser.add_argument( '--physics-mode','--experiment-mode',dest="physicsmode",help="Specifies the experiment mode (cosmics, commissioning, physics) for direct lookup of input files.",default="physics")
+    arg_parser.add_argument( '--physics-mode','--experiment-mode',dest="physicsmode",help="Specifies the experiment mode (cosmics, commissioning, physics) for direct lookup of input files.",default=None)
 
-    arg_parser.add_argument( '-N', '--nevents', '-n', default=0, dest='nevents', help='Number of events to process.  0=all.', type=int)
+    arg_parser.add_argument( '-N', '--nevents', default=0, dest='nevents', help='Number of events to process.  0=all.', type=int)
     ## sPHENIX files have specific names and locations. Overridde for testing or special purposes.
     arg_parser.add_argument( '--mangle-dstname',dest='mangle_dstname',help="Replaces 'DST' with the specified name.", default=None )
     arg_parser.add_argument( '--mangle-dirpath',dest='mangle_dirpath',help="Inserts string after sphnxpro/ (or tmp/) in the directory structure", default=None, type=int )

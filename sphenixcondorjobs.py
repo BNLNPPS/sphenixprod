@@ -26,10 +26,10 @@ class CondorJobConfig:
     request_memory:             str = "4000MB"
     priority:                   str = "3500" # higher is better.
     max_retries:                str = None # No default...
-    request_xferslots:          str = None
+    request_xferslots:          str = "1"
     job_lease_duration:         str = "3600"
     requirements:               str = None # '(CPU_Type == "mdc2")'
-    periodichold: 	            str = "(NumJobStarts>=1 && JobStatus == 1)"
+    periodichold: 	        str = "(NumJobStarts>=1 && JobStatus == 1)"
     periodicremove:             str = None
     
     on_exit_hold:               str = None
@@ -143,11 +143,11 @@ class CondorJob:
     #DEBUG - Too IO intensive. In production, this should be set to None or the local directory
     if Path('/.dockerenv').exists() :
         WARN("Running in docker")
-        output:                str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test/test.$(ClusterId).$(Process).out'
-        error:                 str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test/test.$(ClusterId).$(Process).err'
+        output:                str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).out'
+        error:                 str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).err'
     else:
-        output:                str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(ClusterId).$(Process).out'
-        error:                 str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test/test.$(ClusterId).$(Process).err'
+        output:                str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).out'
+        error:                 str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).err'
     for logdir in Path(output).parent, Path(error).parent:
         Path(logdir).mkdir( parents=True, exist_ok=True )
     #/DEBUG
@@ -187,6 +187,10 @@ class CondorJob:
         log       = cls.job_config.log_tmpl.format(rungroup=rungroup, leafdir=leafdir, logbase=logbase)
         log = "/Users/eickolja/sphenix/condorlog/" # TODO: remove/fix this line, it is for testing only
         log = '/sphenix/data/data02/sphnxpro/scratch/kolja/condorlog/' # TODO: remove/fix this line, it is for testing only
+        Path(outdir).mkdir( parents=True, exist_ok=True )
+        Path(finaldir).mkdir( parents=True, exist_ok=True )
+        Path(log).mkdir( parents=True, exist_ok=True )
+
 
         
         return cls(

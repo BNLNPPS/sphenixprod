@@ -6,8 +6,8 @@ import yaml
 import cProfile
 import subprocess
 import sys
+from contextlib import nullcontext # for dryruns, "with open(...) if not dryrun else nullcontext as file"
 
-# from dataclasses import fields
 from logging.handlers import RotatingFileHandler
 import pprint # noqa F401
 import os
@@ -243,8 +243,8 @@ def main():
         exit(0)
     
     submission_dir = Path('./tosubmit').resolve()
-    Path( submission_dir).mkdir( parents=True, exist_ok=True )
-    Path(parents=True, exist_ok=True )
+    if not args.dryrun:
+        Path( submission_dir).mkdir( parents=True, exist_ok=True )
     subbase = f'{rule.rulestem}_{rule.outstub}_{rule.dataset}'
     INFO(f'Submission files based on {subbase}')
 
@@ -260,7 +260,8 @@ def main():
         WARN(f"Removing {int(len(existing_sub_files)/2)} existing submission file pairs for base: {subbase}")
         for f_to_delete in existing_sub_files: 
             CHATTY(f"Deleting: {f_to_delete}")
-            Path(f_to_delete).unlink() # could unlink the entire directory instead
+            if not args.dryrun:
+                Path(f_to_delete).unlink() # could unlink the entire directory instead
 
     # Header for all submission files
     CondorJob.job_config = rule.job_config
@@ -284,9 +285,10 @@ def main():
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
         # len(chunked_jobs) doesn't work, it's a generator
-        with open(f'{submission_dir}/{subbase}_{i}.sub', "w") as file:
-            file.write(str(base_job))
-            file.write(
+        if not args.dryrun:
+            with open(f'{submission_dir}/{subbase}_{i}.sub', "w") as file:
+                file.write(str(base_job))
+                file.write(
 f"""
 log = $(log)
 output = $(output)
@@ -294,28 +296,34 @@ error = $(error)
 arguments = $(arguments)
 queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
 """)
-        with open(f'{submission_dir}/{subbase}_{i}.in', "w") as file:
+        with open(f'{submission_dir}/{subbase}_{i}.in', "w") if not args.dryrun else nullcontext() as file:
             for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in chunk:
                 condor_job = CondorJob.make_job( output_file=out_file, 
-                                                inputs=in_files,
-                                                outbase=outbase,
-                                                logbase=logbase,
-                                                leafdir=leaf,
-                                                run=run,
-                                                seg=seg,
-                                                daqhost=daqhost,
+                                                 inputs=in_files,
+                                                 outbase=outbase,
+                                                 logbase=logbase,
+                                                 leafdir=leaf,
+                                                 run=run,
+                                                 seg=seg,
+                                                 daqhost=daqhost,
                                                 )        
                 # Multiple queue in a file are deprecated; multi-queue is now done by reading lines from a separate input file
                 # and everything has to be on one line
                 # Note: Empthy lines or comment lines confuse condor_submit
-                file.write(condor_job.condor_row())
+                if file:
+                    file.write(condor_job.condor_row())
 
     if len(rule_matches) ==0 :
         INFO("No jobs to submit.")
     else:
         INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
-    
-    # Done!
+
+    if args.andgo and not args.dryrun:
+        sub_files = list(Path(submission_dir).glob(f'{subbase}*.sub'))
+        for sub_file in sub_files:
+            INFO(f"Submitting {sub_file}")
+            subprocess.run(f"condor_submit {sub_file}",shell=True)
+
     INFO( "KTHXBYE!" )
 
 

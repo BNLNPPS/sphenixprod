@@ -346,7 +346,6 @@ class RuleConfig:
                                                     rungroup='{rungroup}',
                                                     )
             DEBUG(f"Filesystem: {key} is {filesystem[key]}")
-            #Path(filesystem[key]).mkdir( parents=True, exist_ok=True )
 
         # Note: If you use globs in the payload list,
         # the executable will (almost certainly) copy those sub-files and subdirectories individually to the working directory

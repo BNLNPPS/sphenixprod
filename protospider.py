@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from pathlib import Path
-import datetime
+from datetime import datetime
 import yaml
 import cProfile
 import subprocess
@@ -17,6 +17,7 @@ from argparsing import submission_args
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring, inputs_from_output
 from sphenixdbutils import test_mode as dbutils_test_mode
+from sphenixdbutils import cnxn_string_map, dbQuery
 
 # ============================================================================================
 
@@ -47,7 +48,7 @@ def main():
 
     Path(sublogdir).mkdir( parents=True, exist_ok=True )
     RotFileHandler = RotatingFileHandler(
-        filename=f"{sublogdir}/{str(datetime.datetime.today().date())}.log",
+        filename=f"{sublogdir}/{str(datetime.today().date())}.log",
         mode='a',
         maxBytes=25*1024*1024, #   maxBytes=5*1024,
         backupCount=10,
@@ -133,26 +134,30 @@ def main():
 
     # Which find command to use?
     filesystem = rule.job_config.filesystem
-    find = shutil.which('rbh-find')
-    if find is not None:
-        find = f"{find} -f /etc/robinhood.d/myfs.sphnxpro.conf"
-        for k,v in filesystem.items():
-            filesystem[k] = v.replace('/sphenix/lustre01', '/mnt')
-    else:
-        WARN("rbh-find (robinhood) not found.")
-        find = shutil.which('lfs')
-    
-    if find is None:
-        WARN("'lfs find' not found either.")
-        find = shutil.which('find')
-    INFO(f"Using {find}.")
 
+    # find = shutil.which('rbh-find')
+    # if find is not None:
+    #     find = f"{find} -f /etc/robinhood.d/myfs.sphnxpro.conf"
+    #     for k,v in filesystem.items():
+    #         filesystem[k] = v.replace('/sphenix/lustre01', '/mnt')
+    # else:
+    #     WARN("rbh-find (robinhood) not found.")
+
+
+    find = shutil.which('lfs')
+    if find is None:
+        WARN("'lfs find' not found.")
+        find = shutil.which('find')
+    else:
+        find = f'{find} find'
+    INFO(f"Using {find}.")
+    
     # Original output directory, the final destination, and the file name trunk
     inlocation=filesystem['outdir']
-    outlocation=filesystem['finaldir']
+    finaldir=filesystem['finaldir']
     DEBUG(f"Filesystem: {filesystem}")
     INFO(f"Original output directory: {inlocation}")
-    INFO(f"Final destination: {outlocation}")
+    INFO(f"Final destination template: {finaldir}")
 
     # List of files to process
     findcommand = f"{find} {inlocation} -type f -name {rule.rulestem}\* -print"
@@ -172,51 +177,123 @@ def main():
     dst_types = { f'{dst_type_template}'.format(host=host) for host in input_stem.keys() }
     INFO(f"Destination type template: {dst_type_template}")
     INFO(f"Destination types: {dst_types}")
+    INFO(f"Found {len(foundfiles)} files to move.")
 
     #exit()
-    for file in foundfiles:
+    tstart = datetime.now()
+    tlast = tstart
+    when2blurb=2000
+    for f, file in enumerate(foundfiles):
+        if f%when2blurb == 0:
+            now = datetime.now()
+            
+            print( f'file #{f}/{len(foundfiles)}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
+            print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
+            tlast = now
+
+        if 'rbh' in find:
+            file = file.replace('/mnt','/sphenix/lustre01')
+            # print( file )
         try:
             fullpath,_,nevents,_,first,_,last,_,md5,_,dbid = file.split(':')
         except Exception as e:
-            WARN("Parse error. Skipped")
+            # WARN("Parse error. Skipped")
             DEBUG(f"Error: {e}")
             continue
-        basename=Path(fullpath).name
 
+        lfn=Path(fullpath).name # ==Basename
         # Check if we recognize the file name
         leaf=None
         for dst_type in dst_types:
-            if basename.startswith(dst_type):
+            if lfn.startswith(dst_type):
                 leaf=dst_type
                 break
         if leaf is None:
-            WARN(f"Unknown file name: {basename}")
+            # DEBUG(f"Unknown file name: {lfn}")
             continue
         
         # Extract runnumber from the file name
         # Note: I don't love this. It assumes a rigid file name format, and it eats time for every file.
+        #       All those splits are pretty unreadable too. Well, still beats a regex.
+        #       However, time turns out not to be a problem.
         # Logic: first split is at new_nocdbtag_v000, second split isolates the run number, which is between two dashes
-        run = int(basename.split(rule.dataset)[1].split('-')[1])
-        rungroup=rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
-        # Final destination
-        outlocation = outlocation.format( leafdir=leaf, rungroup=rungroup )
+        dsttype=lfn.split(f'_{rule.dataset}')[0]
+        run = int(lfn.split(rule.dataset)[1].split('-')[1])
+        rungroup= rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
+        # Fill in rungroup and optionally leaf directory
+        finaldir = finaldir.format( leafdir=leaf, rungroup=rungroup )
+        #DEBUG finaldir = "/sphenix/lustre01/sphnxpro/production-testbed/run3auau/physics/delme/"
+        # Between the dash and .root is the segment, used for the db
+        segment = int(lfn.split(rule.dataset)[1].split('-')[2].split('.root')[0])
 
-        print(f"File: {basename}")
-        print(f"  nevents: {nevents}")
-        print(f"  first: {first}")
-        print(f"  last: {last}")
-        print(f"  md5: {md5}")
-        print(f"  dbid: {dbid}")    
-        print(f"  run: {run}")
-        print(f"  Final destination: {outlocation}")
-    
-    exit(0)
+        # --- Extract what we need for the databases
+        # for "files"
+        full_host_name = "lustre" if 'lustre' in finaldir else 'gpfs'
+        full_file_path = f'{finaldir}/{lfn}'
+        filestat=Path(file).stat()
+        ctimestamp = filestat.st_ctime
+        ctimestamp = datetime.fromtimestamp(ctimestamp)
+        file_size_bytes = filestat.st_size
+        files_table='test_files' if test_mode else 'files'
+        insert_files=f"""
+    insert into {files_table} (lfn,full_host_name,full_file_path,time,size,md5) 
+    values ('{lfn}','{full_host_name}','{full_file_path}','{ctimestamp}',{file_size_bytes},'{md5}')
+    on conflict
+    on constraint {files_table}_pkey
+    do update set 
+    time=EXCLUDED.time,
+    size=EXCLUDED.size,
+    md5=EXCLUDED.md5
+    ;
+    """
+        CHATTY(insert_files)
+
+        # for 'datasets'
+        datasets_table='test_datasets' if test_mode else 'datasets'
+        insert_datasets=f"""
+    insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events)
+    values ('{lfn}',{run},{segment},{file_size_bytes},'{rule.dataset}','{dsttype}',{nevents})
+    on conflict
+    on constraint {datasets_table}_pkey
+    do update set
+    runnumber=EXCLUDED.runnumber,
+    segment=EXCLUDED.segment,
+    size=EXCLUDED.size,
+    dsttype=EXCLUDED.dsttype,
+    events=EXCLUDED.events
+    ;
+    """
+        CHATTY(insert_datasets)        
+        if args.dryrun:
+            if f%when2blurb == 0:
+                print( f"mv {file} {full_file_path}" )
+            continue
+        
+        # Create destination dir if it doesn't exit. Difficult to move out of the file loop before knowing the full relevant runnumber range
+        Path(finaldir).mkdir( parents=True, exist_ok=True )
+        # Move the file
+        try:
+            shutil.move( file, full_file_path )
+        except Exception as e:
+            WARN(e)
+        #Register the file
+        # insdsets, ntries_dsets, start_dsets, finish_dsets, ex_dsets, nm_dsets, sv_dsets = dbQuery( cnxn_string_map[ 'fcw' ], insert )
+        dbstring = 'testw' if test_mode else 'fcw'
+        files_curs = dbQuery( cnxn_string_map[ dbstring ], insert_files )
+        files_curs.commit()
+        datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
+        datasets_curs.commit()
+            
+
+        # if f>10000 :
+        #     break
+
 
 # ============================================================================================
 
 if __name__ == '__main__':
-    main()
-    exit(0)
+    # main()
+    # exit(0)
 
     cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats
@@ -230,4 +307,4 @@ if __name__ == '__main__':
     # nfl: Sort by name/file/line.
     # pcalls: Sort by the number of primitive calls.
     # stdname: Sort by standard name (default).
-    # time: Sort by the total time spent in the function itself.    #
+    # time: Sort by the total time spent in the function itself. 

@@ -37,9 +37,9 @@ elif ( test_mode ):
     dsnprodw = 'ProductionStatusWrite'
     dsnfilec = 'FileCatalog'
 else:
-    WARN("Neither production nor testbed mode set.  Default to testbed.  YMMV.")
-    dsnprodr = 'ProductionStatus'
-    dsnprodw = 'ProductionStatusWrite'
+    WARN("Neither production nor testbed mode set. Default to PRODUCTION.  YMMV.")
+    dsnprodr = 'Production_read'
+    dsnprodw = 'Production_write'
     dsnfilec = 'FileCatalog'
 
 # ============================================================================
@@ -49,6 +49,7 @@ cnxn_string_map = {
     'statr'       : f'DSN={dsnprodr};READONLY=True;UID=argouser',
     'statw'       : f'DSN={dsnprodw};UID=argouser',
     'rawr'        :  'DSN=RawdataCatalog_read;READONLY=True;UID=phnxrc',
+    'testw'       :  'DSN=FileCatalogTest;UID=phnxrc',
 }
 
 # Hack to test locally on Mac
@@ -116,7 +117,7 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             delay = (itry + 1 ) * random.random()
             time.sleep(delay)
             DEBUG(f"Attempt {itry} failed: {last_exception}")
-    #TODO: Hanquery connn failure more gracefully
+    #TODO: Handle connn failure more gracefully
     DEBUG(f'[query time ] {time.time() - now:.2g} seconds' )
     
     return curs

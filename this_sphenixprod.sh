@@ -16,7 +16,7 @@ echo "Using scripts in sys: ${SCRIPT_DIR}"
 
 source /opt/sphenix/core/bin/sphenix_setup.sh -n new
 export PATH=${PATH}:${HOME}/bin:./bin
-export ODBCINI=./odbc.ini
+export ODBCINI=./.odbc.ini
 
 if [[ $OS =~ "Alma" ]]; then
    export PATH=/usr/bin:${PATH}
