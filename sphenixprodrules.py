@@ -45,7 +45,6 @@ VERFMT = '03d'
 pRUNFMT = RUNFMT.replace('%','').replace('i','d')
 pSEGFMT = SEGFMT.replace('%','').replace('i','d')
 
-
 # "{leafdir}" needs to stay changeable.  Typical leafdir: DST_STREAMING_EVENT_TPC20 or DST_TRKR_CLUSTER
 # "{rungroup}" needs to stay changeable. Typical rungroup: run_00057900_00058000
 # Target example:
@@ -56,7 +55,7 @@ _default_filesystem = {
     'finaldir' :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
     'logdir'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
     'histdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
-    'condor'   :                          "/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+    'condor'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
 }
 
 if 'minicondor' in os.uname().nodename or 'local' in os.uname().nodename: # Mac 
@@ -65,7 +64,7 @@ if 'minicondor' in os.uname().nodename or 'local' in os.uname().nodename: # Mac
         'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
         'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
         'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
-        'condor'  :               "/Users/eickolja/sphenix/tmp/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+        'condor'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
     }
 
 
@@ -656,8 +655,9 @@ class MatchConfig:
 
                 # If the output doesn't exist yet, use input files to create the job
                 for seg in segments:
-                    logbase= f'{outbase}_{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
-                    output = f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}.root' # == {logbase}.root but this is more explicit
+                    # logbase= f'{outbase}_{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
+                    logbase= f'{outbase}_{runnumber:{pRUNFMT}}'
+                    output = f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}.root'
                     if output in existing_output:
                         CHATTY(f"Output file {output} already exists. Not submitting.")
                         continue
@@ -688,7 +688,7 @@ class MatchConfig:
                     # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000 \ outbase \
                     # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000-00061162-00000 \ logbase \
                     outbase=f'{dsttype}_{self.dataset}'
-                    logbase=f'{outbase}_{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}'
+                    logbase=f'{outbase}_{runnumber:{pRUNFMT}}'
                     # check for one existing output file. 
                     first_output=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}.root' # == {logbase}.root but this is more explicit
                     if first_output in existing_output:

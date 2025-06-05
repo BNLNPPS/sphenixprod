@@ -31,10 +31,10 @@ def main():
             or args.test_mode
             # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
         )
-    # No matter how we determined test_mode, make sure it is now propagated to job directories.
-    # Note that further down we'll turn on transfer of the .testbed file to the worker
-    if test_mode:
-        Path('.testbed').touch()
+    # # No matter how we determined test_mode, make sure it is now propagated to job directories.
+    # # Note that further down we'll turn on transfer of the .testbed file to the worker
+    # if test_mode:
+    #     Path('.testbed').touch()
 
     #################### Set up submission logging before going any further
     if args.sublogdir:
@@ -63,8 +63,6 @@ def main():
     p = subprocess.Popen(["ps","axuww"], stdout=subprocess.PIPE)
     stdout_bytes, stderr_bytes = p.communicate() # communicate() returns bytes
     stdout_str = stdout_bytes.decode(errors='ignore') # Decode to string
-    # debug
-    #stdout_str = 'python tester.py --config run3auau/NewDST_STREAMING_run3auau_new_2024p012.yaml --rule DST_STREAMING_EVENT_run3auau_streams --runs 50229 50400'
     
     # Construct a search key with script name, config file, and rulename
     # to check for other running instances with the same parameters.
@@ -179,25 +177,21 @@ def main():
     INFO(f"Destination types: {dst_types}")
     INFO(f"Found {len(foundfiles)} files to move.")
 
-    #exit()
     tstart = datetime.now()
     tlast = tstart
     when2blurb=2000
     for f, file in enumerate(foundfiles):
         if f%when2blurb == 0:
-            now = datetime.now()
-            
-            print( f'file #{f}/{len(foundfiles)}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
+            now = datetime.now()            
+            print( f'DST #{f}/{len(foundfiles)}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
             tlast = now
 
         if 'rbh' in find:
             file = file.replace('/mnt','/sphenix/lustre01')
-            # print( file )
         try:
             fullpath,_,nevents,_,first,_,last,_,md5,_,dbid = file.split(':')
         except Exception as e:
-            # WARN("Parse error. Skipped")
             DEBUG(f"Error: {e}")
             continue
 
@@ -285,10 +279,7 @@ def main():
         datasets_curs.commit()
             
 
-        # if f>10000 :
-        #     break
-
-
+        
 # ============================================================================================
 
 if __name__ == '__main__':

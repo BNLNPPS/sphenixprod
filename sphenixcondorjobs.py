@@ -130,8 +130,9 @@ class CondorJob:
     arguments:              str
     outdir:                 str  # where the DST files are written to
     finaldir:               str  # where the DST files are eventually moved to by a spider - currently unused, the spider should know
-    # output:                str = None 
-    # error:                 str = None
+    histdir:                str  # where histograms go
+    output:                 str 
+    error:                  str
     log:                    str
     output_file:            str           # Output file for the job --> not used directly except for bookkeeping
     inputs:                 List[str]     # List of input files for the job
@@ -140,19 +141,7 @@ class CondorJob:
     run:                    int
     seg:                    int
     daqhost:                str
-    #DEBUG - Too IO intensive. In production, this should be set to None or the local directory
-    if Path('/.dockerenv').exists() :
-        WARN("Running in docker")
-        output:                str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).out'
-        error:                 str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).err'
-    else:
-        output:                str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).out'
-        error:                 str = '/sphenix/data/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).err'
-    for logdir in Path(output).parent, Path(error).parent:
-        Path(logdir).mkdir( parents=True, exist_ok=True )
-    #/DEBUG
         
-
     # ------------------------------------------------
     @classmethod
     def make_job(cls,
@@ -184,20 +173,24 @@ class CondorJob:
                                                 )
         outdir    = cls.job_config.filesystem['outdir'] .format(rungroup=rungroup, leafdir=leafdir)
         finaldir  = cls.job_config.filesystem['finaldir'].format(rungroup=rungroup, leafdir=leafdir)
+        logdir    = cls.job_config.filesystem['logdir'] .format(rungroup=rungroup, leafdir=leafdir)
+        histdir   = cls.job_config.filesystem['histdir'] .format(rungroup=rungroup, leafdir=leafdir)
         log       = cls.job_config.log_tmpl.format(rungroup=rungroup, leafdir=leafdir, logbase=logbase)
-        log = "/Users/eickolja/sphenix/condorlog/" # TODO: remove/fix this line, it is for testing only
-        log = '/sphenix/data/data02/sphnxpro/scratch/kolja/condorlog/' # TODO: remove/fix this line, it is for testing only
-        Path(outdir).mkdir( parents=True, exist_ok=True )
-        Path(finaldir).mkdir( parents=True, exist_ok=True )
-        Path(log).mkdir( parents=True, exist_ok=True )
+        output    = f'{logdir}/{logbase}.out'
+        error     = f'{logdir}/{logbase}.err'
+        if Path('/.dockerenv').exists() :
+            WARN("Running in docker")
+            output:                str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).out'
+            error:                 str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).err'
 
-
-        
         return cls(
             arguments           = arguments,
             outdir              = outdir,
             finaldir            = finaldir,
+            histdir             = histdir,
             log                 = log,
+            output              = output,
+            error               = error,
             outbase             = outbase,
             logbase             = logbase,
             output_file         = output_file,

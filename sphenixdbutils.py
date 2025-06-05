@@ -37,7 +37,7 @@ elif ( test_mode ):
     dsnprodw = 'ProductionStatusWrite'
     dsnfilec = 'FileCatalog'
 else:
-    WARN("Neither production nor testbed mode set. Default to PRODUCTION.  YMMV.")
+    INFO("Neither production nor testbed mode set. Default to PRODUCTION.  YMMV.")
     dsnprodr = 'Production_read'
     dsnprodw = 'Production_write'
     dsnfilec = 'FileCatalog'

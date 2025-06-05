@@ -178,7 +178,7 @@ def main():
         DEBUG("Mangling DST name")
         rule_substitions['DST']=args.mangle_dstname
 
-    # filesystem is the base for all output, allow for mangling here
+    # rule.filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
     rule_substitions["prodmode"] = "production"
     if args.mangle_dirpath:
@@ -307,9 +307,17 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
                                                  seg=seg,
                                                  daqhost=daqhost,
                                                 )        
-                # Multiple queue in a file are deprecated; multi-queue is now done by reading lines from a separate input file
-                # and everything has to be on one line
-                # Note: Empthy lines or comment lines confuse condor_submit
+                # Make sure directories exist
+                if not args.dryrun:
+                    Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
+                    #Path(condor_job.finaldir).mkdir( parents=True, exist_ok=True ) # final destinatiopn on lustre. 
+                    Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
+
+                    # stdout, stderr, and condorlog locations, usually on sphenix02:
+                    for file_in_dir in condor_job.output, condor_job.error, condor_job.log :
+                        Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
+                    
+                # Add to submission input file
                 if file:
                     file.write(condor_job.condor_row())
 
@@ -318,12 +326,15 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
     else:
         INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
 
+    prettyfs = pprint.pformat(rule.job_config.filesystem)
+    INFO(f"Other location templates:\n{prettyfs}")
+
     if args.andgo and not args.dryrun:
         sub_files = list(Path(submission_dir).glob(f'{subbase}*.sub'))
         for sub_file in sub_files:
             INFO(f"Submitting {sub_file}")
             subprocess.run(f"condor_submit {sub_file}",shell=True)
-
+    
     INFO( "KTHXBYE!" )
 
 
