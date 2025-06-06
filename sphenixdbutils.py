@@ -6,7 +6,7 @@ import time
 import random
 import os
 
-from simpleLogger import WARN, DEBUG, ERROR
+from simpleLogger import WARN, DEBUG, INFO, ERROR
 
 """
 This module provides an interface to the sPHENIX databases.
