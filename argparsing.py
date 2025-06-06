@@ -37,7 +37,7 @@ def submission_args():
 
     rgroup = arg_parser.add_argument_group('Run selection')
     exclusive_rgroup = rgroup.add_mutually_exclusive_group()
-    exclusive_rgroup.add_argument( '--runs', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=['56900'] )
+    exclusive_rgroup.add_argument( '--runs', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=['-1'] )
     exclusive_rgroup.add_argument( '--runlist', help="Flat text file containing list of runs to process, separated by whitespace / newlines.", default=None )
     # arg_parser.add_argument( '--segments', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=[] )
     arg_parser.add_argument( '--physics-mode','--experiment-mode',dest="physicsmode",help="Specifies the experiment mode (cosmics, commissioning, physics) for direct lookup of input files.",default=None)
