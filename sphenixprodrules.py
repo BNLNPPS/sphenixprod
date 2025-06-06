@@ -252,19 +252,6 @@ class RuleConfig:
         outstub = params_data["outstub"] if "outstub" in params_data else params_data["period"]
         dataset = f'{build_string}_{params_data["dbtag"]}_{version_string}'
 
-        ### outbase and logbase can depend on the leaf (aka stream or host) name.
-        ### Until end of April, we had things like leaf TPC20 =~ daqhost ebdc20, 
-        ### but going forward the two may become equal or only differ in capitalization
-        ### Details are handled in the sphenixjobdicts module. 
-        ### Using the database field names where possible, we have
-        # leafdir = f'{params_data['rulestem']}' # DST_STREAMING_EVENT
-        # if 'TRIGGERED' in dsttype or 'STREAMING' in dsttype:
-        #     leafdir += f'_{leafname}' # DST_STREAMING_EVENT_TPC20 <-- not yet known
-        # dsttype = f'{leafdir}_{outstub}' # DST_STREAMING_EVENT_TPC20_run3cosmics
-        # With that, output, log, etc, live in
-        ## [somebase]/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/[dst,log,hist]/filename
-        ## where filename = f'{dsttype}_{dataset}-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})[.root, .log, .hist]'
-
         ### Turning off name mangling; directory mangling is sufficient
         # if 'DST' in rule_substitions:
         #     outbase=outbase.replace('DST',rule_substitions['DST'])
