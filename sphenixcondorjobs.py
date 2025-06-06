@@ -52,13 +52,14 @@ class CondorJobConfig:
     transferout:                str = "false"
     transfererr:                str = "false"
     transfer_input_files:       str = None
-    
+
+    ### Non-condor data members for steering.
     neventsper:                 int = "0" # number of events per job
+    filesystem:                 dict = None  # base filesystem paths - placeholders to be filled in at job creation time (default: _default_filesystem)
 
     arguments_tmpl:             str = None
     log_tmpl:                   str = None
     rungroup_tmpl:              str = "run_{a:08d}_{b:08d}"
-    filesystem:                 dict = None  # base filesystem paths - placeholders to be filled in at job creation time (default: _default_filesystem)
 
     def condor_dict(self) -> dict:
         """
