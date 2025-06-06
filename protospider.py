@@ -10,10 +10,10 @@ import shutil
 import math
 
 # from dataclasses import fields
-from logging.handlers import RotatingFileHandler
 import pprint # noqa F401
 
 from argparsing import submission_args
+from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring, inputs_from_output
 from sphenixdbutils import test_mode as dbutils_test_mode
@@ -31,57 +31,18 @@ def main():
             or args.test_mode
             # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
         )
-    # # No matter how we determined test_mode, make sure it is now propagated to job directories.
-    # # Note that further down we'll turn on transfer of the .testbed file to the worker
     # if test_mode:
     #     Path('.testbed').touch()
 
-    #################### Set up submission logging before going any further
-    if args.sublogdir:
-        sublogdir=args.sublogdir
-    else:
-        if test_mode:
-            sublogdir='/tmp/testbed/sphenixprod/'
-        else:
-            sublogdir='/tmp/sphenixprod/sphenixprod/'
-    sublogdir += f"{args.rulename}".replace('.yaml','')
-
-    Path(sublogdir).mkdir( parents=True, exist_ok=True )
-    RotFileHandler = RotatingFileHandler(
-        filename=f"{sublogdir}/{str(datetime.today().date())}.log",
-        mode='a',
-        maxBytes=25*1024*1024, #   maxBytes=5*1024,
-        backupCount=10,
-        encoding=None,
-        delay=0
-    )
-    RotFileHandler.setFormatter(CustomFormatter())
-    slogger.addHandler(RotFileHandler)
+    # Set up submission logging before going any further
+    sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
     
     # Exit without fuss if we are already running 
-    p = subprocess.Popen(["ps","axuww"], stdout=subprocess.PIPE)
-    stdout_bytes, stderr_bytes = p.communicate() # communicate() returns bytes
-    stdout_str = stdout_bytes.decode(errors='ignore') # Decode to string
-    
-    # Construct a search key with script name, config file, and rulename
-    # to check for other running instances with the same parameters.
-    count_already_running = 0
-    
-    for psline in stdout_str.splitlines():
-        if sys.argv[0] in psline and args.config in psline and args.rulename in psline:
-            count_already_running += 1
-
-    CHATTY ( f"Found {count_already_running} instance(s) of {sys.argv[0]} with config {args.config} and rulename {args.rulename} in the process list.")
-    if count_already_running == 0:
-        ERROR("No running instance found, including myself. That can't be right.")
-        exit(1)
-
-    if count_already_running > 1:
-        DEBUG("Looks like there's already a running instance of me. Stop.")
+    if should_I_quit(args=args, myname=sys.argv[0]):
+        DEBUG("Stop.")
         exit(0)
-
-    # stdout is already added to slogger by default
+    
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if test_mode:
@@ -133,15 +94,8 @@ def main():
     # Which find command to use?
     filesystem = rule.job_config.filesystem
 
-    # find = shutil.which('rbh-find')
-    # if find is not None:
-    #     find = f"{find} -f /etc/robinhood.d/myfs.sphnxpro.conf"
-    #     for k,v in filesystem.items():
-    #         filesystem[k] = v.replace('/sphenix/lustre01', '/mnt')
-    # else:
-    #     WARN("rbh-find (robinhood) not found.")
-
-
+    # Lustre's robin hood, rbh-find, doesn't offer aadvantages but is more cumbersome to use
+    # But "lfs find" is preferrable to the regular kind. Note, it does work on gpfs so I won't bother to separate that out.
     find = shutil.which('lfs')
     if find is None:
         WARN("'lfs find' not found.")
@@ -150,6 +104,10 @@ def main():
         find = f'{find} find'
     INFO(f"Using {find}.")
     
+    print(filesystem['histdir'])
+    exit()
+    
+    ##################### DSTs, from lustre to lustre
     # Original output directory, the final destination, and the file name trunk
     inlocation=filesystem['outdir']
     finaldir=filesystem['finaldir']
@@ -171,7 +129,6 @@ def main():
     dst_type_template = f'{rule.rulestem}'
     if 'raw' in rule.input_config.db:
         dst_type_template += '_{host}'
-    #dst_type_template += f'_{rule.outstub}' # DST_STREAMING_EVENT_%_run3auau
     dst_types = { f'{dst_type_template}'.format(host=host) for host in input_stem.keys() }
     INFO(f"Destination type template: {dst_type_template}")
     INFO(f"Destination types: {dst_types}")
@@ -187,15 +144,13 @@ def main():
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
             tlast = now
 
-        if 'rbh' in find:
-            file = file.replace('/mnt','/sphenix/lustre01')
         try:
             fullpath,_,nevents,_,first,_,last,_,md5,_,dbid = file.split(':')
         except Exception as e:
             DEBUG(f"Error: {e}")
             continue
 
-        lfn=Path(fullpath).name # ==Basename
+        lfn=Path(fullpath).name
         # Check if we recognize the file name
         leaf=None
         for dst_type in dst_types:
@@ -209,14 +164,13 @@ def main():
         # Extract runnumber from the file name
         # Note: I don't love this. It assumes a rigid file name format, and it eats time for every file.
         #       All those splits are pretty unreadable too. Well, still beats a regex.
-        #       However, time turns out not to be a problem.
+        #       At least processing time turns out not to be a problem.
         # Logic: first split is at new_nocdbtag_v000, second split isolates the run number, which is between two dashes
         dsttype=lfn.split(f'_{rule.dataset}')[0]
         run = int(lfn.split(rule.dataset)[1].split('-')[1])
         rungroup= rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
         # Fill in rungroup and optionally leaf directory
         finaldir = finaldir.format( leafdir=leaf, rungroup=rungroup )
-        #DEBUG finaldir = "/sphenix/lustre01/sphnxpro/production-testbed/run3auau/physics/delme/"
         # Between the dash and .root is the segment, used for the db
         segment = int(lfn.split(rule.dataset)[1].split('-')[2].split('.root')[0])
 
@@ -277,14 +231,12 @@ def main():
         files_curs.commit()
         datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
         datasets_curs.commit()
-            
-
         
 # ============================================================================================
 
 if __name__ == '__main__':
-    # main()
-    # exit(0)
+    main()
+    exit(0)
 
     cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats

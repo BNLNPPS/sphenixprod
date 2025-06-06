@@ -13,9 +13,9 @@ import pprint # noqa F401
 import os
 if os.uname().sysname!='Darwin' :
     import htcondor # type: ignore
-#import classad # type: ignore
 
 from argparsing import submission_args
+from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
 from sphenixcondorjobs import CondorJob
@@ -48,50 +48,13 @@ def main():
         Path('.testbed').touch()
 
     #################### Set up submission logging before going any further
-    if args.sublogdir:
-        sublogdir=args.sublogdir
-    else:
-        if test_mode:
-            sublogdir='/tmp/testbed/sphenixprod/'
-        else:
-            sublogdir='/tmp/sphenixprod/sphenixprod/'
-    sublogdir += f"{args.rulename}".replace('.yaml','')
-
-    Path(sublogdir).mkdir( parents=True, exist_ok=True )
-    RotFileHandler = RotatingFileHandler(
-        filename=f"{sublogdir}/{str(datetime.datetime.today().date())}.log",
-        mode='a',
-        maxBytes=25*1024*1024, #   maxBytes=5*1024,
-        backupCount=10,
-        encoding=None,
-        delay=0
-    )
-    RotFileHandler.setFormatter(CustomFormatter())
-    slogger.addHandler(RotFileHandler)
+    # Set up submission logging before going any further
+    sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
     
     # Exit without fuss if we are already running 
-    p = subprocess.Popen(["ps","axuww"], stdout=subprocess.PIPE)
-    stdout_bytes, stderr_bytes = p.communicate() # communicate() returns bytes
-    stdout_str = stdout_bytes.decode(errors='ignore') # Decode to string
-    # debug
-    #stdout_str = 'python tester.py --config run3auau/NewDST_STREAMING_run3auau_new_2024p012.yaml --rule DST_STREAMING_EVENT_run3auau_streams --runs 50229 50400'
-    
-    # Construct a search key with script name, config file, and rulename
-    # to check for other running instances with the same parameters.
-    count_already_running = 0
-    
-    for psline in stdout_str.splitlines():
-        if sys.argv[0] in psline and args.config in psline and args.rulename in psline:
-            count_already_running += 1
-
-    CHATTY ( f"Found {count_already_running} instance(s) of {sys.argv[0]} with config {args.config} and rulename {args.rulename} in the process list.")
-    if count_already_running == 0:
-        ERROR("No running instance found, including myself. That can't be right.")
-        exit(1)
-
-    if count_already_running > 1:
-        DEBUG("Looks like there's already a running instance of me. Stop.")
+    if should_I_quit(args=args, myname=sys.argv[0]):
+        DEBUG("Stop.")
         exit(0)
 
     # stdout is already added to slogger by default
