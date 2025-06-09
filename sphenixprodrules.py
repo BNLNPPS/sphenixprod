@@ -48,11 +48,11 @@ pSEGFMT = SEGFMT.replace('%','').replace('i','d')
 # "{leafdir}" needs to stay changeable.  Typical leafdir: DST_STREAMING_EVENT_TPC20 or DST_TRKR_CLUSTER
 # "{rungroup}" needs to stay changeable. Typical rungroup: run_00057900_00058000
 # Target example:
-# /sphenix/lustre01/sphnxpro/{prodmode} / {period}  / {runtype} / dataset={build}_{dbtag}_{version} / {leafdir}       /     {rungroup}       /dst
-# /sphenix/lustre01/sphnxpro/production / run3auau  /  cosmics  /        new_nocdbtag_v000          / DST_CALOFITTING / run_00057900_00058000/dst
+# /sphenix/lustre01/sphnxpro/{prodmode} / {period}  / {runtype} / dataset={build}_{dbtag}_{version} / {leafdir}       /     {rungroup}       /
+# /sphenix/lustre01/sphnxpro/production / run3auau  /  cosmics  /        new_nocdbtag_v000          / DST_CALOFITTING / run_00057900_00058000/
 _default_filesystem = {
     'outdir'   :    "/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/",
-    'finaldir' :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
+    'finaldir' :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}",
     'logdir'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
     'histdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
     'condor'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
@@ -61,7 +61,7 @@ _default_filesystem = {
 if 'minicondor' in os.uname().nodename or 'local' in os.uname().nodename: # Mac 
     _default_filesystem = {
         'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/",
-        'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/dst",
+        'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}",
         'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
         'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
         'condor'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
@@ -597,7 +597,7 @@ class MatchConfig:
                     files_for_run[host] = gl1_files + files_for_run[host]
 
             ## Output, log, etc, live in
-            ## [somebase]/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/[dst,log,hist]/filename
+            ## [somebase]/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/[.,log,hist]/filename
             ## where filename = f'{dsttype}_{dataset}-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})[.root, .log, .hist]'
             ######### Two (originally three) possibilities:
             # - Easy: If the input has a segment number, then the output will have the same segment number
