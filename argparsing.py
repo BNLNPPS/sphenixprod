@@ -51,6 +51,7 @@ def submission_args():
     arg_parser.add_argument( '--append-to-rsync', dest='append2rsync', default=None,help="Appends the argument to the list of rsync files to copy to the worker node" )
 
     # Queue-related constraints
+    arg_parser.add_argument( '--mem',dest="mem",help="Memory allocated for a job", default=None )
     arg_parser.add_argument( '--maxjobs',dest="maxjobs",help="Maximum number of jobs to pass to condor", default=None )
     arg_parser.add_argument( '--limit', help="Limit for input db queries", default=0, type=int )
     # arg_parser.add_argument( '-u', '--unblock-state', nargs='*', dest='unblock',  choices=["submitting","submitted","started","running","evicted","failed","finished"] )

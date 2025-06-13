@@ -1,34 +1,27 @@
 #!/usr/bin/env python
 
 from pathlib import Path
-import datetime
+from datetime import datetime
 import yaml
 import cProfile
 import subprocess
+import os
 import sys
-from contextlib import nullcontext # for dryruns, "with open(...) if not dryrun else nullcontext as file"
 
 from logging.handlers import RotatingFileHandler
 import pprint # noqa F401
-import os
 if os.uname().sysname!='Darwin' :
     import htcondor # type: ignore
 
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit
+from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
+from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixcondorjobs import CondorJob
 from sphenixdbutils import test_mode as dbutils_test_mode
 import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
-
-# ============================================================================================
-
-def make_chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    # source https://stackoverflow.com/questions/312443/how-do-i-split-a-list-into-equally-sized-chunks
-    for i in range(0, len(lst), n):
-        yield lst[i:i + n]
+from sphenixdbutils import cnxn_string_map, dbQuery
 
 # ============================================================================================
 
@@ -102,16 +95,17 @@ def main():
 
     ### Which runs to process?
     run_condition = None
+    runlist=[]
     if args.runlist:
         INFO(f"Processing runs from file: {args.runlist}")
-        run_condition = f"and runnumber in ( {extract_numbers_to_commastring(args.runlist)} )"
+        run_cond_text, _ = extract_numbers_to_commastring(args.runlist)
+        run_condition = f"and runnumber in ({run_cond_text} )"
     elif args.runs:
         INFO(f"Processing run (range): {args.runs}")
-        run_condition = list_to_condition(args.runs, "runnumber")
+        run_condition, _ = list_to_condition(args.runs, "runnumber")        
     else:
         ERROR("No runs specified.")
         exit(1)
-
     # Limit the number of results from the query?
     limit_condition = ""
     if args.limit:
@@ -127,7 +121,7 @@ def main():
     if limit_condition != "":
         WARN( f"For testing, limiting input query to {args.limit} entries. Probably not what you want." )
         limit_condition = f"\t{limit_condition}\n"
-    
+        
     rule_substitions["file_query_constraints"] = f"""{run_condition}{limit_condition}"""
     rule_substitions["status_query_constraints"] = f"""{run_condition.replace('runnumber','run')}{limit_condition}"""
     DEBUG(f"Input query constraints: {rule_substitions['file_query_constraints']}")
@@ -140,6 +134,10 @@ def main():
     if args.mangle_dstname:
         DEBUG("Mangling DST name")
         rule_substitions['DST']=args.mangle_dstname
+
+    if args.mem:
+        DEBUG(f"Setting memory to {args.mem}")
+        rule_substitions['mem']=args.mem
 
     # rule.filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
@@ -193,12 +191,12 @@ def main():
     rule_matches=match_config.matches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
         
-    for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in rule_matches.items():
-        CHATTY(f"Run:     {run}, Seg:  {seg}")
-        CHATTY(f"daqhost:    {daqhost}, Leaf:    {leaf}")
-        CHATTY(f"Outbase: {outbase}  Output: {out_file}")
-        CHATTY(f"Logbase: {logbase}")
-        CHATTY(f"nInput:  {len(in_files)}\n")
+    # for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in rule_matches.items():
+    #     CHATTY(f"Run:     {run}, Seg:  {seg}")
+    #     CHATTY(f"daqhost:    {daqhost}, Leaf:    {leaf}")
+    #     CHATTY(f"Outbase: {outbase}  Output: {out_file}")
+    #     CHATTY(f"Logbase: {logbase}")
+    #     CHATTY(f"nInput:  {len(in_files)}\n")
 
     if os.uname().sysname=='Darwin' :
         WARN("Running on native Mac, cannot use condor.")
@@ -247,11 +245,12 @@ def main():
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
+
         # len(chunked_jobs) doesn't work, it's a generator
         if not args.dryrun:
-            with open(f'{submission_dir}/{subbase}_{i}.sub', "w") as file:
-                file.write(str(base_job))
-                file.write(
+            with open(f'{submission_dir}/{subbase}_{i}.sub', "w") as condor_subfile:
+                condor_subfile.write(str(base_job))
+                condor_subfile.write(
 f"""
 log = $(log)
 output = $(output)
@@ -259,31 +258,77 @@ error = $(error)
 arguments = $(arguments)
 queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
 """)
-        with open(f'{submission_dir}/{subbase}_{i}.in', "w") if not args.dryrun else nullcontext() as file:
-            for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in chunk:
-                condor_job = CondorJob.make_job( output_file=out_file, 
-                                                 inputs=in_files,
-                                                 outbase=outbase,
-                                                 logbase=logbase,
-                                                 leafdir=leaf,
-                                                 run=run,
-                                                 seg=seg,
-                                                 daqhost=daqhost,
-                                                )        
-                # Make sure directories exist
-                if not args.dryrun:
-                    Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
-                    #Path(condor_job.finaldir).mkdir( parents=True, exist_ok=True ) # final destinatiopn on lustre. 
-                    Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
-
-                    # stdout, stderr, and condorlog locations, usually on sphenix02:
-                    for file_in_dir in condor_job.output, condor_job.error, condor_job.log :
-                        Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
+        prod_state_rows=[]
+        condor_rows=[]
+        j=0 # DEBUG only
+        for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in chunk:
+            # Create .in file row
+            condor_job = CondorJob.make_job( output_file=out_file, 
+                                             inputs=in_files,
+                                             outbase=outbase,
+                                             logbase=logbase,
+                                             leafdir=leaf,
+                                             run=run,
+                                             seg=seg,
+                                             daqhost=daqhost,
+                                            )        
+            condor_rows.append(condor_job.condor_row())
+            # Make sure directories exist
+            if not args.dryrun:
+                Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
+                #Path(condor_job.finaldir).mkdir( parents=True, exist_ok=True ) # final destinatiopn on lustre. 
+                Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
+                
+                # stdout, stderr, and condorlog locations, usually on sphenix02:
+                for file_in_dir in condor_job.output, condor_job.error, condor_job.log :
+                    Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
                     
-                # Add to submission input file
-                if file:
-                    file.write(condor_job.condor_row())
+            # Add to production database
+            # FIXME: inputs, prod_id
+            dsttype=logbase.split(f'_{rule.dataset}')[0]
+            dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
+            # FIXME: SEGMENT
+            # Following is fragile, don't add spaces
+            prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
+                dsttype=dsttype,
+                dstname=outbase,
+                dstfile=dstfile,
+                run=run, segment=seg,
+                nsegments=0, # CHECKME
+                inputs='dbquery',
+                prod_id=0, # CHECKME
+                cluster=0, process=0,
+                status="submitting",
+                timestamp=str(datetime.now().replace(microsecond=0)),
+                host=os.uname().nodename.split('.')[0]
+            ))
 
+            # j=j+1
+            # if j>1: break
+            # # end of chunk loop
+
+        comma_prod_state_rows=',\n'.join(prod_state_rows)
+        insert_prod_state = f"""
+insert into production_status
+( dsttype, dstname, dstfile, run, segment, nsegments, inputs, prod_id, cluster, process, status, submitting, submission_host )
+values 
+{comma_prod_state_rows}
+returning id
+"""
+        CHATTY(insert_prod_state+";")
+        # important note: dstfile is not UNIQUE, so we can't detect conflict here and need to rely
+        # catching already submitted files earlier
+        # could doublecheck with a query here
+        # Also important: "id" can be (zipped with and) handed to the arguments. Good if workers update the db, otherwise questionable 
+
+        if not args.dryrun:
+            ids=prod_curs = dbQuery( cnxn_string_map['statw' ], insert_prod_state )
+            prod_curs.commit()
+
+        if not args.dryrun:
+            with open(f'{submission_dir}/{subbase}_{i}.in', "w") as condor_infile:
+                condor_infile.writelines(row for row in condor_rows)
+                
     if len(rule_matches) ==0 :
         INFO("No jobs to submit.")
     else:
@@ -300,6 +345,69 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
     
     INFO( "KTHXBYE!" )
 
+    # for m in matching:
+    #     run     = int(m['run'])
+    #     segment = int(m['seg'])
+    #     name    = m['name']
+    #     streamname = m.get( 'streamname', None )
+    #     name_ = name
+    #     if streamname:
+    #         name_ = name.replace("$(streamname)",streamname)
+
+    #     dstfileinput = m['lfn'].split('.')[0]
+
+    #     if m['inputs']:
+    #         dstfileinput=m['inputs']
+
+    #     # TODO: version ???
+    #     # TODO: is dstfile and key redundant ???
+    #     version = m.get('version',None)
+    #     dsttype = name_
+    #     dstname = dsttype +'_'+setup.build.replace(".","")+'_'+setup.dbtag
+    #     if version:
+    #         dstname = dstname + "_" + version  
+    #     dstfile = ( dstname + '-' + RUNFMT + '-' + SEGFMT ) % (run,segment)        
+
+    #     # TODO: version???
+    #     key = sphenix_base_filename( setup.name, setup.build, setup.dbtag, run, segment, version )
+        
+    #     prod_id = setup.id
+
+    #     # Cluster and process are unset during at this pint
+    #     cluster = 0
+    #     process = 0
+
+    #     status  = state        
+
+    #     timestamp=str( datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)  )
+
+    #     # TODO: Handle conflict
+    #     node=platform.node().split('.')[0]
+
+    #     value = f"('{dsttype}','{dstname}','{dstfile}',{run},{segment},0,'{dstfileinput}',{prod_id},{cluster},{process},'{status}', '{timestamp}', 0, '{node}' )" 
+
+    #     if streamname:
+    #         value = value.replace( '$(streamname)', streamname )
+
+    #     values.append( value )
+       
+    # insvals = ','.join(values)    
+    # insert = f"""
+    # insert into production_status
+    #        (dsttype, dstname, dstfile, run, segment, nsegments, inputs, prod_id, cluster, process, status, submitting, nevents, submission_host )
+    # values 
+    #        {insvals}
+    
+    # returning id
+    # """
+    # on conflict
+    # on constraint {files_table}_pkey
+    # do update set 
+    # time=EXCLUDED.time,
+    # size=EXCLUDED.size,
+    # md5=EXCLUDED.md5
+    # ;
+    # """
 
     # TODO: add to sanity checks:
     # if rev==0 and build != 'new':
