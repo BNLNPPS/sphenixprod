@@ -241,7 +241,7 @@ def main():
     #    exit()
 
     # Individual submission file pairs are created to handle chunks of jobs
-    chunk_size = 500
+    chunk_size = 5
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
@@ -302,7 +302,7 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
                 timestamp=str(datetime.now().replace(microsecond=0)),
                 host=os.uname().nodename.split('.')[0]
             ))
-
+            
             # j=j+1
             # if j>1: break
             # # end of chunk loop
@@ -317,9 +317,11 @@ returning id
 """
         CHATTY(insert_prod_state+";")
         # important note: dstfile is not UNIQUE, so we can't detect conflict here and need to rely
-        # catching already submitted files earlier
+        # on catching already submitted files earlier
         # could doublecheck with a query here
         # Also important: "id" can be (zipped with and) handed to the arguments. Good if workers update the db, otherwise questionable 
+        # print(insert_prod_state)
+        # exit()
 
         if not args.dryrun:
             ids=prod_curs = dbQuery( cnxn_string_map['statw' ], insert_prod_state )
