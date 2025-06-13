@@ -1,7 +1,7 @@
 import yaml
 import re
 from dataclasses import dataclass, asdict
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Tuple, Any, Optional
 import itertools
 import operator
 import time
@@ -109,7 +109,7 @@ def check_params(params_data: Dict[str, Any], required: List[str], optional: Lis
     return check_clean
 
 # ============================================================================================
-def extract_numbers_to_commastring(filepath):
+def extract_numbers_to_commastring(filepath: str ) -> Tuple[str, List[int]]: 
     """
     Extracts all numbers from a file, combines them into a comma-separated string,
     and returns the string. Numbers can be separated by whitespace including newlines.
@@ -130,16 +130,17 @@ def extract_numbers_to_commastring(filepath):
 
     # Find all integer numbers. Could catch mistakes better
     numbers = re.findall(r"[-+]?\d+", content)
-    return ','.join(numbers) if numbers else None
+    return ','.join(numbers),[2] if numbers else None,[]
 
 # ============================================================================================
-def list_to_condition(lst, name) :
+def list_to_condition(lst, name)  -> Tuple[str, List[int]] :
     """
     Generates a condition string usable in a SQL query from a list of values.
 
     This function takes a list (`lst`) and a field name (`name`) and constructs a
     string that can be used as a `WHERE` clause condition in a SQL query. It
     handles different list lengths to create appropriate conditions.
+    It also returns a sorted list of runs formed by the condition.
     No effort is made to ensure that inputs are numbers and properly ordered.
 
     Args:
@@ -148,24 +149,27 @@ def list_to_condition(lst, name) :
 
     Returns:
         A string representing a SQL-like condition, or None if the list is empty.
+        A sorted list of runs formed by the condition, or []
 
     Examples:
-        - list_to_condition([123], "runnumber") returns "and runnumber=123"
-        - list_to_condition([100, 200], "runnumber") returns "and runnumber>=100 and runnumber<=200"
-        - list_to_condition([1, 2, 3], "runnumber") returns "and runnumber in ( 1,2,3 )"
+        - list_to_condition([123], "runnumber") returns "and runnumber=123", [123]
+        - list_to_condition([100, 200], "runnumber") returns "and runnumber>=100 and runnumber<=200", [100, 101, ..., 200]
+        - list_to_condition([1, 2, 3], "runnumber") returns "and runnumber in ( 1,2,3 )", [1, 2, 3]
         - list_to_condition([], "runnumber") returns None
     """
-    condition = ""
+    condition = None
+    runlist=[]
     if  len( lst )==1:
         condition = f"and {name}={lst[0]}"
+        runlist=[int(lst[0])]
     elif len( lst )==2:
-        condition = f"and {name}>={lst[0]} and {name}<={lst[1]}"
+        runlist = list( range(int(lst[0]), int(lst[1])+1) )
+        condition = f"and {name}>={lst[0]} and {name}<={lst[1]}"        
     elif len( lst )>=3 :
+        runlist=sorted( [ int(r) for r in lst ] )
         condition = f"and {name} in ( %s )" % ','.join( lst )
-    else:
-        return None
 
-    return condition
+    return condition, runlist
 
 # ============================================================================
 @dataclass( frozen = True )
@@ -390,9 +394,13 @@ class RuleConfig:
             job_data[field] = subsval
             CHATTY(f"After substitution, {field} is {subsval}")
 
+            request_memory=rule_substitions.get("mem")
+            if request_memory is None:
+                request_memory=job_data["mem"]
+                
             job_config=CondorJobConfig(
                 executable=script,
-                request_memory=job_data["mem"],
+                request_memory=request_memory,
                 request_disk=job_data.get("request_disk", "10GB"),
                 comment=comment,
                 neventsper=neventsper,
@@ -481,7 +489,6 @@ class MatchConfig:
 
     # ------------------------------------------------
     def matches(self) :
-
         INFO('Checking for already existing output...')
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # Despite the "like" clause, this is a fast query. Extra cuts or substitute cuts like
@@ -494,12 +501,13 @@ class MatchConfig:
         if 'raw' in self.input_config.db:
             dst_type_template += '_%'
         dst_type_template += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
-        dst_type_template += '_%'
+        dst_type_template += '%'
         # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
         # exist_query  = f"""select filename, -1 as daqhost,runnumber,segment from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
         ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
         exist_query  = f"""select filename from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
         exist_query += self.input_config.file_query_constraints
+        DEBUG(exist_query)
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
@@ -509,7 +517,7 @@ class MatchConfig:
         INFO('Checking for output already in production...')
         status_query  = f"""select dstfile,status from production_status where dstname like '{dst_type_template}'"""
         status_query += self.input_config.status_query_constraints
-        existing_status = { c.dstfile if c.dstfile.endswith('.root') else c.dstfile+".root" : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
+        existing_status = { c.dstfile if c.dstfile.endswith('.root') else c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
         INFO(f"Already have {len(existing_status)} output files in the production db")
         if len(existing_status) > 0 :
             CHATTY(f"First line: \n{next(iter(existing_status))}")
@@ -582,7 +590,7 @@ class MatchConfig:
             candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
             files_for_run = { k : list(g) for
                            k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
-            # Removing  the files we just _could_ be useful to shorten the search space
+            # Removing the files we just used _could_ be useful to shorten the search space
             # for the next iteration. But this is NOT the way to do it, turned out to be the slowest part of the code
             # in_files = [ f for f in in_files if f.runnumber != runnumber ]
 
@@ -648,6 +656,14 @@ class MatchConfig:
                     if output in existing_output:
                         CHATTY(f"Output file {output} already exists. Not submitting.")
                         continue
+                    if output in existing_status: # FIXME
+                        WARN(f"Output file {output} already has production status {existing_status[output]}. Not submitting.")
+                        WARN(output)
+                        exit()
+                        if runnumber==66462 and "mvtx0" in output:
+                            print(output)
+                            exit()
+                        continue
 
                     in_files_for_seg= []
                     for host in files_for_run:
@@ -662,25 +678,31 @@ class MatchConfig:
                     exit(-1)
                 CHATTY(f'\ninput_stem is a dictionary, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
                 
-                # Every runnumber has exactly one output file, and a gaggle of input files with matching daqhost
+                # Every runnumber has exactly "one" output file (albeit with many segments), and a gaggle of input files with matching daqhost
                 # Sort and group the input files by host
                 for leaf, daqhost in input_stem.items():
                     if daqhost not in files_for_run:
-                        DEBUG(f"No inputs from {daqhost} for run {runnumber}.")
+                        CHATTY(f"No inputs from {daqhost} for run {runnumber}.")
                         continue
                     
                     dsttype = f'{self.rulestem}_{leaf}'
                     dsttype += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
                     # Example arguments for the combiner script:
                     # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000 \ outbase \
-                    # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000-00061162-00000 \ logbase \
+                    # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000-00061162 \ logbase \
                     outbase=f'{dsttype}_{self.dataset}'
                     logbase=f'{outbase}_{runnumber:{pRUNFMT}}'
-                    # check for one existing output file. 
-                    first_output=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}.root' # == {logbase}.root but this is more explicit
+                    # check for one existing output file.
+                    # These DO have a segment and a .root extension
+                    first_output=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}.root'
                     if first_output in existing_output:
                         CHATTY(f"Output file {first_output} already exists. Not submitting.")
                         continue
+                    
+                    dstfile=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
+                    if dstfile in existing_status:
+                        WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
+                        continue                    
 
                     CHATTY(f"Creating {first_output} for run {runnumber} with {len(files_for_run[daqhost])} input files")
                     
