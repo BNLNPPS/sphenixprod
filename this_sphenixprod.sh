@@ -77,6 +77,7 @@ if [[ `ssh-add -l` =~ "kolja" ]] ; then
     echo "Hello Kolja"    
     git config --global user.name "Kolja Kauder"
     git config --global user.email "kkauder@gmail.com"    
-    #git config --global push.default simple    
+    #git config --global push.default simple
+    alias cqb='condor_q -batch'
 fi
 
