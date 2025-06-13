@@ -6,7 +6,7 @@ import time
 import random
 import os
 
-from simpleLogger import WARN, DEBUG, INFO, ERROR
+from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY
 
 """
 This module provides an interface to the sPHENIX databases.
@@ -79,6 +79,34 @@ if Path('/.dockerenv').exists() :
     #     DEBUG(f"Changing {key} to use DSN=eickolja")
     #     cnxn_string_map[key] = 'DRIVER=PostgreSQL;SERVER=host.docker.internal;DSN=eickolja;READONLY=True;UID=eickolja'
 
+
+# ============================================================================================
+insert_files_tmpl="""
+insert into {files_table} (lfn,full_host_name,full_file_path,time,size,md5) 
+values ('{lfn}','{full_host_name}','{full_file_path}','{ctimestamp}',{file_size_bytes},'{md5}')
+on conflict
+on constraint {files_table}_pkey
+do update set 
+time=EXCLUDED.time,
+size=EXCLUDED.size,
+md5=EXCLUDED.md5
+;
+"""
+# ---------------------------------------------------------------------------------------------
+insert_datasets_tmpl="""
+insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events)
+values ('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents})
+on conflict
+on constraint {datasets_table}_pkey
+do update set
+runnumber=EXCLUDED.runnumber,
+segment=EXCLUDED.segment,
+size=EXCLUDED.size,
+dsttype=EXCLUDED.dsttype,
+events=EXCLUDED.events
+;
+"""
+
 # ============================================================================================
 def printDbInfo( cnxn_string, title ):
     conn = pyodbc.connect( cnxn_string )
@@ -96,7 +124,7 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     #assert( 'select'     in query.lower() )
 
     DEBUG(f'[cnxn_string] {cnxn_string}')
-    DEBUG(f'[query      ]\n{query}')
+    CHATTY(f'[query      ]\n{query}')
 
     now=time.time()
     last_exception = None

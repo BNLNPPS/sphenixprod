@@ -18,6 +18,7 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring, inputs_from_output
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import cnxn_string_map, dbQuery
+from sphenixdbutils import insert_files_tmpl, insert_datasets_tmpl
 
 # ============================================================================================
 
@@ -90,7 +91,6 @@ def main():
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
 
-
     # Which find command to use?
     filesystem = rule.job_config.filesystem
 
@@ -107,13 +107,13 @@ def main():
     ##################### DSTs, from lustre to lustre
     # Original output directory, the final destination, and the file name trunk
     inlocation=filesystem['outdir']
-    finaldir=filesystem['finaldir']
+    finaldir_tmpl=filesystem['finaldir']
     DEBUG(f"Filesystem: {filesystem}")
     INFO(f"Original output directory: {inlocation}")
-    INFO(f"Final destination template: {finaldir}")
+    INFO(f"Final destination template: {finaldir_tmpl}")
 
     # List of files to process
-    findcommand = f"{lfind} {inlocation} -type f -name {rule.rulestem}\* -print"
+    findcommand = f"{lfind} {inlocation} -type f -name {rule.rulestem}\*"
     INFO(f"Find command: {findcommand}")
     foundfiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
 
@@ -167,48 +167,35 @@ def main():
         run = int(lfn.split(rule.dataset)[1].split('-')[1])
         rungroup= rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
         # Fill in rungroup and optionally leaf directory
-        finaldir = finaldir.format( leafdir=leaf, rungroup=rungroup )
+        finaldir = finaldir_tmpl.format( leafdir=leaf, rungroup=rungroup )
         # Between the dash and .root is the segment, used for the db
         segment = int(lfn.split(rule.dataset)[1].split('-')[2].split('.root')[0])
 
         # --- Extract what we need for the databases
         # for "files"
-        full_host_name = "lustre" if 'lustre' in finaldir else 'gpfs'
-        full_file_path = f'{finaldir}/{lfn}'
         filestat=Path(file).stat()
-        ctimestamp = filestat.st_ctime
-        ctimestamp = datetime.fromtimestamp(ctimestamp)
-        file_size_bytes = filestat.st_size
-        files_table='test_files' if test_mode else 'files'
-        insert_files=f"""
-    insert into {files_table} (lfn,full_host_name,full_file_path,time,size,md5) 
-    values ('{lfn}','{full_host_name}','{full_file_path}','{ctimestamp}',{file_size_bytes},'{md5}')
-    on conflict
-    on constraint {files_table}_pkey
-    do update set 
-    time=EXCLUDED.time,
-    size=EXCLUDED.size,
-    md5=EXCLUDED.md5
-    ;
-    """
-        CHATTY(insert_files)
+        full_file_path = f'{finaldir}/{lfn}'
+        insert_files=insert_files_tmpl.format(
+            files_table='test_files' if test_mode else 'files',
+            lfn=lfn,
+            md5=md5,
+            full_host_name = "lustre" if 'lustre' in finaldir else 'gpfs',
+            full_file_path = full_file_path,
+            ctimestamp = datetime.fromtimestamp(filestat.st_ctime),
+            file_size_bytes = filestat.st_size
+        )
+        insert_datasets=insert_datasets_tmpl.format(
+            datasets_table='test_datasets' if test_mode else 'datasets',
+            lfn=lfn, md5=md5,
+            run=run, segment=segment,
+            file_size_bytes=filestat.st_size,
+            dataset=rule.dataset,
+            dsttype=dsttype,
+            nevents=nevents
+        )
 
-        # for 'datasets'
-        datasets_table='test_datasets' if test_mode else 'datasets'
-        insert_datasets=f"""
-    insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events)
-    values ('{lfn}',{run},{segment},{file_size_bytes},'{rule.dataset}','{dsttype}',{nevents})
-    on conflict
-    on constraint {datasets_table}_pkey
-    do update set
-    runnumber=EXCLUDED.runnumber,
-    segment=EXCLUDED.segment,
-    size=EXCLUDED.size,
-    dsttype=EXCLUDED.dsttype,
-    events=EXCLUDED.events
-    ;
-    """
-        CHATTY(insert_datasets)        
+        CHATTY(insert_files)     
+        CHATTY(insert_datasets)
         if args.dryrun:
             if f%when2blurb == 0:
                 print( f"mv {file} {full_file_path}" )
@@ -241,14 +228,14 @@ def main():
     leafparent=histdir.split('/{leafdir}')[0]
     INFO(f"Leaf directories: \n{leafparent}")
 
-    leaffind = f"{find} {leafparent} -type d -mindepth 1 -a -maxdepth 1 -print"
+    leaffind = f"{find} {leafparent} -type d -mindepth 1 -a -maxdepth 1"
     INFO(f"Find command: {leaffind}")
     leafdirs = subprocess.run(leaffind, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
     CHATTY(f"Leaf directories: \n{leafdirs}")
     
     allhistdirs = []
     for leafdir in leafdirs :
-        hist_find = f"{find} {leafdir} -name hist -type d -print"
+        hist_find = f"{find} {leafdir} -name hist -type d"
         CHATTY(f"hist directory find command: {hist_find}")
         allhistdirs += subprocess.run(hist_find, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
     CHATTY(f"hist directories: \n{allhistdirs}")
@@ -256,7 +243,7 @@ def main():
     # Finally, run over all HIST files in those directories
     foundfiles=[]
     for hdir in allhistdirs:        
-        findcommand = f"{find} {hdir} -type f -name HIST\* -print"
+        findcommand = f"{find} {hdir} -type f -name HIST\*"
         tmpfound = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
         # Remove ".root" files, they're already processed.
         foundfiles += [ file for file in tmpfound if not file.endswith(".root") ]
@@ -290,41 +277,28 @@ def main():
         
         # --- Extract what we need for the databases
         # for "files"
-        full_host_name = "lustre" if 'lustre' in histdir else 'gpfs'
-        full_file_path = fullpath # f'{finaldir}/{lfn}'
         filestat=Path(file).stat()
-        ctimestamp = filestat.st_ctime
-        ctimestamp = datetime.fromtimestamp(ctimestamp)
-        file_size_bytes = filestat.st_size
-        files_table='test_files' if test_mode else 'files'
-        insert_files=f"""
-    insert into {files_table} (lfn,full_host_name,full_file_path,time,size,md5) 
-    values ('{lfn}','{full_host_name}','{full_file_path}','{ctimestamp}',{file_size_bytes},'{md5}')
-    on conflict
-    on constraint {files_table}_pkey
-    do update set 
-    time=EXCLUDED.time,
-    size=EXCLUDED.size,
-    md5=EXCLUDED.md5
-    ;
-    """
-        CHATTY(insert_files)
-
-        # for 'datasets'
+        full_file_path = fullpath
+        insert_files=insert_files_tmpl.format(
+            files_table='test_files' if test_mode else 'files',
+            lfn=lfn,
+            md5=md5,
+            full_host_name = "lustre" if 'lustre' in histdir else 'gpfs',
+            full_file_path = full_file_path,
+            ctimestamp = datetime.fromtimestamp(filestat.st_ctime),
+            file_size_bytes = filestat.st_size
+        )
         datasets_table='test_datasets' if test_mode else 'datasets'
-        insert_datasets=f"""
-    insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events)
-    values ('{lfn}',{run},{segment},{file_size_bytes},'{rule.dataset}','{dsttype}',{nevents})
-    on conflict
-    on constraint {datasets_table}_pkey
-    do update set
-    runnumber=EXCLUDED.runnumber,
-    segment=EXCLUDED.segment,
-    size=EXCLUDED.size,
-    dsttype=EXCLUDED.dsttype,
-    events=EXCLUDED.events
-    ;
-    """
+        insert_datasets=insert_datasets_tmpl.format(
+            datasets_table='test_datasets' if test_mode else 'datasets',
+            lfn=lfn, md5=md5,
+            run=run, segment=segment,
+            file_size_bytes=filestat.st_size,
+            dataset=rule.dataset,
+            dsttype=dsttype,
+            nevents=nevents
+        )
+        CHATTY(insert_files)
         CHATTY(insert_datasets)
         if args.dryrun:
             if f%when2blurb == 0:
