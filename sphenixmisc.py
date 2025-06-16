@@ -99,7 +99,7 @@ def remove_empty_directories(dirs_to_del: Set[str]):
                 # This might occur due to permission issues, or if the directory is
                 # unexpectedly not empty (e.g., hidden files not listed by iterdir
                 # on some specific OS/filesystem configurations, or a race condition).
-                print(f"Warning: Could not remove directory '{directory_path}'. Reason: {e}")
+                print(f"Warning: Could not remove directory '{dir}'. Reason: {e}")
                 continue
         parent=dir.parent
         # Check the parent, if empty, add to the set
