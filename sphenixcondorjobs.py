@@ -179,10 +179,10 @@ class CondorJob:
         log       = cls.job_config.log_tmpl.format(rungroup=rungroup, leafdir=leafdir, logbase=logbase)
         output    = f'{logdir}/{logbase}.out'
         error     = f'{logdir}/{logbase}.err'
-        if Path('/.dockerenv').exists() :
-            WARN("Running in docker")
-            output:                str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).out'
-            error:                 str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).err'
+        # if Path('/.dockerenv').exists() :
+        #     WARN("Running in docker")
+        #     output:                str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).out'
+        #     error:                 str = '/Users/eickolja/sphenix/data02/sphnxpro/scratch/kolja/test2/test2.$(ClusterId).$(Process).err'
 
         return cls(
             arguments           = arguments,
@@ -243,7 +243,8 @@ class CondorJob:
 
         # Filter out any potential None values if necessary, though current
         # fields seem mostly required or have defaults.
-        return ",".join([str(v) for v in data.values()])+"\n"
+        # return ",".join([str(v) for v in data.values()])+"\n"
+        return ",".join([str(v) for v in data.values()])
 
 # ============================================================================
 
