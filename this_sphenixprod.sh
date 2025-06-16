@@ -68,6 +68,9 @@ else
    return 0
 fi
 
+#aliases
+alias cqb='condor_q -batch'
+
 # PS1="\u@\h $(parse_git_branch) \W> "
 PS1="\u@\h \W> "
 
@@ -78,6 +81,5 @@ if [[ `ssh-add -l` =~ "kolja" ]] ; then
     git config --global user.name "Kolja Kauder"
     git config --global user.email "kkauder@gmail.com"    
     #git config --global push.default simple
-    alias cqb='condor_q -batch'
 fi
 

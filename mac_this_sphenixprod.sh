@@ -80,6 +80,9 @@ else
    return 0
 fi
 
+#aliases
+alias cqb='condor_q -batch'
+
 if [[ -n "$BASH_VERSION" ]]; then
    # Bash prompt
    #PS1="\u@\h \$(parse_git_branch)\W> "
