@@ -6,7 +6,7 @@ import time
 import random
 import os
 
-from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY
+from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY # noqa: F401
 
 """
 This module provides an interface to the sPHENIX databases.
@@ -55,11 +55,11 @@ cnxn_string_map = {
 # Hack to test locally on Mac
 if os.uname().sysname=='Darwin' :
     cnxn_string_map = {
-        'fcw'         : 'DATABASE=filecatalogdb;UID=eickolja',
-        'fcr'         : 'DATABASE=filecatalogdb;READONLY=True;UID=eickolja',
-        'statr'       : 'DATABASE=productiondb;READONLY=True;UID=eickolja',
-        'statw'       : 'DATABASE=productiondb;UID=eickolja',
-        'rawr'        : 'DATABASE=rawdatacatalogdb;READONLY=True;UID=eickolja',
+        'fcw'         : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=filecatalogdb;UID=eickolja',
+        'fcr'         : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=filecatalogdb;READONLY=True;UID=eickolja',
+        'statr'       : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=productiondb;READONLY=True;UID=eickolja',
+        'statw'       : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=productiondb;UID=eickolja',
+        'rawr'        : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=rawdatacatalogdb;READONLY=True;UID=eickolja',
     }
     # for key in cnxn_string_map.keys() :
     #     DEBUG(f"Changing {key} to use DSN=eickolja")
