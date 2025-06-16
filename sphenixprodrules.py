@@ -343,7 +343,7 @@ class RuleConfig:
         # because that script will execute the actual payload copy on the node.
         # Bit of an annoying walk with python tools, so use unix find instead
         script = job_data["script"]
-        if not script.startswith("/"): # Search in the payload
+        if not script.startswith("/"): # Search in the payload unless script has an absolute path
             p = subprocess.Popen(f'/usr/bin/find {" ".join(payload_list)} -type f',
                                  shell=True, # needed to expand "*"
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -664,7 +664,6 @@ class MatchConfig:
                             print(output)
                             exit()
                         continue
-
                     in_files_for_seg= []
                     for host in files_for_run:
                         in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
