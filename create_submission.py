@@ -8,7 +8,6 @@ import subprocess
 import os
 import sys
 
-from logging.handlers import RotatingFileHandler
 import pprint # noqa F401
 if os.uname().sysname!='Darwin' :
     import htcondor # type: ignore
@@ -95,7 +94,6 @@ def main():
 
     ### Which runs to process?
     run_condition = None
-    runlist=[]
     if args.runlist:
         INFO(f"Processing runs from file: {args.runlist}")
         run_cond_text, _ = extract_numbers_to_commastring(args.runlist)
@@ -228,20 +226,8 @@ def main():
     CondorJob.job_config = rule.job_config
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
 
-    # import itertools
-    # import operator
-    # all_matches=rule_matches.items()
-    # # pprint.pprint(list(all_matches)[0])
-    # # exit()
-    # # split by runnumber
-    # matches_by_run = {k : list(g) for k, g in itertools.groupby(all_matches, operator.attrgetter('runnumber'))}
-    # for runnumber in matches_by_run:
-    #    matches = matches_by_run[runnumber]
-    #    print(matches)
-    #    exit()
-
     # Individual submission file pairs are created to handle chunks of jobs
-    chunk_size = 5
+    chunk_size = 50
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
@@ -260,7 +246,6 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
 """)
         prod_state_rows=[]
         condor_rows=[]
-        j=0 # DEBUG only
         for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in chunk:
             # Create .in file row
             condor_job = CondorJob.make_job( output_file=out_file, 
@@ -271,12 +256,12 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
                                              run=run,
                                              seg=seg,
                                              daqhost=daqhost,
-                                            )        
+                                            )
             condor_rows.append(condor_job.condor_row())
+
             # Make sure directories exist
             if not args.dryrun:
                 Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
-                #Path(condor_job.finaldir).mkdir( parents=True, exist_ok=True ) # final destinatiopn on lustre. 
                 Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
                 
                 # stdout, stderr, and condorlog locations, usually on sphenix02:
@@ -287,7 +272,7 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
             # FIXME: inputs, prod_id
             dsttype=logbase.split(f'_{rule.dataset}')[0]
             dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
-            # FIXME: SEGMENT
+            # FIXME: SEGMENT?
             # Following is fragile, don't add spaces
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
@@ -302,9 +287,6 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
                 timestamp=str(datetime.now().replace(microsecond=0)),
                 host=os.uname().nodename.split('.')[0]
             ))
-            
-            # j=j+1
-            # if j>1: break
             # # end of chunk loop
 
         comma_prod_state_rows=',\n'.join(prod_state_rows)
@@ -316,6 +298,7 @@ values
 returning id
 """
         CHATTY(insert_prod_state+";")
+        
         # important note: dstfile is not UNIQUE, so we can't detect conflict here and need to rely
         # on catching already submitted files earlier
         # could doublecheck with a query here
@@ -324,12 +307,19 @@ returning id
         # exit()
 
         if not args.dryrun:
-            ids=prod_curs = dbQuery( cnxn_string_map['statw' ], insert_prod_state )
+            # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
+            prod_curs = dbQuery( cnxn_string_map['statw' ], insert_prod_state )
             prod_curs.commit()
-
+            ids=[str(id) for (id,) in prod_curs.fetchall()]
+            CHATTY(f"Inserted {len(ids)} rows into production_status, IDs: {ids}")
+            # condor_rows=list(zip(condor_rows,ids)) # zip the ids to the condor rows, so that we can use them in the arguments
+            # condor_rows=','.join( pair for pair in zip(condor_rows, ids) )
+            # print(a)
+            condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
+ 
         if not args.dryrun:
             with open(f'{submission_dir}/{subbase}_{i}.in', "w") as condor_infile:
-                condor_infile.writelines(row for row in condor_rows)
+                condor_infile.writelines(row+'\n' for row in condor_rows)
                 
     if len(rule_matches) ==0 :
         INFO("No jobs to submit.")
