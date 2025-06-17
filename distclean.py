@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import pyodbc
 from pathlib import Path
 from datetime import datetime
 import yaml
@@ -152,18 +153,19 @@ def main():
 
     ### Which runs to delete?
     runlist=[-1]
+    runcondition = ""
     if args.runlist:
         INFO(f"Processing runs from file: {args.runlist}")
-        _, runlist = extract_numbers_to_commastring(args.runlist)
+        runcondition, runlist = extract_numbers_to_commastring(args.runlist)
     elif args.runs:
         if args.runs==['-1'] : 
             INFO(f"Processing all runs.")
         else:
             INFO(f"Processing run (range): {args.runs}")
-        _, runlist = list_to_condition(args.runs, "runnumber")
+        runcondition, runlist = list_to_condition(args.runs, "runnumber")
     else:
         ERROR("Something's wrong. No runs provided, but this should have been caught by the \"runs\" default value in argparsing.")
-        exit(-1)        
+        exit(-1)    
 
     ### Submission directory. Hacky.
     submission_dir = Path('./tosubmit').resolve() 
@@ -188,16 +190,29 @@ def main():
 
     lakelocation=filesystem['outdir']
     INFO(f"Original output directory: {lakelocation}")
-    findcommand = f"{lfind} {lakelocation} -type f -name {dstbase}\*"
+    findcommand = f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\*"
     INFO(f"Find command: {findcommand}")
     lakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
-    print(f"Found {len(lakefiles)} matching files in the lake.")
+    print(f"Found {len(lakefiles)} matching dsts sans runnumber cut in the lake.")
+
+    findcommand = f"{lfind} {lakelocation} -type f -name {dstbase}\*.finished"
+    INFO(f"Find command: {findcommand}")
+    finishedlakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    print(f"Found {len(finishedlakefiles)} matching .finished files in the lake.")
+
     del_lakefiles=[]
     for f_to_delete in lakefiles:
         lfn=Path(f_to_delete).name
         run = int(lfn.split(rule.dataset)[1].split('-')[1])
         if runlist==[-1] or binary_contains_bisect(runlist,run):
-            del_lakefiles.append(f_to_delete)        
+            del_lakefiles.append(f_to_delete)
+            
+    # for f_to_delete in finishedlakefiles:
+    #     lfn=Path(f_to_delete).name
+    #     run = int(lfn.split(rule.dataset)[1].split('-')[1])
+    #     if runlist==[-1] or binary_contains_bisect(runlist,run):
+    #         del_lakefiles.append(f_to_delete)
+    
     WARN(f"Removing {len(del_lakefiles)} DSTs of the form {dstbase} in the lake at {lakelocation}")
     
     for f_to_delete in lakefiles: 
@@ -437,6 +452,29 @@ def main():
     INFO(f"{len(empty_data_dirs)} empty leaf directories found with {data_dirs_find}. Removing.")
     if not args.dryrun:
         remove_empty_directories( set(empty_data_dirs) )
+
+    sqldstbase=dstbase.replace("\*","%")
+    prodruncondition=runcondition.replace("runnumber","run")
+    ### Finally, clean the production database
+    del_prod_state = f"""
+delete from production_status 
+where 
+dstname like '{sqldstbase}'
+{prodruncondition}
+returning *
+"""
+    WARN(del_prod_state+";")
+    if not args.dryrun:
+        conn = pyodbc.connect( cnxn_string_map['statw'] )
+        curs = conn.cursor()
+        curs.execute( del_prod_state )
+        curs.commit()
+        print(curs.rowcount)
+        
+        # prod_curs = dbQuery( , del_prod_state )
+        # WARN(f"Delete prodstate from files db, response: {prod_curs.fetchall()}")
+
+
         
 # ============================================================================================
 

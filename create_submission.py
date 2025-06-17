@@ -227,7 +227,7 @@ def main():
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
 
     # Individual submission file pairs are created to handle chunks of jobs
-    chunk_size = 50
+    chunk_size = 500
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
@@ -308,7 +308,7 @@ returning id
 
         if not args.dryrun:
             # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
-            prod_curs = dbQuery( cnxn_string_map['statw' ], insert_prod_state )
+            prod_curs = dbQuery( cnxn_string_map['statw'], insert_prod_state )
             prod_curs.commit()
             ids=[str(id) for (id,) in prod_curs.fetchall()]
             CHATTY(f"Inserted {len(ids)} rows into production_status, IDs: {ids}")

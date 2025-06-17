@@ -86,7 +86,6 @@ def remove_empty_directories(dirs_to_del: Set[str]):
         dirs_to_del (Set): The directories to process. Used to pop() and insert()
     """
     while dirs_to_del:
-        print(dirs_to_del)
         dir = Path(dirs_to_del.pop())
         CHATTY(f"Called for {dir}")
         if not dir.is_dir():
