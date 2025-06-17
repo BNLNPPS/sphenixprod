@@ -124,12 +124,28 @@ def main():
     condor_batchname=rule.job_config.batch_name
     # This is not necessary, just information
     condor_running_command=f"condor_q -const 'JobBatchName==\"{condor_batchname}\"' -format '%d\\n'  ClusterId |wc -l"
-    condor_running = subprocess.run(condor_running_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()[0]
+    condor_running=0
+    try:
+        condor_running = subprocess.run(condor_running_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()[0]
+        DEBUG("Command successful!")
+    except subprocess.CalledProcessError as e:
+        print("Command failed with exit code:", e.returncode)
+    finally:
+        pass
+
     WARN(f"About to kill {condor_running} condor jobs for JobBatchName==\"{condor_batchname}\"" )
+    condor_rm_command=f"condor_rm -long -const 'JobBatchName==\"{condor_batchname}\"' | grep -c ^job_"
+    WARN(f"{condor_rm_command}")
     if not args.dryrun:
-        condor_rm_command=f"condor_rm -long -const 'JobBatchName==\"{condor_batchname}\"' | grep -c ^job_"
-        condor_rm = subprocess.run(condor_rm_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8')
-        WARN(f"Killed {condor_rm_command} jobs using {condor_rm_command}" )
+        condor_rm='0'
+        try:
+            condor_rm = subprocess.run(condor_rm_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8')
+            DEBUG("Command successful!")
+        except subprocess.CalledProcessError as e:
+            print("Command failed with exit code:", e.returncode)
+        finally:
+            pass
+        WARN(f"Killed {condor_rm} jobs using {condor_rm_command}" )
 
     filesystem = rule.job_config.filesystem
     DEBUG(f"Filesystem: {filesystem}")
@@ -167,18 +183,22 @@ def main():
             Path(submission_dir).rmdir()
 
     ### DSTs still in the lake
+    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.dataset}\*'
+    INFO(f'DST files filtered as {dstbase}')
+
     lakelocation=filesystem['outdir']
     INFO(f"Original output directory: {lakelocation}")
-    findcommand = f"{lfind} {lakelocation} -type f -name {rule.rulestem}\*"
-    # INFO(f"Find command: {findcommand}")
+    findcommand = f"{lfind} {lakelocation} -type f -name {dstbase}\*"
+    INFO(f"Find command: {findcommand}")
     lakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    print(f"Found {len(lakefiles)} matching files in the lake.")
     del_lakefiles=[]
     for f_to_delete in lakefiles:
         lfn=Path(f_to_delete).name
         run = int(lfn.split(rule.dataset)[1].split('-')[1])
         if runlist==[-1] or binary_contains_bisect(runlist,run):
             del_lakefiles.append(f_to_delete)        
-    WARN(f"Removing {len(del_lakefiles)} DSTs of the form {rule.rulestem} in the lake at {lakelocation}")
+    WARN(f"Removing {len(del_lakefiles)} DSTs of the form {dstbase} in the lake at {lakelocation}")
     
     for f_to_delete in lakefiles: 
         CHATTY(f"Deleting: {f_to_delete}")
@@ -214,8 +234,18 @@ def main():
     except Exception as e:
         ERROR(f"Trying to globify {finaldir_tmpl} failed. Error:\n{e}")
         exit()
-    final_dsts_command=f"{lfind} {finaldir_glob} -type f -name {rule.rulestem}\*"
-    all_final_dsts = subprocess.run(final_dsts_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    final_dsts_command=f"{lfind} {finaldir_glob} -type f -name {dstbase}\*"
+    INFO(f"Find command for moved DSTs: {final_dsts_command}")
+    all_final_dsts =[]
+    try:
+        all_final_dsts = subprocess.run(final_dsts_command, shell=True, check=True, capture_output=True)
+        all_final_dsts = all_final_dsts.stdout.decode('utf-8').splitlines()
+        DEBUG("Command successful!")
+    except subprocess.CalledProcessError as e:
+        print("Command failed with exit code:", e.returncode)
+    finally:
+        pass
+
     del_final_dsts = []
     for dst in all_final_dsts:
         # Extract runnumber from the file name
@@ -281,10 +311,20 @@ def main():
             
     ### Clean up empty directories on lustre
     finaldir_trunk=finaldir_glob.replace('/*',"")
-    finaldir_trunk=f"{finaldir_trunk}/{rule.rulestem}*"
+    finaldir_trunk=f"{finaldir_trunk}/{dstbase}*"
     # With lfs find on lustre, "-empty" doesn't work. Rely on the cleaner to check that
     final_dirs_command=f"{lfind} {finaldir_trunk} -type d"
-    all_final_dirs = subprocess.run(final_dirs_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    INFO(f"Find command: {final_dirs_command}")
+    all_final_dirs =[]
+    try:
+        all_final_dirs = subprocess.run(final_dirs_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+        DEBUG("Command successful!")
+    except subprocess.CalledProcessError as e:
+        # If the spider never ran, the directories may not exist
+        print("Command failed with exit code:", e.returncode)
+    finally:
+        pass
+
     INFO(f"{final_dirs_command} found {len(all_final_dirs)} directories. Removing the empty ones.")
     if not args.dryrun:
         remove_empty_directories( set(all_final_dirs) )
@@ -316,9 +356,16 @@ def main():
         ERROR(f"Trying to globify {datadir_glob} failed. Error:\n{e}")
         exit()
 
-    final_data_command=f"find {datadir_glob} -type f -name {rule.rulestem}\*.out -o -name {rule.rulestem}\*.err -o -name {rule.rulestem}\*.condor -o -name HIST_{rule.rulestem}\*.root"
+    final_data_command=f"find {datadir_glob} -type f -name {dstbase}\*.out -o -name {dstbase}\*.err -o -name {dstbase}\*.condor -o -name HIST_{dstbase}\*.root"
     INFO(final_data_command)
-    all_final_data = subprocess.run(final_data_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    all_final_data=[]
+    try:
+        all_final_data = subprocess.run(final_data_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()    
+        DEBUG("Command successful!")
+    except subprocess.CalledProcessError as e:
+        print("Command failed with exit code:", e.returncode)
+    finally:
+        pass
     WARN(f"Found {len(all_final_data)} histogram and log files.")
     del_final_data = []
     for data in all_final_data:
@@ -379,7 +426,14 @@ def main():
     datatrunk=datadir_glob.replace("/*","")
     datatrunk=f"{datatrunk}/{rule.rulestem}*"
     data_dirs_find=f"find {datatrunk} -type d -empty"
-    empty_data_dirs = subprocess.run(data_dirs_find, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    empty_data_dirs=[]
+    try:
+        empty_data_dirs = subprocess.run(data_dirs_find, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+        DEBUG("Command successful!")
+    except subprocess.CalledProcessError as e:
+        print("Command failed with exit code:", e.returncode)
+    finally:
+        pass
     INFO(f"{len(empty_data_dirs)} empty leaf directories found with {data_dirs_find}. Removing.")
     if not args.dryrun:
         remove_empty_directories( set(empty_data_dirs) )
