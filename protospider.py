@@ -15,7 +15,7 @@ import pprint # noqa F401
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig,inputs_from_output
+from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring, inputs_from_output
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import cnxn_string_map, dbQuery
 from sphenixdbutils import insert_files_tmpl, insert_datasets_tmpl
@@ -113,7 +113,7 @@ def main():
     INFO(f"Final destination template: {finaldir_tmpl}")
 
     # List of files to process
-    findcommand = f"{lfind} {inlocation} -type f -name {rule.rulestem}\*"
+    findcommand = f"{lfind} {inlocation} -type f -name  {rule.rulestem}\*{rule.outstub}_{rule.dataset}\*.root\*"
     INFO(f"Find command: {findcommand}")
     foundfiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
 
@@ -155,9 +155,9 @@ def main():
                 leaf=dst_type
                 break
         if leaf is None:
-            DEBUG(f"Unknown file name: {lfn}")
+            # DEBUG(f"Unknown file name: {lfn}")
             continue
-
+        
         # Extract runnumber from the file name
         # Note: I don't love this. It assumes a rigid file name format, and it eats time for every file.
         #       All those splits are pretty unreadable too. Well, still beats a regex.
@@ -194,28 +194,17 @@ def main():
             nevents=nevents
         )
 
-        # update_production_tmpl="""
-        # update production_status
-        # ( status, finished )
-        # values 
-        # {status}, {finished}
-        # where runnumber={run} and segment={segment} and dataset='{dataset}' and dsttype='{dsttype}'
-        # """
-            # status="finished",
-            # ended=str(datetime.now().replace(microsecond=0)),
-
-        CHATTY(insert_files)
+        CHATTY(insert_files)     
         CHATTY(insert_datasets)
         if args.dryrun:
             if f%when2blurb == 0:
                 print( f"mv {file} {full_file_path}" )
             continue
-
+        
         # Create destination dir if it doesn't exit. Difficult to move out of the file loop before knowing the full relevant runnumber range
         Path(finaldir).mkdir( parents=True, exist_ok=True )
         # Move the file
         try:
-            #pass
             shutil.move( file, full_file_path )
         except Exception as e:
             WARN(e)
@@ -226,9 +215,8 @@ def main():
         files_curs.commit()
         datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
         datasets_curs.commit()
-    exit()
 
-    #################################  Same thing for histogram files.
+    # Same thing for histogram files.
     # TODO: Very similar, use one function for both types.
     # Main difference is that it's easier to identify daqhost/leaf from the path
     # TODO: Dirty hardcoding assuming knowledge of histdir naming scheme
@@ -300,6 +288,7 @@ def main():
             ctimestamp = datetime.fromtimestamp(filestat.st_ctime),
             file_size_bytes = filestat.st_size
         )
+        datasets_table='test_datasets' if test_mode else 'datasets'
         insert_datasets=insert_datasets_tmpl.format(
             datasets_table='test_datasets' if test_mode else 'datasets',
             lfn=lfn, md5=md5,
@@ -331,8 +320,8 @@ def main():
 # ============================================================================================
 
 if __name__ == '__main__':
-    main()
-    exit(0)
+    # main()
+    # exit(0)
 
     cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats
