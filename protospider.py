@@ -8,6 +8,7 @@ import subprocess
 import sys
 import shutil
 import math
+from typing import Tuple,List
 
 # from dataclasses import fields
 import pprint # noqa F401
@@ -15,10 +16,30 @@ import pprint # noqa F401
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring, inputs_from_output
+from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring,inputs_from_output
+from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import cnxn_string_map, dbQuery
-from sphenixdbutils import insert_files_tmpl, insert_datasets_tmpl
+from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb
+from sphenixmisc import binary_contains_bisect
+
+# ============================================================================================
+def shell_command(command: str) -> List[str]:
+    """Minimal wrapper to hide away subbprocess tedium"""
+    DEBUG(f"[shell_command] Command: {command}")
+    ret=[]
+    try:
+        ret = subprocess.run(command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()
+    except subprocess.CalledProcessError as e:
+        WARN("[shell_command] Command failed with exit code:", e.returncode)
+    finally:
+        pass
+
+    DEBUG(f"[shell_command] Found {len(ret)} matches.")
+    return ret
+    
+    
+
 
 # ============================================================================================
 
@@ -91,9 +112,23 @@ def main():
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
 
-    # Which find command to use?
-    filesystem = rule.job_config.filesystem
-
+    ### Which runs to transfer?
+    runlist=[-1]
+    runcondition = ""
+    if args.runlist:
+        INFO(f"Processing runs from file: {args.runlist}")
+        runcondition, runlist = extract_numbers_to_commastring(args.runlist)
+    elif args.runs:
+        if args.runs==['-1'] : 
+            INFO(f"Processing all runs.")
+        else:
+            INFO(f"Processing run (range): {args.runs}")
+        runcondition, runlist = list_to_condition(args.runs, "runnumber")
+    else:
+        ERROR("Something's wrong. No runs provided, but this should have been caught by the \"runs\" default value in argparsing.")
+        exit(-1)    
+        
+    ### Which find command to use for lustre?
     # Lustre's robin hood, rbh-find, doesn't offer advantages for our usecase, and it is more cumbersome to use.
     # But "lfs find" is preferrable to the regular kind.
     lfind = shutil.which('lfs')
@@ -103,124 +138,142 @@ def main():
     else:
         lfind = f'{lfind} find'
     INFO(f'Using "{lfind}.')
-    
+
     ##################### DSTs, from lustre to lustre
     # Original output directory, the final destination, and the file name trunk
-    inlocation=filesystem['outdir']
-    finaldir_tmpl=filesystem['finaldir']
+    filesystem = rule.job_config.filesystem
     DEBUG(f"Filesystem: {filesystem}")
-    INFO(f"Original output directory: {inlocation}")
+    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.dataset}\*'
+    INFO(f'DST files filtered as {dstbase}')
+    lakelocation=filesystem['outdir']
+    INFO(f"Original output directory: {lakelocation}")
+
+    ### root files without cuts
+    lakefiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\*")
+    DEBUG(f"Found {len(lakefiles)} matching dsts without cuts in the lake.")
+
+    ### indicator files for 'finished'
+    finishedfiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.finished\*")
+    DEBUG(f"Found {len(finishedfiles)} matching .finished files in the lake.")
+    
+    ### Mark off dbids (==finished jobs) that can be transferred
+    finished={}
+    for finfile in finishedfiles:
+        pseudolfn=Path(finfile).name
+        _,run,seg,end=parse_lfn(pseudolfn,rule)
+        if runlist==[-1] or binary_contains_bisect(runlist,run):
+            fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(finfile)
+            if dbid <= 0:
+                ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
+                exit(0)
+            if dbid in finished:
+                raise KeyError(f"dbid '{dbid}' already exists in the dictionary.")
+            finished[dbid]=finfile
+
+    if len(finished) ==0 :
+        INFO(f"No runs have finished yet. TTYL!")
+        exit(0)
+    INFO(f"{len(finished)} runs have finished. Processing their root files.")
+         
+    ### Collect root files that satisfy run and dbid requirements
+    mvfiles_info=[]
+    for file in lakefiles:
+        pseudolfn=Path(file).name
+        dsttype,run,seg,_=parse_lfn(pseudolfn,rule)
+        if runlist==[-1] or binary_contains_bisect(runlist,run):
+            fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(file)
+            if dbid <= 0:
+                ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
+                exit(0)
+            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5)
+
+        if dbid not in finished:
+            CHATTY(f"{dbid} isn't done yet")
+            continue;
+        mvfiles_info.append( (file,info) )
+    INFO(f"{len(mvfiles_info)} total root files to be processed.")
+    
+    finaldir_tmpl=filesystem['finaldir']
     INFO(f"Final destination template: {finaldir_tmpl}")
 
-    # List of files to process
-    findcommand = f"{lfind} {inlocation} -type f -name  {rule.rulestem}\*{rule.outstub}_{rule.dataset}\*.root\*"
-    INFO(f"Find command: {findcommand}")
-    foundfiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
-
-    # Extract information encoded in the file name
     input_stem = inputs_from_output[rule.rulestem]
-    INFO(f"Input stem: {input_stem}")
+    DEBUG(f"Input stem: {input_stem}")
     outstub = rule.outstub
     INFO(f"Output stub: {outstub}")
 
-    dst_type_template = f'{rule.rulestem}'
+    # Regrettably, 'dsttype' in the database refers to e.g. DST_STREAMING_EVENT_ebdc01_1_run3auau
+    # Here, we want the base of that without the run3auau. Also known as "leaf" or "leafdir" sometimes.
+    leaf_template = f'{rule.rulestem}'
     if 'raw' in rule.input_config.db:
-        dst_type_template += '_{host}'
-    dst_types = { f'{dst_type_template}'.format(host=host) for host in input_stem.keys() }
-    INFO(f"Destination type template: {dst_type_template}")
-    INFO(f"Destination types: {dst_types}")
-    INFO(f"Found {len(foundfiles)} files to move.")
-
+        leaf_template += '_{host}'
+    leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stem.keys() }
+    INFO(f"Destination type template: {leaf_template}")
+    DEBUG(f"Destination types: {leaf_types}")
+    
+    ####################################### Start moving and regiustering DSTs
     tstart = datetime.now()
     tlast = tstart
     when2blurb=2000
-    for f, file in enumerate(foundfiles):
+    fmax=len(mvfiles_info)
+    for f, file_and_info in enumerate(mvfiles_info):
         if f%when2blurb == 0:
             now = datetime.now()            
-            print( f'DST #{f}/{len(foundfiles)}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
-            print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
+            print( f'DST #{f}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
+            print( f'                   time since the start:       \t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
             tlast = now
+        file,info=file_and_info
+        dsttype,run,seg,lfn,nevents,first,last,md5=info
 
-        try:
-            fullpath,_,nevents,_,first,_,last,_,md5,_,dbid = file.split(':')
-        except Exception as e:
-            DEBUG(f"Error: {e}")
-            continue
-
-        lfn=Path(fullpath).name
         # Check if we recognize the file name
         leaf=None
-        for dst_type in dst_types:
-            if lfn.startswith(dst_type):
-                leaf=dst_type
+        for leaf_type in leaf_types:
+            if lfn.startswith(leaf_type):
+                leaf=leaf_type
                 break
         if leaf is None:
             # DEBUG(f"Unknown file name: {lfn}")
-            continue
-        
-        # Extract runnumber from the file name
-        # Note: I don't love this. It assumes a rigid file name format, and it eats time for every file.
-        #       All those splits are pretty unreadable too. Well, still beats a regex.
-        #       At least processing time turns out not to be a problem.
-        # Logic: first split is at new_nocdbtag_v000, second split isolates the run number, which is between two dashes
-        dsttype=lfn.split(f'_{rule.dataset}')[0]
-        run = int(lfn.split(rule.dataset)[1].split('-')[1])
+            # continue
+            ERROR(f"Unknown file name: {lfn}")
+            exit(-1)
+
+        ### Fill in templates
         rungroup= rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
-        # Fill in rungroup and optionally leaf directory
         finaldir = finaldir_tmpl.format( leafdir=leaf, rungroup=rungroup )
-        # Between the dash and .root is the segment, used for the db
-        segment = int(lfn.split(rule.dataset)[1].split('-')[2].split('.root')[0])
 
-        # --- Extract what we need for the databases
-        # for "files"
+        ### Extract what else we need for file databases
+        ### For additional db info. Note: stat is costly. Could be omitted.
         filestat=Path(file).stat()
-        full_file_path = f'{finaldir}/{lfn}'
-        insert_files=insert_files_tmpl.format(
-            files_table='test_files' if test_mode else 'files',
-            lfn=lfn,
-            md5=md5,
-            full_host_name = "lustre" if 'lustre' in finaldir else 'gpfs',
-            full_file_path = full_file_path,
-            ctimestamp = datetime.fromtimestamp(filestat.st_ctime),
-            file_size_bytes = filestat.st_size
-        )
-        insert_datasets=insert_datasets_tmpl.format(
-            datasets_table='test_datasets' if test_mode else 'datasets',
-            lfn=lfn, md5=md5,
-            run=run, segment=segment,
-            file_size_bytes=filestat.st_size,
-            dataset=rule.dataset,
-            dsttype=dsttype,
-            nevents=nevents
-        )
 
-        CHATTY(insert_files)     
-        CHATTY(insert_datasets)
+        ###### Here be dragons
+        full_file_path = f'{finaldir}/{lfn}'
+        ### Move
         if args.dryrun:
             if f%when2blurb == 0:
-                print( f"mv {file} {full_file_path}" )
-            continue
-        
-        # Create destination dir if it doesn't exit. Difficult to move out of the file loop before knowing the full relevant runnumber range
-        Path(finaldir).mkdir( parents=True, exist_ok=True )
-        # Move the file
-        try:
-            shutil.move( file, full_file_path )
-        except Exception as e:
-            WARN(e)
-        #Register the file
-        # insdsets, ntries_dsets, start_dsets, finish_dsets, ex_dsets, nm_dsets, sv_dsets = dbQuery( cnxn_string_map[ 'fcw' ], insert )
-        dbstring = 'testw' if test_mode else 'fcw'
-        files_curs = dbQuery( cnxn_string_map[ dbstring ], insert_files )
-        files_curs.commit()
-        datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
-        datasets_curs.commit()
+                print( f"Dryrun: Pretending to do:\n mv {file} {full_file_path}" )
+        else:   
+            # Create destination dir if it doesn't exit. Can't be done elsewhere/earlier, we need the full relevant runnumber range
+            Path(finaldir).mkdir( parents=True, exist_ok=True )
+            # Move the file
+            try:
+                shutil.move( file, full_file_path )
+            except Exception as e:
+                WARN(e)
 
-    # Same thing for histogram files.
-    # TODO: Very similar, use one function for both types.
+        ### ... and upsert catalog tables
+        upsert_filecatalog(lfn=lfn,
+                           info=info,
+                           full_file_path = full_file_path,
+                           filestat=filestat,
+                           dataset=rule.dataset,
+                           dryrun=args.dryrun
+                           )
+        pass # End of DST loop 
+
+    ################################  Same thing for histogram files.
+    # Very similar, use one function for both types.
     # Main difference is that it's easier to identify daqhost/leaf from the path
     # TODO: Dirty hardcoding assuming knowledge of histdir naming scheme
-    find = shutil.which('find') # on gpfs, no nead for lfs find, use the more powerful generic find
+    find = shutil.which('find') # on gpfs, no need for lfs find, use the more powerful generic find
     histdir=filesystem['histdir']
     INFO(f"Histogram directory template: {histdir}")
     
@@ -228,94 +281,87 @@ def main():
     leafparent=histdir.split('/{leafdir}')[0]
     INFO(f"Leaf directories: \n{leafparent}")
 
-    leaffind = f"{find} {leafparent} -type d -mindepth 1 -a -maxdepth 1"
-    INFO(f"Find command: {leaffind}")
-    leafdirs = subprocess.run(leaffind, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    leafdirs = shell_command(f"{find} {leafparent} -type d -mindepth 1 -a -maxdepth 1")
     CHATTY(f"Leaf directories: \n{leafdirs}")
     
     allhistdirs = []
     for leafdir in leafdirs :
-        hist_find = f"{find} {leafdir} -name hist -type d"
-        CHATTY(f"hist directory find command: {hist_find}")
-        allhistdirs += subprocess.run(hist_find, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+        allhistdirs += shell_command(f"{find} {leafdir} -name hist -type d")
     CHATTY(f"hist directories: \n{allhistdirs}")
 
-    # Finally, run over all HIST files in those directories
-    foundfiles=[]
+    ### Finally, run over all HIST files in those directories
+    # They too have dbinfo and need to be registered and renamed
+    foundhists=[]
     for hdir in allhistdirs:        
-        findcommand = f"{find} {hdir} -type f -name HIST\*"
-        tmpfound = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
-        # Remove ".root" files, they're already processed.
-        foundfiles += [ file for file in tmpfound if not file.endswith(".root") ]
+        tmpfound = shell_command(f"{find} {hdir} -type f -name HIST\*")
+        # Remove files that already end in ".root" files
+        foundhists += [ file for file in tmpfound if not file.endswith(".root") ]
 
     tstart = datetime.now()
     tlast = tstart
     when2blurb=2000
-    for f, file in enumerate(foundfiles):
+    fmax=len(foundhists)
+    for f, file in enumerate(foundhists):
         if f%when2blurb == 0:
             now = datetime.now()
-            print( f'HIST #{f}/{len(foundfiles)}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
+            print( f'HIST #{f}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
-            tlast = now
-            
+            tlast = now            
         try:
-            fullpath,_,nevents,_,first,_,last,_,md5,_,dbid = file.split(':')
+            fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(file)
         except Exception as e:
             WARN(f"Error: {e}")
             continue
 
-        # Extract runnumber from the file name
-        # Note: I don't love this. It assumes a rigid file name format, and it eats time for every file.
-        #       All those splits are pretty unreadable too. Well, still beats a regex.
-        #       At least processing time turns out not to be a problem.
-        # Logic: first split is at new_nocdbtag_v000, second split isolates the run number, which is between two dashes
         lfn=Path(fullpath).name
-        dsttype=lfn.split(f'_{rule.dataset}')[0]
-        run = int(lfn.split(rule.dataset)[1].split('-')[1])
-        # Between the dash and .root is the segment, used for the db
-        segment = int(lfn.split(rule.dataset)[1].split('-')[2].split('.root')[0])
+        dsttype,run,seg,_=parse_lfn(lfn,rule)
         
-        # --- Extract what we need for the databases
-        # for "files"
+        if runlist==[-1] or binary_contains_bisect(runlist,run):
+            if dbid <= 0:
+                ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
+                exit(0)
+            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5)
+        else:
+            continue
+
+        if dbid not in finished:
+            CHATTY(f"{dbid} isn't done yet")
+            continue
+
+        ### Extract what else we need for file databases
+        ### For additional db info. Note: stat is costly. Could be omitted.
         filestat=Path(file).stat()
         full_file_path = fullpath
-        insert_files=insert_files_tmpl.format(
-            files_table='test_files' if test_mode else 'files',
-            lfn=lfn,
-            md5=md5,
-            full_host_name = "lustre" if 'lustre' in histdir else 'gpfs',
-            full_file_path = full_file_path,
-            ctimestamp = datetime.fromtimestamp(filestat.st_ctime),
-            file_size_bytes = filestat.st_size
-        )
-        datasets_table='test_datasets' if test_mode else 'datasets'
-        insert_datasets=insert_datasets_tmpl.format(
-            datasets_table='test_datasets' if test_mode else 'datasets',
-            lfn=lfn, md5=md5,
-            run=run, segment=segment,
-            file_size_bytes=filestat.st_size,
-            dataset=rule.dataset,
-            dsttype=dsttype,
-            nevents=nevents
-        )
-        CHATTY(insert_files)
-        CHATTY(insert_datasets)
+
+        ### Move
         if args.dryrun:
             if f%when2blurb == 0:
-                print( f"mv {file} {full_file_path}" )
-            continue
-        
-        try:
-            shutil.move( file, full_file_path )
-        except Exception as e:
-            WARN(e)
-        #Register the file
-        dbstring = 'testw' if test_mode else 'fcw'
-        files_curs = dbQuery( cnxn_string_map[ dbstring ], insert_files )
-        files_curs.commit()
-        datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
-        datasets_curs.commit()
+                print( f"Dryrun: Pretending to do:\n mv {file} {full_file_path}" )
+        else:   
+            # Move (rename) the file
+            try:
+                shutil.move( file, full_file_path )
+            except Exception as e:
+                WARN(e)
 
+        ### ... and upsert catalog tables
+        upsert_filecatalog(lfn=lfn,
+                           info=info,
+                           full_file_path = full_file_path,
+                           filestat=filestat,
+                           dataset=rule.dataset,
+                           dryrun=args.dryrun
+                           )
+        pass # End of HIST loop 
+
+    ### Finally, update prod db and remove the .finished signal files
+    for dbid,file in finished.items():
+        CHATTY(f"Handling dbid={dbid}.")        
+        update_proddb( dbid=dbid, filestat=Path(file).stat(), dryrun=args.dryrun )
+        if not args.dryrun:
+            Path(file).unlink()
+        
+        #update_proddb( dbid=dbid, filestat=None, dryrun=args.dryrun )
         
 # ============================================================================================
 

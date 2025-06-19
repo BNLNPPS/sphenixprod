@@ -18,10 +18,24 @@ from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring, inputs_from_output
+from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
-from sphenixdbutils import cnxn_string_map, dbQuery
+from sphenixdbutils import cnxn_string_map
 from sphenixdbutils import insert_files_tmpl, insert_datasets_tmpl
 from sphenixmisc import remove_empty_directories, binary_contains_bisect, make_chunks
+
+# ============================================================================================
+def delQuery( cnxn_string, query ):
+    if 'delete' not in query:
+        WARN(f'delQuery called without "delete". Query: {query}')
+
+    DEBUG(f'[cnxn_string] {cnxn_string}')
+    DEBUG(f'[query      ]\n{query}')
+    conn = pyodbc.connect( cnxn_string )
+    curs = conn.cursor()
+    curs.execute( query )
+    curs.commit()
+    return(curs.rowcount)
 
 # ============================================================================================
 
@@ -38,7 +52,7 @@ def main():
     if not args.dryrun:
         answer = input("This is not a drill. Do you want to continue? (yes/no): ")
         if answer.lower() != "yes":
-            print("Exiting...")
+            print("Exiting. Smart.")
             exit(0)
         else:
             print("Here we go deleting then.")
@@ -121,7 +135,6 @@ def main():
     
     ######## Now clean up
     ### Condor jobs:
-    # condor_q -const 'JobBatchName=="kolja.DST_STREAMING_EVENT_run3physics_new_nocdbtag_v000"' -format "%d\n"  ClusterId |wc -l
     condor_batchname=rule.job_config.batch_name
     # This is not necessary, just information
     condor_running_command=f"condor_q -const 'JobBatchName==\"{condor_batchname}\"' -format '%d\\n'  ClusterId |wc -l"
@@ -147,9 +160,6 @@ def main():
         finally:
             pass
         WARN(f"Killed {condor_rm} jobs using {condor_rm_command}" )
-
-    filesystem = rule.job_config.filesystem
-    DEBUG(f"Filesystem: {filesystem}")
 
     ### Which runs to delete?
     runlist=[-1]
@@ -184,7 +194,9 @@ def main():
         if not args.dryrun:
             Path(submission_dir).rmdir()
 
-    ### DSTs still in the lake
+    ############# DSTs still in the lake
+    filesystem = rule.job_config.filesystem
+    DEBUG(f"Filesystem: {filesystem}")
     dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.dataset}\*'
     INFO(f'DST files filtered as {dstbase}')
 
@@ -195,7 +207,7 @@ def main():
     lakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
     print(f"Found {len(lakefiles)} matching dsts sans runnumber cut in the lake.")
 
-    findcommand = f"{lfind} {lakelocation} -type f -name {dstbase}\*.finished"
+    findcommand = f"{lfind} {lakelocation} -type f -name {dstbase}\*.finished\*"
     INFO(f"Find command: {findcommand}")
     finishedlakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
     print(f"Found {len(finishedlakefiles)} matching .finished files in the lake.")
@@ -203,19 +215,18 @@ def main():
     del_lakefiles=[]
     for f_to_delete in lakefiles:
         lfn=Path(f_to_delete).name
-        run = int(lfn.split(rule.dataset)[1].split('-')[1])
+        _,run,_,_=parse_lfn(lfn,rule)
         if runlist==[-1] or binary_contains_bisect(runlist,run):
             del_lakefiles.append(f_to_delete)
             
-    # for f_to_delete in finishedlakefiles:
-    #     lfn=Path(f_to_delete).name
-    #     run = int(lfn.split(rule.dataset)[1].split('-')[1])
-    #     if runlist==[-1] or binary_contains_bisect(runlist,run):
-    #         del_lakefiles.append(f_to_delete)
+    for f_to_delete in finishedlakefiles:
+        lfn=Path(f_to_delete).name
+        _,run,_,_=parse_lfn(lfn,rule)
+        if runlist==[-1] or binary_contains_bisect(runlist,run):
+            del_lakefiles.append(f_to_delete)
+    WARN(f"Removing {len(del_lakefiles)} .root and .finished files in the lake at {lakelocation}")
     
-    WARN(f"Removing {len(del_lakefiles)} DSTs of the form {dstbase} in the lake at {lakelocation}")
-    
-    for f_to_delete in lakefiles: 
+    for f_to_delete in del_lakefiles: 
         CHATTY(f"Deleting: {f_to_delete}")
         if not args.dryrun:
             Path(f_to_delete).unlink() # could unlink the entire directory instead?
@@ -248,28 +259,23 @@ def main():
         finaldir_glob = finaldir_tmpl.format(leafdir='*',rungroup='*')
     except Exception as e:
         ERROR(f"Trying to globify {finaldir_tmpl} failed. Error:\n{e}")
-        exit()
+        exit(-1)
     final_dsts_command=f"{lfind} {finaldir_glob} -type f -name {dstbase}\*"
     INFO(f"Find command for moved DSTs: {final_dsts_command}")
     all_final_dsts =[]
     try:
         all_final_dsts = subprocess.run(final_dsts_command, shell=True, check=True, capture_output=True)
         all_final_dsts = all_final_dsts.stdout.decode('utf-8').splitlines()
-        DEBUG("Command successful!")
+        DEBUG("Command successful! len(all_final_dsts)={len(all_final_dsts)}")
     except subprocess.CalledProcessError as e:
         print("Command failed with exit code:", e.returncode)
     finally:
         pass
-
+    
     del_final_dsts = []
     for dst in all_final_dsts:
-        # Extract runnumber from the file name
-        # Logic: first split is at new_nocdbtag_v000, second split isolates the run number, which is between two dashes
         lfn=Path(dst).name
-        # dsttype=lfn.split(f'_{rule.dataset}')[0]
-        run = int(lfn.split(rule.dataset)[1].split('-')[1])
-        # rungroup=rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
-        
+        _,run,_,_=parse_lfn(lfn,rule)
         if runlist==[-1] or binary_contains_bisect(runlist,run):
             del_final_dsts.append(dst)
     WARN(f"Removing {len(del_final_dsts)} of the {len(all_final_dsts)} DSTs found by:\n{final_dsts_command}")
@@ -317,19 +323,17 @@ def main():
         CHATTY(del_files_db )
         CHATTY(del_datasets_db )
         if not args.dryrun:
-            files_curs = dbQuery( cnxn_string_map[ dbstring ], del_files_db )
-            response = [ c for c in files_curs ]
-            DEBUG(f"Delete chunk {i} from files db, response: {response[0]}")
-            datasets_curs = dbQuery( cnxn_string_map[ dbstring ], del_datasets_db )
-            response = [ c for c in datasets_curs ]
-            DEBUG(f"Delete chunk {i} from datasets db, response: {response[0]}")
+            response = delQuery( cnxn_string_map[ dbstring ], del_files_db )
+            DEBUG(f"Delete chunk {i} from files db, response: {response}")
+            response = delQuery( cnxn_string_map[ dbstring ], del_datasets_db )
+            DEBUG(f"Delete chunk {i} from datasets db, response: {response}")
             
     ### Clean up empty directories on lustre
-    finaldir_trunk=finaldir_glob.replace('/*',"")
-    finaldir_trunk=f"{finaldir_trunk}/{dstbase}*"
     # With lfs find on lustre, "-empty" doesn't work. Rely on the cleaner to check that
-    final_dirs_command=f"{lfind} {finaldir_trunk} -type d"
+    # Very generous find, but we're only cleaning up empties after all
+    final_dirs_command=f"{lfind} {finaldir_glob} -type d"
     INFO(f"Find command: {final_dirs_command}")
+    
     all_final_dirs =[]
     try:
         all_final_dirs = subprocess.run(final_dirs_command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
@@ -369,7 +373,7 @@ def main():
         datadir_glob = str(datadir_tmpl).format(leafdir='*',rungroup='*')
     except Exception as e:
         ERROR(f"Trying to globify {datadir_glob} failed. Error:\n{e}")
-        exit()
+        exit(-1)
 
     final_data_command=f"find {datadir_glob} -type f -name {dstbase}\*.out -o -name {dstbase}\*.err -o -name {dstbase}\*.condor -o -name HIST_{dstbase}\*.root"
     INFO(final_data_command)
@@ -384,24 +388,8 @@ def main():
     WARN(f"Found {len(all_final_data)} histogram and log files.")
     del_final_data = []
     for data in all_final_data:
-        # Extract runnumber from the file name
-        # Logic: first split is at new_nocdbtag_v000, second split isolates the run number, which is between two dashes
         lfn=Path(data).name
-        # Sigh. Two patterns: "foo_v000-run-segment.root, and "bar_v000_run.[out|err|condor]. 
-        try: 
-            if lfn.endswith(".root"):
-                run = int(lfn.split(rule.dataset)[1].split('-')[1])
-            elif lfn.endswith(".out") or lfn.endswith(".err") or lfn.endswith(".condor") :
-                tmp = lfn.split(".")[0]
-                run=int(tmp.split("_")[-1])
-            else:
-                ERROR(f"Unrecognized data file {lfn}.")
-                exit(-1)                
-        except Exception as e:
-            print(lfn)
-            print(run)
-            print(e)
-            exit(-1)
+        _,run,seg,end=parse_lfn(lfn,rule)
         if runlist==[-1] or binary_contains_bisect(runlist,run):
             del_final_data.append(data)
             
@@ -430,12 +418,10 @@ def main():
         CHATTY(del_files_db )
         CHATTY(del_datasets_db )
         if not args.dryrun:
-            files_curs = dbQuery( cnxn_string_map[ dbstring ], del_files_db )
-            response = [ c for c in files_curs ]
-            DEBUG(f"Delete chunk {i} from files db, response: {response[0]}")
-            datasets_curs = dbQuery( cnxn_string_map[ dbstring ], del_datasets_db )
-            response = [ c for c in datasets_curs ]
-            DEBUG(f"Delete chunk {i} from datasets db, response: {response[0]}")
+            response = delQuery( cnxn_string_map[ dbstring ], del_files_db )
+            DEBUG(f"Delete chunk {i} from files db, response: {response}")
+            response = delQuery( cnxn_string_map[ dbstring ], del_datasets_db )
+            DEBUG(f"Delete chunk {i} from datasets db, response: {response}")
 
     ### Clean up empty directories on /sphenix/data/data02
     datatrunk=datadir_glob.replace("/*","")
@@ -465,16 +451,11 @@ returning *
 """
     WARN(del_prod_state+";")
     if not args.dryrun:
-        conn = pyodbc.connect( cnxn_string_map['statw'] )
-        curs = conn.cursor()
-        curs.execute( del_prod_state )
-        curs.commit()
-        print(curs.rowcount)
-        
-        # prod_curs = dbQuery( , del_prod_state )
-        # WARN(f"Delete prodstate from files db, response: {prod_curs.fetchall()}")
+        response = delQuery( cnxn_string_map[ "statw" ], del_prod_state )
+        DEBUG(f"Delete states from prod db, response: {response}")
 
-
+    INFO("Done. Best to run this again though to catch stragglers.")
+    exit(0)
         
 # ============================================================================================
 

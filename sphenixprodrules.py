@@ -157,12 +157,18 @@ def list_to_condition(lst, name)  -> Tuple[str, List[int]] :
         - list_to_condition([1, 2, 3], "runnumber") returns "and runnumber in ( 1,2,3 )", [1, 2, 3]
         - list_to_condition([], "runnumber") returns None
     """
-    condition = None
+    condition = ""
     runlist=[]
     if  len( lst )==1:
-        condition = f"and {name}={lst[0]}"
-        runlist=[int(lst[0])]
+        if int(lst[0]) > 0:
+            condition = f"and {name}={lst[0]}"
+            runlist=[int(lst[0])]
     elif len( lst )==2:
+        if int(lst[0])<0:
+            lst[0]='0'
+        if int(lst[1])<0:
+            print('hello')
+            lst[1]='99999'
         runlist = list( range(int(lst[0]), int(lst[1])+1) )
         condition = f"and {name}>={lst[0]} and {name}<={lst[1]}"        
     elif len( lst )>=3 :
@@ -650,9 +656,9 @@ class MatchConfig:
 
                 # If the output doesn't exist yet, use input files to create the job
                 for seg in segments:
-                    # logbase= f'{outbase}_{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
-                    logbase= f'{outbase}_{runnumber:{pRUNFMT}}'
-                    output = f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}.root'
+                    logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
+                    # output = f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}.root'
+                    output = f'{logbase}.root'
                     if output in existing_output:
                         CHATTY(f"Output file {output} already exists. Not submitting.")
                         continue
@@ -690,10 +696,12 @@ class MatchConfig:
                     # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000 \ outbase \
                     # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000-00061162 \ logbase \
                     outbase=f'{dsttype}_{self.dataset}'
-                    logbase=f'{outbase}_{runnumber:{pRUNFMT}}'
+                    seg=0
+                    logbase=f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
                     # check for one existing output file.
                     # These DO have a segment and a .root extension
-                    first_output=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}.root'
+                    # first_output=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}.root'
+                    first_output=f'{logbase}.root'
                     if first_output in existing_output:
                         CHATTY(f"Output file {first_output} already exists. Not submitting.")
                         continue
@@ -710,4 +718,49 @@ class MatchConfig:
         INFO(f'[Parsing time ] {time.time() - now:.2g} seconds' )
 
         return rule_matches
+# ============================================================================
+def parse_lfn(lfn: str, rule: RuleConfig) -> Tuple[str,...] :
+    # Notably, input is not necessarily a true lfn, but:
+    # If there's a colon, throw everything away after the first one; that's another parser's problem
+    try:
+        name=lfn.split(':')[0]
+        dsttype,runsegend=name.split(rule.dataset) # 'DST_..._run3auau', '-00066582-00000.root' (or .finished)
+        _,run,segend=runsegend.split('-')
+        seg,end=segend.split('.')
+    except ValueError as e:
+        print(f"[parse_lfn] Caught error {e}")
+        print(f"lfn = {lfn}")
+        print(f"lfn.split(':') = {lfn.split(':')}")
+        print(f"name = {lfn.split(':')[0]}")
+        name=lfn.split(':')[0]
+        print(f"dsttype,runsegend = name.split(rule.dataset) = {name.split(rule.dataset)}")        
+        dsttype,runsegend=name.split(rule.dataset) # 'DST_..._run3auau', '-00066582-00000.root' (or .finished)
+        print(f"_,run,segend = runsegend.split('-') = {runsegend.split('-')}")
+        _,run,segend=runsegend.split('-')
+        print(f"seg,end = segend.split('.') = {segend.split('.')})")
+        seg,end=segend.split('.')
+        exit(-1)
+        
+
+    # "dsttype" as currently used in the datasets table is e.g. DST_STREAMING_EVENT_ebdc01_1_run3auau
+    # We almost have that but need to strip off a trailing "_"
+    if dsttype[-1] == '_':
+        dsttype=dsttype[0:-1]
+
+    return dsttype,int(run),int(seg),end
+
+
+# ============================================================================
+def parse_spiderstuff(filename: str) -> Tuple[str,...] :
+    try:
+        lfn,_,nevents,_,first,_,last,_,md5,_,dbid = filename.split(':')
+        lfn=Path(lfn).name
+    except Exception as e:
+        ERROR(f"Error: {e}")
+        print(filename)
+        print(filename.split(':'))
+        exit(-1)
+
+    return lfn,int(nevents),int(first),int(last),md5,int(dbid)
+
 # ============================================================================
