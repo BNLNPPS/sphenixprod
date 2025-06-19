@@ -76,7 +76,7 @@ def main():
     payload_list += [ importlib.util.find_spec('sphenixdbutils').origin ]
     payload_list += [ importlib.util.find_spec('simpleLogger').origin ]
     payload_list += [ f"{script_path}/stageout.sh" ]
-    payload_list += [ f"{script_path}/GetEntries.C" ]
+    payload_list += [ f"{script_path}/GetNumbers.C" ]
     
     # .testbed, .slurp (deprecated): indicate test mode -- Search in the _submission_ directory
     if Path(".testbed").exists():
