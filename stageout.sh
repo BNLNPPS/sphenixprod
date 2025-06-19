@@ -12,8 +12,11 @@ fi
 filename=${1} #filename=`basename ${1}`   # must be a local file
 destination=${2}
 dbid=${3:--1} # dbid for faster db lookup, -1 means no dbid
-
-echo stageout in=${filename} outdir=${destination} dbid=${dbid} start `date`
+if [ $dbid -eq -1 ] || [ $dbid -eq 0 ]; then
+    # I don't quite understand why dbid can be 0, need to dig around --> later
+    # Fallback (or rather default): Use environment variable exported by wrapper
+    dbid=${PRODDB_DBID:--1}
+fi
 
 if [ ! -f ${filename} ]; then
     echo "${filename} not found!"
@@ -26,16 +29,30 @@ fi
 # if [ -d "$destination" ]; then   echo "$DIRECTORY does exist." ; else exit 1; fi
 
 # Number of events and first/last event numbers
-numbers=$( root.exe -l -q -b GetEntries.C\(\"${filename}\"\) 2>/dev/null | awk '/Number of Entries|First event number|Last event number/{ print $4; }' )
-echo $nevents
-nevents=$(echo $numbers | cut -d' ' -f1 )
-first=$(echo $numbers | cut -d' ' -f2 )
-last=$(echo $numbers | cut -d' ' -f3 ) 
+# numbers=$( root.exe -l -q -b GetEntries.C\(\"${filename}\"\) 2>/dev/null | awk '/Number of Entries|First event number|Last event number/{ print $4; }' )
+# echo $nevents
+# nevents=$(echo $numbers | cut -d' ' -f1 )
+# first=$(echo $numbers | cut -d' ' -f2 )
+# last=$(echo $numbers | cut -d' ' -f3 ) 
+# Number of events and first/last event numbers
+rm -f numbers.txt
+root.exe -l -b -q GetNumbers.C\(\"${filename}\"\) 2>&1
+cat numbers.txt  | grep -v '\*\*' | grep -v Row | sed -e 's/\*//g' | awk '{print $2}' > cleannumbers.txt
+
+nevents=`sed -n '1p' cleannumbers.txt`
+first=`sed -n '2p' cleannumbers.txt`
+last=`sed -n '3p' cleannumbers.txt`
 
 # Set to -1 if empty or 0
 nevents=${nevents:--1}
 first=${first:--1}
 last=${last:--1}
+
+echo cat numbers.txt
+cat numbers.txt
+echo cat cleannumbers.txt
+cat cleannumbers.txt
+rm -f numbers.txt cleannumbers.txt
 
 # md5sum:
 md5=`/usr/bin/env md5sum ${filename} | cut -d ' ' -f 1`
@@ -68,13 +85,6 @@ exit 0 # Fom Jason: stageout should never propagate a failed error code...
 # echo "gotdbid         : $gotdbid"
 
 
-
-# nevents_=$( root.exe -q -b GetEntries.C\(\"${filename}\"\) | awk '/Number of Entries/{ print $4; }' )
-# nevents=${nevents_:--1}
-
-# # prodtype is required... specifies whether the production status entry manages a single output file (only) or many output files (many).
-# echo ./cups.py -r ${runnumber} -s ${segment} -d ${dstname}  stageout ${filename} ${destination} --dsttype ${dsttype} --dataset ${build}_${dbtag} --nevents ${nevents} --inc --prodtype many
-#      ./cups.py -r ${runnumber} -s ${segment} -d ${dstname}  stageout ${filename} ${destination} --dsttype ${dsttype} --dataset ${build}_${dbtag} --nevents ${nevents} --inc --prodtype many
 
 # echo stageout ${filename} ${destination} finish `date`
 
