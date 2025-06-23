@@ -91,29 +91,48 @@ def main():
     # Note: The following could all be hidden away in the RuleConfig ctor
     # but this way, CLI arguments are used by the function that received them and
     # constraint constructions are visibly handled away from the RuleConfig class
-    rule_substitions = {}
-    rule_substitions["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
+    rule_substitutions = {}
+    rule_substitutions["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
+
+    ### Which runs to delete?
+    runlist=[]
+    run_condition = ""
+    if args.runlist:
+        INFO(f"Processing runs from file: {args.runlist}")
+        run_condition, runlist = extract_numbers_to_commastring(args.runlist)
+    elif args.runs:
+        if args.runs==['-1'] : 
+            INFO(f"Processing all runs.")
+        else:
+            INFO(f"Processing run (range): {args.runs}")
+        run_condition, runlist = list_to_condition(args.runs, "runnumber")
+    else:
+        ERROR("Something's wrong. No runs provided, but this should have been caught by the \"runs\" default value in argparsing.")
+        exit(-1)    
+    if runlist==[]:
+            runlist=[-1]
+    rule_substitutions["run_condition"] = run_condition
 
     # Rest of the input substitutions
     if args.physicsmode is not None:
-        rule_substitions["physicsmode"] = args.physicsmode # e.g. physics
+        rule_substitutions["physicsmode"] = args.physicsmode # e.g. physics
 
     if args.mangle_dstname:
         DEBUG("Mangling DST name")
-        rule_substitions['DST']=args.mangle_dstname
+        rule_substitutions['DST']=args.mangle_dstname
 
     # filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
-    rule_substitions["prodmode"] = "production"
+    rule_substitutions["prodmode"] = "production"
     if args.mangle_dirpath:
-        rule_substitions["prodmode"] = args.mangle_dirpath
+        rule_substitutions["prodmode"] = args.mangle_dirpath
 
-    CHATTY(f"Rule substitutions: {rule_substitions}")
+    CHATTY(f"Rule substitutions: {rule_substitutions}")
     INFO("Now loading and building rule configuration.")
 
     #################### Load specific rule from the given yaml file.
     try:
-        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, rule_substitions=rule_substitions )
+        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, rule_substitutions=rule_substitutions )
         INFO(f"Successfully loaded rule configuration: {args.rulename}")
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
@@ -160,22 +179,6 @@ def main():
         finally:
             pass
         WARN(f"Killed {condor_rm} jobs using {condor_rm_command}" )
-
-    ### Which runs to delete?
-    runlist=[-1]
-    runcondition = ""
-    if args.runlist:
-        INFO(f"Processing runs from file: {args.runlist}")
-        runcondition, runlist = extract_numbers_to_commastring(args.runlist)
-    elif args.runs:
-        if args.runs==['-1'] : 
-            INFO(f"Processing all runs.")
-        else:
-            INFO(f"Processing run (range): {args.runs}")
-        runcondition, runlist = list_to_condition(args.runs, "runnumber")
-    else:
-        ERROR("Something's wrong. No runs provided, but this should have been caught by the \"runs\" default value in argparsing.")
-        exit(-1)    
 
     ### Submission directory. Hacky.
     submission_dir = Path('./tosubmit').resolve() 
@@ -440,13 +443,13 @@ def main():
         remove_empty_directories( set(empty_data_dirs) )
 
     sqldstbase=dstbase.replace("\*","%")
-    prodruncondition=runcondition.replace("runnumber","run")
+    prodrun_condition=run_condition.replace("runnumber","run")
     ### Finally, clean the production database
     del_prod_state = f"""
 delete from production_status 
 where 
 dstname like '{sqldstbase}'
-{prodruncondition}
+{prodrun_condition}
 returning *
 """
     WARN(del_prod_state+";")
