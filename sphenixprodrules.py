@@ -185,7 +185,7 @@ class InputConfig:
     table: str
     prod_identifier:            Optional[str] = None # run3auau, run3cosmics
 
-    file_query_constraints:     Optional[str] = None  # Additional constraints for the filecatalog query
+    infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
     direct_path: Optional[str]                = None  # Make direct_path optional
 
@@ -205,6 +205,7 @@ class RuleConfig:
     build_string: str   # ana472, new
     version_string: str # v000
     dataset: str        # new_2025p000_v000
+    run_condition: str  # "and runnumber=66456" <-- constructed from args, works for both input and existing output dbs
 
     # Nested dataclasses
     input_config: InputConfig
@@ -229,14 +230,14 @@ class RuleConfig:
                   yaml_file: str, #  Used for paths
                   yaml_data: Dict[str, Any],
                   rule_name: str,
-                  rule_substitions=None) -> "RuleConfig":
+                  rule_substitutions=None) -> "RuleConfig":
         """
         Constructs a RuleConfig object from a YAML data dictionary.
 
         Args:
             yaml_data: The dictionary loaded from the YAML file.
             rule_name: The name of the rule to extract from the YAML.
-            rule_substitions: A dictionary (usually originating from argparse) to override the YAML data and fill in placeholders.
+            rule_substitutions: A dictionary (usually originating from argparse) to override the YAML data and fill in placeholders.
 
         Returns:
             A RuleConfig object.
@@ -246,9 +247,9 @@ class RuleConfig:
         except KeyError:
             raise ValueError(f"Rule '{rule_name}' not found in YAML data.")
 
-        if rule_substitions is None:
+        if rule_substitutions is None:
             WARN("No rule substitutions provided. Using empty dictionary bnut this may fail.")
-            rule_substitions = {}
+            rule_substitutions = {}
 
         ### Extract and validate top level rule parameters
         params_data = rule_data.get("params", {})
@@ -261,15 +262,16 @@ class RuleConfig:
         version_string = f'v{params_data["version"]:{VERFMT}}'
         outstub = params_data["outstub"] if "outstub" in params_data else params_data["period"]
         dataset = f'{build_string}_{params_data["dbtag"]}_{version_string}'
+        run_condition = rule_substitutions['run_condition']
 
         ### Turning off name mangling; directory mangling is sufficient
-        # if 'DST' in rule_substitions:
-        #     outbase=outbase.replace('DST',rule_substitions['DST'])
+        # if 'DST' in rule_substitutions:
+        #     outbase=outbase.replace('DST',rule_substitutions['DST'])
         #     DEBUG(f"outbase is mangled to {outbase}")
 
         ### Optionals
         physicsmode = params_data.get("physicsmode", "physics")
-        physicsmode = rule_substitions.get("physicsmode", physicsmode)
+        physicsmode = rule_substitutions.get("physicsmode", physicsmode)
         comment = params_data.get("comment", None)
 
         ###### Now create InputConfig and CondorJobConfig
@@ -277,7 +279,7 @@ class RuleConfig:
         input_data = rule_data.get("input", {})
         check_params(input_data
                     , required=["db", "table"]
-                    , optional=["direct_path", "prod_identifier", "file_query_constraints","status_query_constraints","physicsmode"] )
+                    , optional=["direct_path", "prod_identifier", "infile_query_constraints","status_query_constraints","physicsmode"] )
 
         # Substitutions in direct input path, if given
         input_direct_path = input_data.get("direct_path")
@@ -288,18 +290,18 @@ class RuleConfig:
         prod_identifier = input_data.get("prod_identifier",outstub)
         
         # Allow arbitrary query constraints to be added
-        file_query_constraints  = input_data.get("file_query_constraints", "")
-        file_query_constraints += rule_substitions.get("file_query_constraints", "")
+        infile_query_constraints  = input_data.get("infile_query_constraints", "")
+        infile_query_constraints += rule_substitutions.get("infile_query_constraints", "")
         status_query_constraints = input_data.get("status_query_constraints", "")
-        status_query_constraints += rule_substitions.get("status_query_constraints", "")
-        DEBUG(f"Input query constraints: {file_query_constraints}" if file_query_constraints!= "" else  None)
+        status_query_constraints += rule_substitutions.get("status_query_constraints", "")
+        DEBUG(f"Input query constraints: {infile_query_constraints}" if infile_query_constraints!= "" else  None)
         DEBUG(f"Status query constraints: {status_query_constraints}" if status_query_constraints!= "" else  None)
         input_config=InputConfig(
                 db=input_data["db"],
                 table=input_data["table"],
                 direct_path=input_direct_path,
                 prod_identifier= prod_identifier,
-                file_query_constraints=file_query_constraints,
+                infile_query_constraints=infile_query_constraints,
                 status_query_constraints=status_query_constraints
         )
 
@@ -317,7 +319,7 @@ class RuleConfig:
 
         # Payload code etc. Prepend by the yaml file's path unless they are direct
         yaml_path = Path(yaml_file).parent.resolve()            
-        payload_list = job_data["payload"] + rule_substitions.get("payload_list",[])
+        payload_list = job_data["payload"] + rule_substitutions.get("payload_list",[])
         for i,loc in enumerate(payload_list):
             if not loc.startswith("/"):
                 payload_list[i]= f'{yaml_path}/{loc}'
@@ -334,7 +336,7 @@ class RuleConfig:
         # Partial substitutions are possible, but not easier to read
         # from functools import partial; s = partial("{foo} {bar}".format, foo="FOO"); print(s(bar ="BAR"))
         for key in filesystem:
-            filesystem[key]=filesystem[key].format( prodmode=rule_substitions["prodmode"],
+            filesystem[key]=filesystem[key].format( prodmode=rule_substitutions["prodmode"],
                                                     period=params_data["period"],
                                                     physicsmode=physicsmode,
                                                     dataset=dataset,
@@ -375,12 +377,12 @@ class RuleConfig:
         neventsper   = job_data["neventsper"]
         comment      = job_data.get("comment", None)
 
-        # Partially fill rule_substitions into the job data
+        # Partially fill rule_substitutions into the job data
         for field in 'batch_name', 'arguments','log':
             subsval = job_data.get(field)
             if isinstance(subsval, str): # don't try changing None or dictionaries
                 subsval = subsval.format(
-                          **rule_substitions
+                          **rule_substitutions
                         , **filesystem
                         , **params_data
                         , payload=",".join(payload_list)
@@ -400,7 +402,7 @@ class RuleConfig:
             job_data[field] = subsval
             CHATTY(f"After substitution, {field} is {subsval}")
 
-            request_memory=rule_substitions.get("mem")
+            request_memory=rule_substitutions.get("mem")
             if request_memory is None:
                 request_memory=job_data["mem"]
                 
@@ -428,6 +430,7 @@ class RuleConfig:
             build_string=build_string,
             version_string=version_string,
             dataset=dataset,
+            run_condition=run_condition,
             input_config=input_config,
             job_config=job_config,
             physicsmode=physicsmode,
@@ -435,7 +438,7 @@ class RuleConfig:
 
     # ------------------------------------------------
     @classmethod
-    def from_yaml_file(cls, yaml_file: str, rule_name: str, rule_substitions=None) -> "RuleConfig":
+    def from_yaml_file(cls, yaml_file: str, rule_name: str, rule_substitutions=None) -> "RuleConfig":
         """
         Constructs a dictionary of RuleConfig objects from a YAML file.
 
@@ -456,13 +459,14 @@ class RuleConfig:
         return cls.from_yaml(yaml_file=yaml_file,
                              yaml_data=yaml_data,
                              rule_name=rule_name,
-                             rule_substitions=rule_substitions)
+                             rule_substitutions=rule_substitutions)
 
 # ============================================================================
 
 @dataclass( frozen = True )
 class MatchConfig:
     rulestem:      str
+    run_condition: str
     input_config:  InputConfig
     outstub:       str
     dataset:       str
@@ -483,6 +487,7 @@ class MatchConfig:
 
         return cls(
             rulestem     = rule_config.rulestem,
+            run_condition= rule_config.run_condition,
             input_config = rule_config.input_config,
             outstub      = rule_config.outstub,
             dataset      = rule_config.dataset,
@@ -509,11 +514,9 @@ class MatchConfig:
         dst_type_template += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
         dst_type_template += '%'
         # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
-        # exist_query  = f"""select filename, -1 as daqhost,runnumber,segment from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
         ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
         exist_query  = f"""select filename from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
-        exist_query += self.input_config.file_query_constraints
-        DEBUG(exist_query)
+        exist_query += self.run_condition
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
@@ -521,7 +524,12 @@ class MatchConfig:
 
         ### Check production status
         INFO('Checking for output already in production...')
-        status_query  = f"""select dstfile,status from production_status where dstname like '{dst_type_template}'"""
+        # dst_type_template doesn't contain "new_nodcbtag_v000". It's not needed, this gets caught later.
+        # However, let's tighten the query anyway
+        # Could construct a different template but I'm lazy today, just add a second dstname pattern
+        status_query  = f"""select dstfile,status from production_status 
+where dstname like '{dst_type_template}' 
+and dstname like '%{self.dataset}%'"""
         status_query += self.input_config.status_query_constraints
         existing_status = { c.dstfile if c.dstfile.endswith('.root') else c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
         INFO(f"Already have {len(existing_status)} output files in the production db")
@@ -553,18 +561,16 @@ class MatchConfig:
         in_types_str = in_types_str.replace("QUOTE","'")
 
         # Need status==1 for all files in a given run,host combination
-        # Easier to check that below than in SQL
+        # Easier to check that after the SQL query
         infile_query = f'select filename,{descriminator} as daqhost,runnumber,segment,status from {self.input_config.table} where \n\t{descriminator} in {in_types_str}\n'
-        infile_query += self.input_config.file_query_constraints
+        infile_query += self.input_config.infile_query_constraints
 
         if 'raw' in self.input_config.db:
-            #infile_query+= f" and filename like '%bbox%{self.physicsmode}%'"
-            infile_query+= f" and dataset='{self.physicsmode}'" ## TODO
+            infile_query+= f" and dataset='{self.physicsmode}'"
         else:
             infile_query=infile_query.replace('status','\'1\' as status')
-
-        DEBUG(f"Input file query is:\n{infile_query}")
         db_result = dbQuery( cnxn_string_map[ self.input_config.db ], infile_query ).fetchall()
+        
         # TODO: Support rule.printquery
         in_files = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
 
@@ -614,20 +620,16 @@ class MatchConfig:
             ## [somebase]/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/[.,log,hist]/filename
             ## where filename = f'{dsttype}_{dataset}-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})[.root, .log, .hist]'
             ######### Two (originally three) possibilities:
-            # - Easy: If the input has a segment number, then the output will have the same segment number
+            # - Easy-ish: If the input has a segment number, then the output will have the same segment number
             #     - These are downstream objects (input is already a DST)
             #     - This can be 1-1 or many-to-1 (usually 2-1 for SEED + CLUSTER --> TRACKS)
+            #     - UPDATE: not _that_ easy. How to decide that all needed inputs are there? --> needs extra db query
             # - Medium: The input has no segment number; each output is produced from all sequences in one input stream
             #     - This is currently the case for the streaming daq (tracking)
             #     - As of 04/29, this is the new scheme for the calo daq as well
             #     - In this case, provide ALL input files for the run, and the output will produce its own segment numbers
-            # - Hard: The input has no segment number and the output is connected to multiple input streams
-            #     - This is currently the case for the triggered daq (calos).
-            #     - There may be some intricate mixing needed to get the right event numbers together.
-            #        - For now, we ignore this case because it may soon be changed to medium difficulty
-            #        - As of 04/29, this case should now be ignored other than for backwards compatibility
             
-            ####### Easy case. One way to identify this case is to see if gl1 is not needed 
+            ####### "Easy" case. One way to identify this case is to see if gl1 is not needed 
             if 'gl1daq' not in in_types_str:
                 # In this case, the inputs should be a plain list
                 if isinstance(input_stem, dict):
@@ -639,7 +641,8 @@ class MatchConfig:
                 # Sort and group the input files by segment
                 # NOTE: We could save a small bit of work by not checking the input files
                 # if the output already exists. But we need the segments for that anyway
-                outbase=f'{self.rulestem}_{self.dataset}'
+                daqhost="dummy"
+                outbase=f'{self.rulestem}_{self.outstub}_{self.dataset}'
                 segments = None
                 rejected = set()
                 for host in files_for_run:
@@ -665,17 +668,13 @@ class MatchConfig:
                     if output in existing_status: # FIXME
                         WARN(f"Output file {output} already has production status {existing_status[output]}. Not submitting.")
                         WARN(output)
-                        exit()
-                        if runnumber==66462 and "mvtx0" in output:
-                            print(output)
-                            exit()
                         continue
                     in_files_for_seg= []
                     for host in files_for_run:
                         in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
                     CHATTY(f"Creating {output} from {in_files_for_seg}")
-                    rule_matches[output] = in_files_for_seg, outbase, logbase, runnumber, seg, self.rulestem
-
+                    rule_matches[output] = in_files_for_seg, outbase, logbase, runnumber, seg, daqhost, self.rulestem
+                    
             ####### Medium case. Streaming and (now also) triggered daq
             if 'gl1daq' in in_types_str:
                 if not isinstance(input_stem, dict):
