@@ -17,6 +17,7 @@ from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
 from sphenixprodrules import pRUNFMT,pSEGFMT
+from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJob
 from sphenixdbutils import test_mode as dbutils_test_mode
 import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
@@ -66,8 +67,8 @@ def main():
     # Note: The following could all be hidden away in the RuleConfig ctor
     # but this way, CLI arguments are used by the function that received them and
     # constraint constructions are visibly handled away from the RuleConfig class
-    rule_substitions = {}
-    rule_substitions["nevents"] = args.nevents
+    rule_substitutions = {}
+    rule_substitutions["nevents"] = args.nevents
     
     payload_list=[]
     ### Copy our own files to the worker:
@@ -77,6 +78,8 @@ def main():
     payload_list += [ importlib.util.find_spec('simpleLogger').origin ]
     payload_list += [ f"{script_path}/stageout.sh" ]
     payload_list += [ f"{script_path}/GetNumbers.C" ]
+    payload_list += [ f"{script_path}/create_filelist_run_daqhost.py" ]
+    payload_list += [ f"{script_path}/create_filelist_run_seg.py" ]
     
     # .testbed, .slurp (deprecated): indicate test mode -- Search in the _submission_ directory
     if Path(".testbed").exists():
@@ -90,7 +93,7 @@ def main():
         payload_list.insert(args.append2rsync)
         
     DEBUG(f"Addtional resources to be copied to the worker: {payload_list}")
-    rule_substitions["payload_list"] = payload_list
+    rule_substitutions["payload_list"] = payload_list
 
     ### Which runs to process?
     run_condition = None
@@ -119,39 +122,40 @@ def main():
     if limit_condition != "":
         WARN( f"For testing, limiting input query to {args.limit} entries. Probably not what you want." )
         limit_condition = f"\t{limit_condition}\n"
-        
-    rule_substitions["file_query_constraints"] = f"""{run_condition}{limit_condition}"""
-    rule_substitions["status_query_constraints"] = f"""{run_condition.replace('runnumber','run')}{limit_condition}"""
-    DEBUG(f"Input query constraints: {rule_substitions['file_query_constraints']}")
-    DEBUG(f"Status query constraints: {rule_substitions['status_query_constraints']}")
+
+    rule_substitutions["run_condition"] = run_condition
+    rule_substitutions["infile_query_constraints"] = f"""{run_condition}{limit_condition}"""
+    rule_substitutions["status_query_constraints"] = f"""{run_condition.replace('runnumber','run')}{limit_condition}"""
+    DEBUG( f"Input query constraints: {rule_substitutions['infile_query_constraints']}")
+    DEBUG(f"Status query constraints: {rule_substitutions['status_query_constraints']}")
 
     # Rest of the input substitutions
     if args.physicsmode is not None:
-        rule_substitions["physicsmode"] = args.physicsmode # e.g. physics
+        rule_substitutions["physicsmode"] = args.physicsmode # e.g. physics
 
     if args.mangle_dstname:
         DEBUG("Mangling DST name")
-        rule_substitions['DST']=args.mangle_dstname
+        rule_substitutions['DST']=args.mangle_dstname
 
     if args.mem:
         DEBUG(f"Setting memory to {args.mem}")
-        rule_substitions['mem']=args.mem
+        rule_substitutions['mem']=args.mem
 
     # rule.filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
-    rule_substitions["prodmode"] = "production"
+    rule_substitutions["prodmode"] = "production"
     if args.mangle_dirpath:
-        rule_substitions["prodmode"] = args.mangle_dirpath
+        rule_substitutions["prodmode"] = args.mangle_dirpath
 
     #WARN("Don't forget other override_args")
     ## TODO? dbinput, mem, docstring, unblock, batch_name
 
-    CHATTY(f"Rule substitutions: {rule_substitions}")
+    CHATTY(f"Rule substitutions: {rule_substitutions}")
     INFO("Now loading and building rule configuration.")
 
     #################### Load specific rule from the given yaml file.
     try:
-        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, rule_substitions=rule_substitions )
+        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, rule_substitutions=rule_substitutions )
         INFO(f"Successfully loaded rule configuration: {args.rulename}")
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
@@ -159,7 +163,7 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-
+    
     # Assign shared class variables for CondorJob
     # Note: If these need to differ per instance, they shouldn't be ClassVar
     # CondorJob.script                = rule.job_config.script
@@ -231,7 +235,6 @@ def main():
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
-
         # len(chunked_jobs) doesn't work, it's a generator
         if not args.dryrun:
             with open(f'{submission_dir}/{subbase}_{i}.sub', "w") as condor_subfile:
@@ -300,12 +303,7 @@ returning id
         CHATTY(insert_prod_state+";")
         
         # important note: dstfile is not UNIQUE, so we can't detect conflict here and need to rely
-        # on catching already submitted files earlier
-        # could doublecheck with a query here
-        # Also important: "id" can be (zipped with and) handed to the arguments. Good if workers update the db, otherwise questionable 
-        # print(insert_prod_state)
-        # exit()
-
+        # on catching already submitted files earlier. could doublecheck with a query here
         if not args.dryrun:
             # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
             prod_curs = dbQuery( cnxn_string_map['statw'], insert_prod_state )
@@ -326,7 +324,11 @@ returning id
     else:
         INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
 
-    prettyfs = pprint.pformat(rule.job_config.filesystem)
+    
+    prettyfs=pprint.pformat(rule.job_config.filesystem)
+    input_stem=inputs_from_output[rule.rulestem]
+    if isinstance(input_stem, list):
+        prettyfs=prettyfs.replace('{leafdir}',rule.rulestem)
     INFO(f"Other location templates:\n{prettyfs}")
 
     if args.andgo and not args.dryrun:
@@ -336,89 +338,6 @@ returning id
             subprocess.run(f"condor_submit {sub_file}",shell=True)
     
     INFO( "KTHXBYE!" )
-
-    # for m in matching:
-    #     run     = int(m['run'])
-    #     segment = int(m['seg'])
-    #     name    = m['name']
-    #     streamname = m.get( 'streamname', None )
-    #     name_ = name
-    #     if streamname:
-    #         name_ = name.replace("$(streamname)",streamname)
-
-    #     dstfileinput = m['lfn'].split('.')[0]
-
-    #     if m['inputs']:
-    #         dstfileinput=m['inputs']
-
-    #     # TODO: version ???
-    #     # TODO: is dstfile and key redundant ???
-    #     version = m.get('version',None)
-    #     dsttype = name_
-    #     dstname = dsttype +'_'+setup.build.replace(".","")+'_'+setup.dbtag
-    #     if version:
-    #         dstname = dstname + "_" + version  
-    #     dstfile = ( dstname + '-' + RUNFMT + '-' + SEGFMT ) % (run,segment)        
-
-    #     # TODO: version???
-    #     key = sphenix_base_filename( setup.name, setup.build, setup.dbtag, run, segment, version )
-        
-    #     prod_id = setup.id
-
-    #     # Cluster and process are unset during at this pint
-    #     cluster = 0
-    #     process = 0
-
-    #     status  = state        
-
-    #     timestamp=str( datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)  )
-
-    #     # TODO: Handle conflict
-    #     node=platform.node().split('.')[0]
-
-    #     value = f"('{dsttype}','{dstname}','{dstfile}',{run},{segment},0,'{dstfileinput}',{prod_id},{cluster},{process},'{status}', '{timestamp}', 0, '{node}' )" 
-
-    #     if streamname:
-    #         value = value.replace( '$(streamname)', streamname )
-
-    #     values.append( value )
-       
-    # insvals = ','.join(values)    
-    # insert = f"""
-    # insert into production_status
-    #        (dsttype, dstname, dstfile, run, segment, nsegments, inputs, prod_id, cluster, process, status, submitting, nevents, submission_host )
-    # values 
-    #        {insvals}
-    
-    # returning id
-    # """
-    # on conflict
-    # on constraint {files_table}_pkey
-    # do update set 
-    # time=EXCLUDED.time,
-    # size=EXCLUDED.size,
-    # md5=EXCLUDED.md5
-    # ;
-    # """
-
-    # TODO: add to sanity checks:
-    # if rev==0 and build != 'new':
-    #     ERROR( f'production version must be nonzero for fixed builds' )
-    #     result = False
-
-    # if rev!=0 and build == 'new':
-    #     ERROR.error( 'production version must be zero for new build' )
-    #     result = False
-
-    # TODO: Find the right class to store update, updateDb, etc.
-    # update    = kwargs.get('update',    True ) # update the DB
-    # updateDb= not args.submit
-
-
-    # # Do not submit if we fail sanity check on definition file
-    # if not sanity_checks( params, input_ ):
-    #     ERROR( "Sanity check failed. Exiting." )
-    #     exit(1)
 
 # ============================================================================================
 
