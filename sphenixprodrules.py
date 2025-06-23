@@ -149,7 +149,7 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
         return f"{name}>={lst[0]} and {name}<={lst[-1]}"
 
     strlist=map(str,lst)
-    return f"{name} in  {','.join(strlist)}"
+    return f"{name} in  ( {','.join(strlist)} )"
 
 # ============================================================================
 @dataclass( frozen = True )
@@ -540,17 +540,42 @@ class MatchConfig:
         dst_type_template += '%'
 
         ### Which runs to process
+        runlist_int=self.runlist_int
         # Here or in the ctor is a good spot to check against golden or bad runlists
         # and to enforce quality cuts on the runs
         # RuleConfig is too early, distclean and spider may want to be less restricted
-        run_condition=list_to_condition(rule_config.runlist_int)
+        run_quality_tmpl="""
+select distinct(runnumber) from run 
+ where 
+runnumber>={runmin} and runnumber <= {runmax}
+ and 
+runtype='{physicsmode}'
+ and
+eventsinrun >= {min_run_events}
+ and
+EXTRACT(EPOCH FROM (ertimestamp-brtimestamp)) >={min_run_time}
+order by runnumber
+;
+"""
+        min_run_events=100000
+        min_run_time=300 # seconds
+        run_quality_query=run_quality_tmpl.format(
+            runmin=min(runlist_int),
+            runmax=max(runlist_int),
+            physicsmode=self.physicsmode,
+            min_run_events=min_run_events,
+            min_run_time=min_run_time,
+        )
+        goodruns=[ int(r) for (r,) in dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall() ]
+        runlist_int = [run for run in goodruns if run in runlist_int]
+        run_condition=list_to_condition(runlist_int)
 
         # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
         ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
         exist_query  = f"""select filename from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
 
-        if self.run_condition!="" :
-            exist_query += f"\n\tand {self.run_condition}"
+        if run_condition!="" :
+            exist_query += f"\n\tand {run_condition}"
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
@@ -564,8 +589,8 @@ class MatchConfig:
         status_query  = f"""select dstfile,status from production_status 
 where dstname like '{dst_type_template}' 
 and dstname like '%{self.dataset}%'"""
-        if self.run_condition!="" :
-            status_query += f"\n\tand {self.run_condition.replace('runnumber','run')}"
+        if run_condition!="" :
+            status_query += f"\n\tand {run_condition.replace('runnumber','run')}"
         status_query += self.input_config.status_query_constraints
         existing_status = { c.dstfile if c.dstfile.endswith('.root') else c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
         INFO(f"Already have {len(existing_status)} output files in the production db")
@@ -599,8 +624,8 @@ and dstname like '%{self.dataset}%'"""
         # Need status==1 for all files in a given run,host combination
         # Easier to check that after the SQL query
         infile_query = f'select filename,{descriminator} as daqhost,runnumber,segment,status from {self.input_config.table} where \n\t{descriminator} in {in_types_str}\n'
-        if self.run_condition!="" :
-            infile_query += f"\n\tand {self.run_condition}"
+        if run_condition!="" :
+            infile_query += f"\n\tand {run_condition}"
         infile_query += self.input_config.infile_query_constraints
 
         if 'raw' in self.input_config.db:

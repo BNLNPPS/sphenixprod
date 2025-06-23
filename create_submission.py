@@ -299,7 +299,7 @@ returning id
     if len(rule_matches) ==0 :
         INFO("No jobs to submit.")
     else:
-        INFO(f"Created {i+1} submission file pairs in {submission_dir} for {len(rule_matches)} jobs.")
+        INFO(f"Created {i+1} submission chunk(s) in {submission_dir} for {len(rule_matches)} jobs.")
 
     
     prettyfs=pprint.pformat(rule.job_config.filesystem)

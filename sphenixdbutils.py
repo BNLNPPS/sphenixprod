@@ -52,8 +52,10 @@ cnxn_string_map = {
     'fcr'         : f'DSN={dsnfilec};READONLY=True;UID=phnxrc',
     'statr'       : f'DSN={dsnprodr};READONLY=True;UID=argouser',
     'statw'       : f'DSN={dsnprodw};UID=argouser',
+    'daqr'        :  'DSN=daq;READONLY=True;UID=phnxrc',
     'rawr'        :  'DSN=RawdataCatalog_read;READONLY=True;UID=phnxrc',
     'testw'       :  'DSN=FileCatalogTest;UID=phnxrc',
+    
 }
 
 # Hack to test locally on Mac
