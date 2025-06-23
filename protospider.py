@@ -16,7 +16,7 @@ import pprint # noqa F401
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig,list_to_condition, extract_numbers_to_commastring,inputs_from_output
+from sphenixprodrules import RuleConfig,inputs_from_output
 from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import cnxn_string_map, dbQuery
@@ -37,9 +37,6 @@ def shell_command(command: str) -> List[str]:
 
     DEBUG(f"[shell_command] Found {len(ret)} matches.")
     return ret
-    
-    
-
 
 # ============================================================================================
 
@@ -80,26 +77,9 @@ def main():
     # but this way, CLI arguments are used by the function that received them and
     # constraint constructions are visibly handled away from the RuleConfig class
     rule_substitutions = {}
+    rule_substitutions["runs"]=args.runs
+    rule_substitutions["runlist"]=args.runlist
     rule_substitutions["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
-
-    ### Which runs to transfer?
-    runlist=[]
-    run_condition = ""
-    if args.runlist:
-        INFO(f"Processing runs from file: {args.runlist}")
-        run_condition, runlist = extract_numbers_to_commastring(args.runlist)
-    elif args.runs:
-        if args.runs==['-1'] : 
-            INFO(f"Processing all runs.")
-        else:
-            INFO(f"Processing run (range): {args.runs}")
-        run_condition, runlist = list_to_condition(args.runs, "runnumber")
-    else:
-        ERROR("Something's wrong. No runs provided, but this should have been caught by the \"runs\" default value in argparsing.")
-        exit(-1)    
-    if runlist==[]:
-            runlist=[-1]
-    rule_substitutions["run_condition"] = run_condition
         
     # Rest of the input substitutions
     if args.physicsmode is not None:
@@ -128,7 +108,7 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-        
+    
     ### Which find command to use for lustre?
     # Lustre's robin hood, rbh-find, doesn't offer advantages for our usecase, and it is more cumbersome to use.
     # But "lfs find" is preferrable to the regular kind.
@@ -162,8 +142,8 @@ def main():
     for finfile in finishedfiles:
         pseudolfn=Path(finfile).name
         _,run,seg,end=parse_lfn(pseudolfn,rule)
-        if runlist==[-1] or binary_contains_bisect(runlist,run):
-            fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(finfile)
+        if binary_contains_bisect(rule.runlist_int,run):
+            fullpath,_,_,_,_,dbid = parse_spiderstuff(finfile)
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
                 exit(0)
@@ -181,7 +161,7 @@ def main():
     for file in lakefiles:
         pseudolfn=Path(file).name
         dsttype,run,seg,_=parse_lfn(pseudolfn,rule)
-        if runlist==[-1] or binary_contains_bisect(runlist,run):
+        if binary_contains_bisect(rule.runlist_int,run):
             fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(file)
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
@@ -318,7 +298,7 @@ def main():
         lfn=Path(fullpath).name
         dsttype,run,seg,_=parse_lfn(lfn,rule)
         
-        if runlist==[-1] or binary_contains_bisect(runlist,run):
+        if binary_contains_bisect(rule.runlist_int,run):
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
                 exit(0)

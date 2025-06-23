@@ -15,7 +15,7 @@ if os.uname().sysname!='Darwin' :
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition, extract_numbers_to_commastring
+from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition
 from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJob
@@ -35,10 +35,6 @@ def main():
             or args.test_mode
             # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
         )
-    # No matter how we determined test_mode, make sure it is now propagated to job directories.
-    # Note that further down we'll turn on transfer of the .testbed file to the worker
-    if test_mode:
-        Path('.testbed').touch()
 
     #################### Set up submission logging before going any further
     # Set up submission logging before going any further
@@ -49,8 +45,7 @@ def main():
     if should_I_quit(args=args, myname=sys.argv[0]):
         DEBUG("Stop.")
         exit(0)
-
-    # stdout is already added to slogger by default
+    
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if test_mode:
@@ -68,6 +63,8 @@ def main():
     # but this way, CLI arguments are used by the function that received them and
     # constraint constructions are visibly handled away from the RuleConfig class
     rule_substitutions = {}
+    rule_substitutions["runs"]=args.runs
+    rule_substitutions["runlist"]=args.runlist
     rule_substitutions["nevents"] = args.nevents
     
     payload_list=[]
@@ -95,39 +92,19 @@ def main():
     DEBUG(f"Addtional resources to be copied to the worker: {payload_list}")
     rule_substitutions["payload_list"] = payload_list
 
-    ### Which runs to process?
-    run_condition = None
-    if args.runlist:
-        INFO(f"Processing runs from file: {args.runlist}")
-        run_cond_text, _ = extract_numbers_to_commastring(args.runlist)
-        run_condition = f"and runnumber in ({run_cond_text} )"
-    elif args.runs:
-        INFO(f"Processing run (range): {args.runs}")
-        run_condition, _ = list_to_condition(args.runs, "runnumber")        
-    else:
-        ERROR("No runs specified.")
-        exit(1)
     # Limit the number of results from the query?
     limit_condition = ""
     if args.limit:
-        limit_condition = f"limit {args.limit}"
-        WARN(f"Limiting input query to {args.limit} entries.")
+        ERROR(f"A general limit constraint doesn't make sense. Deprecated and ignored." )
+        # limit_condition = f"limit {args.limit}"
+        # DEBUG( f"Limit condition is \"{limit_condition}\"" )
+        # WARN( f"For testing, limiting input query to {args.limit} entries. Probably not what you want." )
+        # limit_condition = f"\t{limit_condition}\n"
 
-    DEBUG( f"Run condition is \"{run_condition}\"" )
-    if limit_condition != "":
-        DEBUG( f"Limit condition is \"{limit_condition}\"" )
-
-    if run_condition != "":
-        run_condition = f"\t{run_condition}\n"
-    if limit_condition != "":
-        WARN( f"For testing, limiting input query to {args.limit} entries. Probably not what you want." )
-        limit_condition = f"\t{limit_condition}\n"
-
-    rule_substitutions["run_condition"] = run_condition
-    rule_substitutions["infile_query_constraints"] = f"""{run_condition}{limit_condition}"""
-    rule_substitutions["status_query_constraints"] = f"""{run_condition.replace('runnumber','run')}{limit_condition}"""
-    DEBUG( f"Input query constraints: {rule_substitutions['infile_query_constraints']}")
-    DEBUG(f"Status query constraints: {rule_substitutions['status_query_constraints']}")
+    # rule_substitutions["infile_query_constraints"] = f"""{run_condition}{limit_condition}"""
+    # rule_substitutions["status_query_constraints"] = f"""{run_condition.replace('runnumber','run')}{limit_condition}"""
+    # DEBUG( f"Input query constraints: {rule_substitutions['infile_query_constraints']}")
+    # DEBUG(f"Status query constraints: {rule_substitutions['status_query_constraints']}")
 
     # Rest of the input substitutions
     if args.physicsmode is not None:

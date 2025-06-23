@@ -95,8 +95,8 @@ md5=EXCLUDED.md5
 """
 # ---------------------------------------------------------------------------------------------
 insert_datasets_tmpl="""
-insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events)
-values ('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents})
+insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events,firstevent,lastevent)
+values ('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{lastevent})
 on conflict
 on constraint {datasets_table}_pkey
 do update set
@@ -104,7 +104,9 @@ runnumber=EXCLUDED.runnumber,
 segment=EXCLUDED.segment,
 size=EXCLUDED.size,
 dsttype=EXCLUDED.dsttype,
-events=EXCLUDED.events
+events=EXCLUDED.events,
+firstevent=EXCLUDED.firstevent,
+lastevent=EXCLUDED.lastevent
 ;
 """
 # ---------------------------------------------------------------------------------------------
@@ -128,7 +130,9 @@ def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset
             file_size_bytes=filestat.st_size if filestat else 'NONE',
             dataset=dataset,
             dsttype=info.dsttype,
-            nevents=info.nevents
+            nevents=info.nevents,
+            firstevent=info.first,
+            lastevent=info.last,            
         )
         CHATTY(insert_datasets)
         if not dryrun:

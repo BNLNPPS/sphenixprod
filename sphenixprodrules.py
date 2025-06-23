@@ -109,47 +109,19 @@ def check_params(params_data: Dict[str, Any], required: List[str], optional: Lis
     return check_clean
 
 # ============================================================================================
-def extract_numbers_to_commastring(filepath: str ) -> Tuple[str, List[int]]: 
-    """
-    Extracts all numbers from a file, combines them into a comma-separated string,
-    and returns the string. Numbers can be separated by whitespace including newlines.
-
-    Args:
-        filepath: The path to the file.
-
-    Returns:
-        A string containing a comma-separated list of numbers, or None if the file
-        does not exist or no numbers are found.
-    """
-    try:
-        with open(filepath, 'r') as file:
-            content = file.read()
-    except FileNotFoundError:
-        print(f"Error: File not found at {filepath}")
-        return None
-
-    # Find all integer numbers. Could catch mistakes better
-    numbers = re.findall(r"[-+]?\d+", content)
-    return ','.join(numbers),[2] if numbers else None,[]
-
-# ============================================================================================
-def list_to_condition(lst, name)  -> Tuple[str, List[int]] :
+def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
     """
     Generates a condition string usable in a SQL query from a list of values.
 
     This function takes a list (`lst`) and a field name (`name`) and constructs a
-    string that can be used as a `WHERE` clause condition in a SQL query. It
-    handles different list lengths to create appropriate conditions.
-    It also returns a sorted list of runs formed by the condition.
-    No effort is made to ensure that inputs are numbers and properly ordered.
+    string that can be used as a `WHERE` clause condition in a SQL query.
 
     Args:
-        lst: A list of values supplied via CLI (run numbers or segment numbers).
-        name: The name of the field/column in the database
+        lst: A list of positive integers. Usually runnumbers.
+        name: The name of the field/column in the database (usually runnumber)
 
     Returns:
-        A string representing a SQL-like condition, or None if the list is empty.
-        A sorted list of runs formed by the condition, or []
+        A string representing a (an?) SQL condition, or "" if the list is empty.
 
     Examples:
         - list_to_condition([123], "runnumber") returns "and runnumber=123", [123]
@@ -157,25 +129,27 @@ def list_to_condition(lst, name)  -> Tuple[str, List[int]] :
         - list_to_condition([1, 2, 3], "runnumber") returns "and runnumber in ( 1,2,3 )", [1, 2, 3]
         - list_to_condition([], "runnumber") returns None
     """
-    condition = ""
-    runlist=[]
-    if  len( lst )==1:
-        if int(lst[0]) > 0:
-            condition = f"and {name}={lst[0]}"
-            runlist=[int(lst[0])]
-    elif len( lst )==2:
-        if int(lst[0])<0:
-            lst[0]='0'
-        if int(lst[1])<0:
-            print('hello')
-            lst[1]='99999'
-        runlist = list( range(int(lst[0]), int(lst[1])+1) )
-        condition = f"and {name}>={lst[0]} and {name}<={lst[1]}"        
-    elif len( lst )>=3 :
-        runlist=sorted( [ int(r) for r in lst ] )
-        condition = f"and {name} in ( %s )" % ','.join( lst )
+    length=len( lst )
+    if length==0:
+        return ""
 
-    return condition, runlist
+    if length>100000:
+        ERROR(f"List has {length} entries. Not a good idea. Bailing out.")
+        exit(-1)
+
+    if length==1:
+        return f"{name}={lst[0]}"
+
+    sorted_lst=sorted(lst)
+    if (sorted_lst != lst):
+        WARN("Original list isn't sorted, that shouldn't happen. Proceeding anyway.")
+
+    # range or list with gaps?
+    if list(range(min(lst),max(lst)+1)) == sorted_lst:
+        return f"{name}>={lst[0]} and {name}<={lst[-1]}"
+
+    strlist=map(str,lst)
+    return f"{name} in  {','.join(strlist)}"
 
 # ============================================================================
 @dataclass( frozen = True )
@@ -205,7 +179,7 @@ class RuleConfig:
     build_string: str   # ana472, new
     version_string: str # v000
     dataset: str        # new_2025p000_v000
-    run_condition: str  # "and runnumber=66456" <-- constructed from args, works for both input and existing output dbs
+    runlist_int: List[int] # name chosen to differentiate it from --runlist which points to a text file
 
     # Nested dataclasses
     input_config: InputConfig
@@ -262,7 +236,58 @@ class RuleConfig:
         version_string = f'v{params_data["version"]:{VERFMT}}'
         outstub = params_data["outstub"] if "outstub" in params_data else params_data["period"]
         dataset = f'{build_string}_{params_data["dbtag"]}_{version_string}'
-        run_condition = rule_substitutions['run_condition']
+        
+        ### Which runs to process?
+        runs=rule_substitutions["runs"]
+        runlist=rule_substitutions["runlist"]
+        INFO(f"runs = {runs}")
+        INFO(f"runlist = {runlist}")
+        runlist_int=None
+        ## By default, run over "physics" runs in run3
+        default_runmin=66456
+        default_runmax=90000
+        if runlist: # white-space separated numbers from a file
+            INFO(f"Processing runs from file: {runlist}")
+            try:
+                with open(runlist, 'r') as file:
+                    content = file.read()
+            except FileNotFoundError:
+                ERROR(f"Error: Runlist file not found at {runlist}")
+                exit(-1)
+            try:
+                number_strings = re.findall(r"[-+]?\d+", content)
+                runlist_int=[int(runstr) for runstr in number_strings]
+            except Exception as e:
+                ERROR(f"Error: Exception parsing runlist file {runlist}: {e}")
+        else: # Use --runs. 0 for all default runs; 1, 2 numbers for a single run or a range; 3+ for an explicit list
+            INFO(f"Processing runs argument: {runs}")
+            if not runs:
+                WARN(f"Processing all runs.")
+                runs=['-1','-1']
+            nargs=len( runs )
+            if  nargs==1:
+                runlist_int=[int(runs[0])]
+                if runlist_int[0]<=0 :
+                    ERROR(f"Can't run on single run {lst}") 
+            elif nargs==2:
+                runmin,runmax=tuple(map(int,runs))
+                if runmin<0:
+                    runmin=default_runmin
+                    WARN(f"Using runmin={runmin}")
+                if runmax<0:
+                    runmax=default_runmax
+                    WARN(f"Using runmax={runmax}")
+                runlist_int=list(range(runmin, runmax+1))
+            else :
+                # dense command here, all it does is make a list of unique ints, and sort it
+                runlist_int=sorted(set(map(int,runs)))
+                # Remove non-positive entries while we're at it
+                runlist_int=[r for r in runlist_int if r>=0]
+        if not runlist_int or runlist_int==[]:
+            ERROR("Something's wrong parsing the runs to be processed. Maybe runmax < runmin?")
+            exit(-1)
+        CHATTY(f"Runlist: {runlist_int}")
+        CHATTY(f"Run Condition: {list_to_condition(runlist_int)}")
 
         ### Turning off name mangling; directory mangling is sufficient
         # if 'DST' in rule_substitutions:
@@ -430,7 +455,7 @@ class RuleConfig:
             build_string=build_string,
             version_string=version_string,
             dataset=dataset,
-            run_condition=run_condition,
+            runlist_int=runlist_int,
             input_config=input_config,
             job_config=job_config,
             physicsmode=physicsmode,
@@ -466,7 +491,7 @@ class RuleConfig:
 @dataclass( frozen = True )
 class MatchConfig:
     rulestem:      str
-    run_condition: str
+    runlist_int:   str
     input_config:  InputConfig
     outstub:       str
     dataset:       str
@@ -487,7 +512,7 @@ class MatchConfig:
 
         return cls(
             rulestem     = rule_config.rulestem,
-            run_condition= rule_config.run_condition,
+            runlist_int  = rule_config.runlist_int,
             input_config = rule_config.input_config,
             outstub      = rule_config.outstub,
             dataset      = rule_config.dataset,
@@ -513,10 +538,19 @@ class MatchConfig:
             dst_type_template += '_%'
         dst_type_template += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
         dst_type_template += '%'
+
+        ### Which runs to process
+        # Here or in the ctor is a good spot to check against golden or bad runlists
+        # and to enforce quality cuts on the runs
+        # RuleConfig is too early, distclean and spider may want to be less restricted
+        run_condition=list_to_condition(rule_config.runlist_int)
+
         # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
         ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
         exist_query  = f"""select filename from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
-        exist_query += self.run_condition
+
+        if self.run_condition!="" :
+            exist_query += f"\n\tand {self.run_condition}"
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
@@ -530,6 +564,8 @@ class MatchConfig:
         status_query  = f"""select dstfile,status from production_status 
 where dstname like '{dst_type_template}' 
 and dstname like '%{self.dataset}%'"""
+        if self.run_condition!="" :
+            status_query += f"\n\tand {self.run_condition.replace('runnumber','run')}"
         status_query += self.input_config.status_query_constraints
         existing_status = { c.dstfile if c.dstfile.endswith('.root') else c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
         INFO(f"Already have {len(existing_status)} output files in the production db")
@@ -563,6 +599,8 @@ and dstname like '%{self.dataset}%'"""
         # Need status==1 for all files in a given run,host combination
         # Easier to check that after the SQL query
         infile_query = f'select filename,{descriminator} as daqhost,runnumber,segment,status from {self.input_config.table} where \n\t{descriminator} in {in_types_str}\n'
+        if self.run_condition!="" :
+            infile_query += f"\n\tand {self.run_condition}"
         infile_query += self.input_config.infile_query_constraints
 
         if 'raw' in self.input_config.db:
