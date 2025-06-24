@@ -157,12 +157,15 @@ class InputConfig:
     """Represents the input configuration block in the YAML."""
     db: str
     table: str
-    prod_identifier:            Optional[str] = None # run3auau, run3cosmics
+    min_run_events:   Optional[int] = 100000
+    min_run_time:     Optional[int] = 300 # seconds
+    prod_identifier:  Optional[str] = None # run3auau, run3cosmics
 
     infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
     direct_path: Optional[str]                = None  # Make direct_path optional
 
+    
 # ============================================================================
 @dataclass( frozen = True )
 class RuleConfig:
@@ -304,14 +307,18 @@ class RuleConfig:
         input_data = rule_data.get("input", {})
         check_params(input_data
                     , required=["db", "table"]
-                    , optional=["direct_path", "prod_identifier", "infile_query_constraints","status_query_constraints","physicsmode"] )
+                    , optional=["min_run_events","min_run_time",
+                                "direct_path", "prod_identifier",
+                                "infile_query_constraints",
+                                "status_query_constraints","physicsmode"] )
 
+        min_run_events=input_data.get("min_run_events")
+        min_run_time=input_data.get("min_run_time")
         # Substitutions in direct input path, if given
         input_direct_path = input_data.get("direct_path")
         if input_direct_path is not None:
             input_direct_path = input_direct_path.format(mode=physicsmode)
             DEBUG (f"Using direct path {input_direct_path}")
-
         prod_identifier = input_data.get("prod_identifier",outstub)
         
         # Allow arbitrary query constraints to be added
@@ -322,12 +329,14 @@ class RuleConfig:
         DEBUG(f"Input query constraints: {infile_query_constraints}" if infile_query_constraints!= "" else  None)
         DEBUG(f"Status query constraints: {status_query_constraints}" if status_query_constraints!= "" else  None)
         input_config=InputConfig(
-                db=input_data["db"],
-                table=input_data["table"],
-                direct_path=input_direct_path,
-                prod_identifier= prod_identifier,
-                infile_query_constraints=infile_query_constraints,
-                status_query_constraints=status_query_constraints
+            db=input_data["db"],
+            table=input_data["table"],
+            min_run_events=min_run_events,
+            min_run_time=min_run_time,
+            direct_path=input_direct_path,
+            prod_identifier= prod_identifier,
+            infile_query_constraints=infile_query_constraints,
+            status_query_constraints=status_query_constraints
         )
 
         # Extract and validate job_config
@@ -490,13 +499,12 @@ class RuleConfig:
 
 @dataclass( frozen = True )
 class MatchConfig:
-    rulestem:      str
-    runlist_int:   str
-    input_config:  InputConfig
-    outstub:       str
-    dataset:       str
-    physicsmode:   str
-
+    rulestem:       str
+    runlist_int:    str
+    input_config:   InputConfig
+    outstub:        str
+    dataset:        str
+    physicsmode:    str
     # ------------------------------------------------
     @classmethod
     def from_rule_config(cls, rule_config: RuleConfig):
@@ -678,7 +686,11 @@ and dstname like '%{self.dataset}%'"""
                 CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1_files}')
                 for host in files_for_run:
                     files_for_run[host] = gl1_files + files_for_run[host]
-
+                    any_zero_status = any(file_tuple.status == 0 for file_tuple in files_for_run[host])
+                    # Now enforce status!=0 for all files from this host
+                    if any_zero_status :
+                        files_for_run[host]=[]
+                    
             ## Output, log, etc, live in
             ## [somebase]/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/[.,log,hist]/filename
             ## where filename = f'{dsttype}_{dataset}-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})[.root, .log, .hist]'
@@ -751,7 +763,10 @@ and dstname like '%{self.dataset}%'"""
                     if daqhost not in files_for_run:
                         CHATTY(f"No inputs from {daqhost} for run {runnumber}.")
                         continue
-                    
+                    ### Would be more elegant to del(files_for_run[host]) higher up where we check the status
+                    ### But that changes the dictionary during iteration etc. Easier to just check here for []
+                    if files_for_run[host]==[]:
+                        continue
                     dsttype = f'{self.rulestem}_{leaf}'
                     dsttype += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
                     # Example arguments for the combiner script:
