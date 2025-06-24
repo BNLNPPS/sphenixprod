@@ -172,7 +172,7 @@ def main():
         for f_to_delete in existing_sub_files: 
             CHATTY(f"Deleting: {f_to_delete}")
             if not args.dryrun:
-                Path(f_to_delete).unlink()
+                Path(f_to_delete).unlink(missing_ok=True)
     if Path(submission_dir).is_dir() and not any(Path(submission_dir).iterdir()):
         WARN(f"Submission directory is empty. Removing {submission_dir}")
         if not args.dryrun:
@@ -187,33 +187,44 @@ def main():
     lakelocation=filesystem['outdir']
     INFO(f"Original output directory: {lakelocation}")
     findcommand = f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\*"
+    findcommand=findcommand.replace('\*\*','\*') # cleanup eventual double asterisks
     INFO(f"Find command: {findcommand}")
+    lakefiles=[]
     lakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
     print(f"Found {len(lakefiles)} matching dsts sans runnumber cut in the lake.")
-
-    findcommand = f"{lfind} {lakelocation} -type f -name {dstbase}\*.finished\*"
-    INFO(f"Find command: {findcommand}")
-    finishedlakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
-    print(f"Found {len(finishedlakefiles)} matching .finished files in the lake.")
-
     del_lakefiles=[]
     for f_to_delete in lakefiles:
         lfn=Path(f_to_delete).name
         _,run,_,_=parse_lfn(lfn,rule)
         if binary_contains_bisect(rule.runlist_int,run):
             del_lakefiles.append(f_to_delete)
+    WARN(f"Removing {len(del_lakefiles)} .root {lakelocation}")
+    for f_to_delete in del_lakefiles: 
+        CHATTY(f"Deleting: {f_to_delete}")
+        if not args.dryrun:
+            Path(f_to_delete).unlink(missing_ok=True) # could unlink the entire directory instead?
+
+    findcommand = f"{lfind} {lakelocation} -type f -name {dstbase}\*.finished\*"
+    findcommand=findcommand.replace('\*\*','\*') # cleanup eventual double asterisks
+    INFO(f"Find command: {findcommand}")
+    ## DEBUG
+    finishedlakefiles = []
+    finishedlakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    print(f"Found {len(finishedlakefiles)} matching .finished files in the lake.")
             
+    del_lakefiles=[]
     for f_to_delete in finishedlakefiles:
         lfn=Path(f_to_delete).name
         _,run,_,_=parse_lfn(lfn,rule)
         if binary_contains_bisect(rule.runlist_int,run):
             del_lakefiles.append(f_to_delete)
-    WARN(f"Removing {len(del_lakefiles)} .root and .finished files in the lake at {lakelocation}")
-    
+    WARN(f"Removing {len(del_lakefiles)} .finished files in the lake at {lakelocation}")
     for f_to_delete in del_lakefiles: 
         CHATTY(f"Deleting: {f_to_delete}")
         if not args.dryrun:
-            Path(f_to_delete).unlink() # could unlink the entire directory instead?
+            Path(f_to_delete).unlink(missing_ok=True) # could unlink the entire directory instead?
+
+    # Clean up directories
     if not any(Path(lakelocation).iterdir()):
         WARN(f"DST lake is empty. Removing {lakelocation}")
         if not args.dryrun:
@@ -266,7 +277,7 @@ def main():
     for f_to_delete in del_final_dsts:
         CHATTY(f"Deleting: {f_to_delete}")
         if not args.dryrun:
-            Path(f_to_delete).unlink()
+            Path(f_to_delete).unlink(missing_ok=True)
 
     ### Update databases accordingly
     ## Note: We are only using the actually deleted filenames.    
@@ -381,7 +392,7 @@ def main():
     for f_to_delete in del_final_data:
         CHATTY(f"Deleting: {f_to_delete}")
         if not args.dryrun:
-            Path(f_to_delete).unlink()
+            Path(f_to_delete).unlink(missing_ok=True)
     
     # And remove them from databases
     histnumber= sum('HIST_' in s for s in del_final_data)
@@ -446,8 +457,8 @@ returning *
 # ============================================================================================
 
 if __name__ == '__main__':
-    main()
-    exit(0)
+    # main()
+    # exit(0)
 
     cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats
