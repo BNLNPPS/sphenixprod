@@ -190,7 +190,8 @@ def main():
     findcommand=findcommand.replace('\*\*','\*') # cleanup eventual double asterisks
     INFO(f"Find command: {findcommand}")
     lakefiles=[]
-    lakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    if Path(lakelocation).is_dir():
+        lakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
     print(f"Found {len(lakefiles)} matching dsts sans runnumber cut in the lake.")
     del_lakefiles=[]
     for f_to_delete in lakefiles:
@@ -209,7 +210,8 @@ def main():
     INFO(f"Find command: {findcommand}")
     ## DEBUG
     finishedlakefiles = []
-    finishedlakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
+    if Path(lakelocation).is_dir():
+        finishedlakefiles = subprocess.run(findcommand, shell=True, check=True, capture_output=True).stdout.decode('utf-8').splitlines()
     print(f"Found {len(finishedlakefiles)} matching .finished files in the lake.")
             
     del_lakefiles=[]
@@ -225,7 +227,7 @@ def main():
             Path(f_to_delete).unlink(missing_ok=True) # could unlink the entire directory instead?
 
     # Clean up directories
-    if not any(Path(lakelocation).iterdir()):
+    if Path(lakelocation).is_dir() and not any(Path(lakelocation).iterdir()):
         WARN(f"DST lake is empty. Removing {lakelocation}")
         if not args.dryrun:
             Path(lakelocation).rmdir()            
