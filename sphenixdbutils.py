@@ -184,7 +184,7 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     #assert( 'select'     in query.lower() )
 
     DEBUG(f'[cnxn_string] {cnxn_string}')
-    CHATTY(f'[query      ]\n{query}')
+    DEBUG(f'[query      ]\n{query}')
 
     start=datetime.now()
     last_exception = None
