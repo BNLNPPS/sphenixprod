@@ -185,7 +185,7 @@ def main():
     submission_dir = Path('./tosubmit').resolve()
     if not args.dryrun:
         Path( submission_dir).mkdir( parents=True, exist_ok=True )
-    subbase = f'{rule.rulestem}_{rule.outstub}_{rule.dataset}'
+    subbase = f'{rule.rulestem}_{rule.outstub}_{rule.outdataset}'
     INFO(f'Submission files based on {subbase}')
 
     # For a fairly collision-safe identifier that could be used to not trample on existing files:
@@ -249,8 +249,8 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
                     Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
                     
             # Add to production database
-            # FIXME: inputs, prod_id
-            dsttype=logbase.split(f'_{rule.dataset}')[0]
+            # FIXME: prod_id
+            dsttype=logbase.split(f'_{rule.outdataset}')[0]
             dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
             # FIXME: SEGMENT?
             # Following is fragile, don't add spaces

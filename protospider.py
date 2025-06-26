@@ -124,7 +124,7 @@ def main():
     # Original output directory, the final destination, and the file name trunk
     filesystem = rule.job_config.filesystem
     DEBUG(f"Filesystem: {filesystem}")
-    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.dataset}\*'
+    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.outdataset}\*'
     INFO(f'DST files filtered as {dstbase}')
     lakelocation=filesystem['outdir']
     INFO(f"Original output directory: {lakelocation}")
@@ -246,7 +246,7 @@ def main():
                            info=info,
                            full_file_path = full_file_path,
                            filestat=filestat,
-                           dataset=rule.dataset,
+                           dataset=rule.outdataset,
                            dryrun=args.dryrun
                            )
         pass # End of DST loop 
@@ -331,7 +331,7 @@ def main():
                            info=info,
                            full_file_path = full_file_path,
                            filestat=filestat,
-                           dataset=rule.dataset,
+                           dataset=rule.outdataset,
                            dryrun=args.dryrun
                            )
         pass # End of HIST loop 

@@ -163,7 +163,7 @@ def main():
 
     ### Submission directory. Hacky.
     submission_dir = Path('./tosubmit').resolve() 
-    subbase = f'{rule.rulestem}_{rule.outstub}_{rule.dataset}'
+    subbase = f'{rule.rulestem}_{rule.outstub}_{rule.outdataset}'
     INFO(f'Submission files based on {subbase}')
     existing_sub_files =  list(Path(submission_dir).glob(f'{subbase}*.in'))
     existing_sub_files += list(Path(submission_dir).glob(f'{subbase}*.sub'))
@@ -181,7 +181,7 @@ def main():
     ############# DSTs still in the lake
     filesystem = rule.job_config.filesystem
     DEBUG(f"Filesystem: {filesystem}")
-    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.dataset}\*'
+    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.outdataset}\*'
     INFO(f'DST files filtered as {dstbase}')
 
     lakelocation=filesystem['outdir']
