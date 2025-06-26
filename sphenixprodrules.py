@@ -157,6 +157,7 @@ class InputConfig:
     """Represents the input configuration block in the YAML."""
     db: str
     table: str
+    indataset:        Optional[str] = "" # new_nocdbtag_v001; optional only because it's not needed for event combiners
     min_run_events:   Optional[int] = 100000
     min_run_time:     Optional[int] = 300 # seconds
     prod_identifier:  Optional[str] = None # run3auau, run3cosmics
@@ -181,7 +182,7 @@ class RuleConfig:
     # Inferred
     build_string: str   # ana472, new
     version_string: str # v000
-    dataset: str        # new_2025p000_v000
+    outdataset: str      # new_2025p000_v000
     runlist_int: List[int] # name chosen to differentiate it from --runlist which points to a text file
 
     # Nested dataclasses
@@ -238,7 +239,7 @@ class RuleConfig:
         build_string=params_data["build"].replace(".","")
         version_string = f'v{params_data["version"]:{VERFMT}}'
         outstub = params_data["outstub"] if "outstub" in params_data else params_data["period"]
-        dataset = f'{build_string}_{params_data["dbtag"]}_{version_string}'
+        outdataset = f'{build_string}_{params_data["dbtag"]}_{version_string}'
         
         ### Which runs to process?
         runs=rule_substitutions["runs"]
@@ -307,11 +308,13 @@ class RuleConfig:
         input_data = rule_data.get("input", {})
         check_params(input_data
                     , required=["db", "table"]
-                    , optional=["min_run_events","min_run_time",
+                    , optional=["indataset",
+                                "min_run_events","min_run_time",
                                 "direct_path", "prod_identifier",
                                 "infile_query_constraints",
                                 "status_query_constraints","physicsmode"] )
 
+        indataset=input_data.get("indataset")
         min_run_events=input_data.get("min_run_events")
         min_run_time=input_data.get("min_run_time")
         # Substitutions in direct input path, if given
@@ -331,6 +334,7 @@ class RuleConfig:
         input_config=InputConfig(
             db=input_data["db"],
             table=input_data["table"],
+            indataset=indataset,
             min_run_events=min_run_events,
             min_run_time=min_run_time,
             direct_path=input_direct_path,
@@ -373,7 +377,7 @@ class RuleConfig:
             filesystem[key]=filesystem[key].format( prodmode=rule_substitutions["prodmode"],
                                                     period=params_data["period"],
                                                     physicsmode=physicsmode,
-                                                    dataset=dataset,
+                                                    dataset=outdataset,
                                                     leafdir='{leafdir}',
                                                     rungroup='{rungroup}',
                                                     )
@@ -424,10 +428,11 @@ class RuleConfig:
                         , neventsper=neventsper
                         , buildarg=build_string
                         , tag=params_data["dbtag"]
-                        , dataset=dataset
+                        , dataset=outdataset
                         # pass remaining per-job parameters forward to be replaced later
                         , outbase='{outbase}'
                         , logbase='{logbase}'
+                        , inbase='{inbase}'
                         , run='{run}'
                         , seg='{seg}'
                         , daqhost='{daqhost}'
@@ -463,7 +468,7 @@ class RuleConfig:
             version=params_data["version"],
             build_string=build_string,
             version_string=version_string,
-            dataset=dataset,
+            outdataset=outdataset,
             runlist_int=runlist_int,
             input_config=input_config,
             job_config=job_config,
@@ -503,7 +508,7 @@ class MatchConfig:
     runlist_int:    str
     input_config:   InputConfig
     outstub:        str
-    dataset:        str
+    outdataset:     str
     physicsmode:    str
     # ------------------------------------------------
     @classmethod
@@ -523,7 +528,7 @@ class MatchConfig:
             runlist_int  = rule_config.runlist_int,
             input_config = rule_config.input_config,
             outstub      = rule_config.outstub,
-            dataset      = rule_config.dataset,
+            outdataset   = rule_config.outdataset,
             physicsmode  = rule_config.physicsmode,
         )
 
@@ -533,7 +538,6 @@ class MatchConfig:
 
     # ------------------------------------------------
     def matches(self) :
-        INFO('Checking for already existing output...')
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # Despite the "like" clause, this is a fast query. Extra cuts or substitute cuts like
         # 'and runnumber>={self.runMin} and runnumber<={self.runMax}'
@@ -547,11 +551,47 @@ class MatchConfig:
         dst_type_template += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
         dst_type_template += '%'
 
-        ### Which runs to process
+        ### Which runs to process        
         runlist_int=self.runlist_int
-        # Here or in the ctor is a good spot to check against golden or bad runlists
+        run_condition=list_to_condition(runlist_int)
+        
+        # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
+        ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
+        INFO('Checking for already existing output...')
+        exist_query  = f"""select filename from datasets where dataset='{self.outdataset}' and dsttype like '{dst_type_template}'"""
+
+        if run_condition!="" :
+            exist_query += f"\n\tand {run_condition}"
+        existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
+        INFO(f"Already have {len(existing_output)} output files")
+        if len(existing_output) > 0 :
+            CHATTY(f"First line: \n{existing_output[0]}")
+        
+        ### Check production status
+        INFO('Checking for output already in production...')
+        # dst_type_template doesn't contain "new_nodcbtag_v000". It's not needed, this gets caught later.
+        # However, let's tighten the query anyway
+        # Could construct a different template but I'm lazy today, just add a second dstname pattern
+        status_query  = f"""select dstfile,status from production_status 
+where dstname like '{dst_type_template}' 
+and dstname like '%{self.outdataset}%'"""
+        if run_condition!="" :
+            status_query += f"\n\tand {run_condition.replace('runnumber','run')}"
+        status_query += self.input_config.status_query_constraints
+        existing_status = { c.dstfile if c.dstfile.endswith('.root') else c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
+        INFO(f"Already have {len(existing_status)} output files in the production db")
+        if len(existing_status) > 0 :
+            CHATTY(f"First line: \n{next(iter(existing_status))}")
+
+        ####################################################################################
+        ###### Now get all existing input files
+        ####################################################################################
+        INFO("Building candidate inputs...")
+
+        # Here is a good spot to check against golden or bad runlists
         # and to enforce quality cuts on the runs
-        # RuleConfig is too early, distclean and spider may want to be less restricted
+        # RuleConfig and existing output query is too early, distclean, spider, earlier productions may want to be less restricted
+        INFO("Checking runlist against run quality cuts.")        
         run_quality_tmpl="""
 select distinct(runnumber) from run 
  where 
@@ -577,38 +617,7 @@ order by runnumber
         goodruns=[ int(r) for (r,) in dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall() ]
         runlist_int = [run for run in goodruns if run in runlist_int]
         run_condition=list_to_condition(runlist_int)
-
-        # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
-        ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
-        exist_query  = f"""select filename from datasets where dataset='{self.dataset}' and dsttype like '{dst_type_template}'"""
-
-        if run_condition!="" :
-            exist_query += f"\n\tand {run_condition}"
-        existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
-        INFO(f"Already have {len(existing_output)} output files")
-        if len(existing_output) > 0 :
-            CHATTY(f"First line: \n{existing_output[0]}")
-
-        ### Check production status
-        INFO('Checking for output already in production...')
-        # dst_type_template doesn't contain "new_nodcbtag_v000". It's not needed, this gets caught later.
-        # However, let's tighten the query anyway
-        # Could construct a different template but I'm lazy today, just add a second dstname pattern
-        status_query  = f"""select dstfile,status from production_status 
-where dstname like '{dst_type_template}' 
-and dstname like '%{self.dataset}%'"""
-        if run_condition!="" :
-            status_query += f"\n\tand {run_condition.replace('runnumber','run')}"
-        status_query += self.input_config.status_query_constraints
-        existing_status = { c.dstfile if c.dstfile.endswith('.root') else c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
-        INFO(f"Already have {len(existing_status)} output files in the production db")
-        if len(existing_status) > 0 :
-            CHATTY(f"First line: \n{next(iter(existing_status))}")
-
-        ####################################################################################
-        ###### Now get all existing input files
-        ####################################################################################
-        INFO("Building candidate inputs...")
+        
         input_stem = inputs_from_output[self.rulestem]
         DEBUG( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
 
@@ -631,7 +640,13 @@ and dstname like '%{self.dataset}%'"""
 
         # Need status==1 for all files in a given run,host combination
         # Easier to check that after the SQL query
-        infile_query = f'select filename,{descriminator} as daqhost,runnumber,segment,status from {self.input_config.table} where \n\t{descriminator} in {in_types_str}\n'
+        infile_query = f"""select filename,{descriminator} as daqhost,runnumber,segment,status
+from {self.input_config.table} 
+where \n\t{descriminator} in {in_types_str}\n
+"""
+        indataset=self.input_config.indataset
+        if indataset!="":
+            infile_query+=f"\tand dataset='{indataset}'"
         if run_condition!="" :
             infile_query += f"\n\tand {run_condition}"
         infile_query += self.input_config.infile_query_constraints
@@ -712,15 +727,43 @@ and dstname like '%{self.dataset}%'"""
                     exit(-1)
                 CHATTY(f'\ninput_stem is a list, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
 
-                # For every segment, there is exactly one output file, and exactly one input file from each stream
+                # For every segment, there is exactly one output file, and exactly one input file _from each stream_
+                ### Get available input
+                DEBUG("Getting available daq hosts for run {runnumber}")
+                ## TODO: Split between seb-like and not seb-like for tracking and calo!
+                daqhost_query=f"""
+select hostname from hostinfo 
+where hostname not like 'seb%' and hostname not like 'gl1%'
+and runnumber={runnumber}"""
+                available_hosts=[ c.hostname for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ]
+                ## TODO: Split between seb-like and not seb-like for tracking and calo!
+                DEBUG(f"available_hosts = {available_hosts}")
+                ### Here we could enforce both mandatory and masked hosts
+                bare_hosts_for_run=available_hosts
+                # Note: "hostname" means different things for different circumstances. Sometimes it's the full leaf
+                # This is very pedestrian, there's probably a more pythonic way:
+                hosts_for_run=[]
+                for host in files_for_run:
+                    for bare in bare_hosts_for_run:
+                        if bare in host:
+                            hosts_for_run.append(host)
+                            continue
+                CHATTY(f"hosts_for_run = {hosts_for_run}")
                 # Sort and group the input files by segment
                 # NOTE: We could save a small bit of work by not checking the input files
                 # if the output already exists. But we need the segments for that anyway
                 daqhost="dummy"
-                outbase=f'{self.rulestem}_{self.outstub}_{self.dataset}'
                 segments = None
                 rejected = set()
                 for host in files_for_run:
+                    if not host in hosts_for_run:
+                        if files_for_run[host]!=[]:
+                            ERROR(f"Host {host} should not be present for run {runnumber}.")
+                            ERROR( "Yet I find files_for_run[host]:")
+                            pprint.pprint(f"{files_for_run[host]}.")
+                            exit()
+                            continue;
+                    
                     files_for_run[host].sort(key=lambda x: (x.segment))
                     new_segments = list(map(lambda x: x.segment, files_for_run[host]))
                     if segments is None:
@@ -728,14 +771,14 @@ and dstname like '%{self.dataset}%'"""
                     elif segments != new_segments:
                         rejected.update( set(segments).symmetric_difference(set(new_segments)) )
                         segments = list( set(segments).intersection(new_segments))
-
+                        
                 if len(rejected) > 0:
                     WARN(f"Run {runnumber}: Removed segments not present in all streams: {rejected}")
 
                 # If the output doesn't exist yet, use input files to create the job
+                outbase=f'{self.rulestem}_{self.outstub}_{self.outdataset}'
                 for seg in segments:
                     logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
-                    # output = f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}.root'
                     output = f'{logbase}.root'
                     if output in existing_output:
                         CHATTY(f"Output file {output} already exists. Not submitting.")
@@ -748,7 +791,8 @@ and dstname like '%{self.dataset}%'"""
                     for host in files_for_run:
                         in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
                     CHATTY(f"Creating {output} from {in_files_for_seg}")
-                    rule_matches[output] = in_files_for_seg, outbase, logbase, runnumber, seg, daqhost, self.rulestem
+                    #rule_matches[output] = in_files_for_seg, outbase, logbase, runnumber, seg, daqhost, self.rulestem
+                    rule_matches[output] = in_types, outbase, logbase, runnumber, seg, daqhost, self.rulestem
                     
             ####### Medium case. Streaming and (now also) triggered daq
             if 'gl1daq' in in_types_str:
@@ -772,7 +816,7 @@ and dstname like '%{self.dataset}%'"""
                     # Example arguments for the combiner script:
                     # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000 \ outbase \
                     # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000-00061162 \ logbase \
-                    outbase=f'{dsttype}_{self.dataset}'
+                    outbase=f'{dsttype}_{self.outdataset}'
                     seg=0
                     logbase=f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
                     # check for one existing output file.
@@ -801,7 +845,7 @@ def parse_lfn(lfn: str, rule: RuleConfig) -> Tuple[str,...] :
     # If there's a colon, throw everything away after the first one; that's another parser's problem
     try:
         name=lfn.split(':')[0]
-        dsttype,runsegend=name.split(rule.dataset) # 'DST_..._run3auau', '-00066582-00000.root' (or .finished)
+        dsttype,runsegend=name.split(rule.outdataset) # 'DST_..._run3auau', '-00066582-00000.root' (or .finished)
         _,run,segend=runsegend.split('-')
         seg,end=segend.split('.')
     except ValueError as e:
@@ -810,8 +854,8 @@ def parse_lfn(lfn: str, rule: RuleConfig) -> Tuple[str,...] :
         print(f"lfn.split(':') = {lfn.split(':')}")
         print(f"name = {lfn.split(':')[0]}")
         name=lfn.split(':')[0]
-        print(f"dsttype,runsegend = name.split(rule.dataset) = {name.split(rule.dataset)}")        
-        dsttype,runsegend=name.split(rule.dataset) # 'DST_..._run3auau', '-00066582-00000.root' (or .finished)
+        print(f"dsttype,runsegend = name.split(rule.outdataset) = {name.split(rule.outdataset)}")        
+        dsttype,runsegend=name.split(rule.outdataset) # 'DST_..._run3auau', '-00066582-00000.root' (or .finished)
         print(f"_,run,segend = runsegend.split('-') = {runsegend.split('-')}")
         _,run,segend=runsegend.split('-')
         print(f"seg,end = segend.split('.') = {segend.split('.')})")
