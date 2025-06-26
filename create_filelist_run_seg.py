@@ -2,7 +2,7 @@
 
 import sys
 from collections import defaultdict
-
+from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixdbutils import cnxn_string_map, dbQuery # type: ignore
 
 def main():
@@ -30,7 +30,7 @@ def main():
     sql_query = f"""
     SELECT filename, dsttype 
     FROM datasets 
-    WHERE filename like '{inbase}%'
+    WHERE dsttype in ( '{inbase}' )
       AND runnumber = {runnumber}
       AND segment ={segment}
     ORDER BY filename
