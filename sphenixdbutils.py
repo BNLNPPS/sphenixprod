@@ -123,7 +123,7 @@ def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset
             full_host_name = "lustre" if 'lustre' in full_file_path else 'gpfs',
             full_file_path = full_file_path,
             ctimestamp = datetime.fromtimestamp(filestat.st_ctime) if filestat else str(datetime.now().replace(microsecond=0)),
-            file_size_bytes = filestat.st_size if filestat else 'NONE'
+            file_size_bytes = filestat.st_size if filestat else -1,
         )
         CHATTY(insert_files)
         insert_datasets=insert_datasets_tmpl.format(
@@ -131,12 +131,12 @@ def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset
             lfn=lfn,
             md5=info.md5,
             run=info.run, segment=info.seg,
-            file_size_bytes=filestat.st_size if filestat else 'NONE',
+            file_size_bytes=filestat.st_size if filestat else -1,
             dataset=dataset,
             dsttype=info.dsttype,
             nevents=info.nevents,
             firstevent=info.first,
-            lastevent=info.last,            
+            lastevent=info.last,
         )
         CHATTY(insert_datasets)
         if not dryrun:
@@ -197,8 +197,8 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     #assert( 'update' not in query.lower() )    
     #assert( 'select'     in query.lower() )
 
-    DEBUG(f'[cnxn_string] {cnxn_string}')
-    DEBUG(f'[query      ]\n{query}')
+    CHATTY(f'[cnxn_string] {cnxn_string}')
+    CHATTY(f'[query      ]\n{query}')
 
     start=datetime.now()
     last_exception = None
@@ -220,6 +220,6 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             time.sleep(delay)
             DEBUG(f"Attempt {itry} failed: {last_exception}")
     #TODO: Handle connn failure more gracefully
-    DEBUG(f'[query time ] {(datetime.now() - start).total_seconds():.2f} seconds' )
+    CHATTY(f'[query time ] {(datetime.now() - start).total_seconds():.2f} seconds' )
     
     return curs
