@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, ClassVar, List
 import math
-from pathlib import Path
 import pprint # noqa: F401
 
 from simpleLogger import ERROR, WARN, CHATTY, INFO, DEBUG  # noqa: F401

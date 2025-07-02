@@ -8,7 +8,7 @@ import subprocess
 import sys
 import shutil
 import math
-from typing import Tuple,List
+from typing import List
 
 # from dataclasses import fields
 import pprint # noqa F401
@@ -19,8 +19,7 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 from sphenixprodrules import RuleConfig,inputs_from_output
 from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
-from sphenixdbutils import cnxn_string_map, dbQuery
-from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb
+from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect
 
 # ============================================================================================

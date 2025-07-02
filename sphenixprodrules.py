@@ -1,9 +1,9 @@
 import yaml
 import re
-from dataclasses import dataclass, asdict
 from typing import Dict, List, Tuple, Any, Optional
 import itertools
 import operator
+from dataclasses import dataclass, asdict
 import time
 from pathlib import Path
 import stat
@@ -12,7 +12,6 @@ import pprint # noqa: F401
 import os
 
 from sphenixdbutils import cnxn_string_map, dbQuery
-from sphenixdbutils import test_mode
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJobConfig
@@ -264,16 +263,16 @@ class RuleConfig:
                 runlist_int=[int(runstr) for runstr in number_strings]
             except Exception as e:
                 ERROR(f"Error: Exception parsing runlist file {runlist}: {e}")
-        else: # Use --runs. 0 for all default runs; 1, 2 numbers for a single run or a range; 3+ for an explicit list
+        else: # Use "--runs". 0 for all default runs; 1, 2 numbers for a single run or a range; 3+ for an explicit list
             INFO(f"Processing runs argument: {runs}")
             if not runs:
-                WARN(f"Processing all runs.")
+                WARN("Processing all runs.")
                 runs=['-1','-1']
             nargs=len( runs )
             if  nargs==1:
                 runlist_int=[int(runs[0])]
                 if runlist_int[0]<=0 :
-                    ERROR(f"Can't run on single run {lst}") 
+                    ERROR(f"Can't run on single run {runlist_int[0]}")
             elif nargs==2:
                 runmin,runmax=tuple(map(int,runs))
                 if runmin<0:
@@ -391,6 +390,7 @@ class RuleConfig:
         # because that script will execute the actual payload copy on the node.
         # Bit of an annoying walk with python tools, so use unix find instead
         script = job_data["script"]
+        errfiles = []
         if not script.startswith("/"): # Search in the payload unless script has an absolute path
             p = subprocess.Popen(f'/usr/bin/find {" ".join(payload_list)} -type f',
                                  shell=True, # needed to expand "*"
@@ -409,8 +409,8 @@ class RuleConfig:
         if not is_executable(Path(script)):
             ERROR(f"{script} is not executable")
             exit(1)
-        if len(errfiles)>0 :
-            WARN("The following errors occured while searching the payload:")
+        if errfiles:
+            WARN("The following errors occurred while searching the payload:")
             for errf in errfiles:
                 WARN(errf)
 

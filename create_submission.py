@@ -15,7 +15,7 @@ if os.uname().sysname!='Darwin' :
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition
+from sphenixprodrules import RuleConfig, MatchConfig
 from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJob
@@ -71,8 +71,22 @@ def main():
     ### Copy our own files to the worker:
     # For database access - from _production script_ directory
     script_path = Path(__file__).parent.resolve()
-    payload_list += [ importlib.util.find_spec('sphenixdbutils').origin ]
-    payload_list += [ importlib.util.find_spec('simpleLogger').origin ]
+
+    # Safely add module origins
+    sphenixdbutils_spec = importlib.util.find_spec('sphenixdbutils')
+    if sphenixdbutils_spec and sphenixdbutils_spec.origin:
+        payload_list += [sphenixdbutils_spec.origin]
+    else:
+        ERROR("sphenixdbutils module not found.")
+        exit(1)
+
+    simplelogger_spec = importlib.util.find_spec('simpleLogger')
+    if simplelogger_spec and simplelogger_spec.origin:
+        payload_list += [simplelogger_spec.origin]
+    else:
+        ERROR("simpleLogger module not found.")
+        exit(1)
+
     payload_list += [ f"{script_path}/stageout.sh" ]
     payload_list += [ f"{script_path}/GetNumbers.C" ]
     payload_list += [ f"{script_path}/create_filelist_run_daqhost.py" ]
@@ -93,18 +107,8 @@ def main():
     rule_substitutions["payload_list"] = payload_list
 
     # Limit the number of results from the query?
-    limit_condition = ""
     if args.limit:
-        ERROR(f"A general limit constraint doesn't make sense. Deprecated and ignored." )
-        # limit_condition = f"limit {args.limit}"
-        # DEBUG( f"Limit condition is \"{limit_condition}\"" )
-        # WARN( f"For testing, limiting input query to {args.limit} entries. Probably not what you want." )
-        # limit_condition = f"\t{limit_condition}\n"
-
-    # rule_substitutions["infile_query_constraints"] = f"""{run_condition}{limit_condition}"""
-    # rule_substitutions["status_query_constraints"] = f"""{run_condition.replace('runnumber','run')}{limit_condition}"""
-    # DEBUG( f"Input query constraints: {rule_substitutions['infile_query_constraints']}")
-    # DEBUG(f"Status query constraints: {rule_substitutions['status_query_constraints']}")
+        ERROR("A general limit constraint doesn't make sense. Deprecated and ignored." )
 
     # Rest of the input substitutions
     if args.physicsmode is not None:
