@@ -96,6 +96,8 @@ md5=EXCLUDED.md5
 ;
 """
 # ---------------------------------------------------------------------------------------------
+# insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events,firstevent,lastevent,tag)
+# values ('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{lastevent},{tag})
 insert_datasets_tmpl="""
 insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events,firstevent,lastevent)
 values ('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{lastevent})
