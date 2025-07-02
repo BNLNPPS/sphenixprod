@@ -130,31 +130,31 @@ def main():
     INFO(f"Original output directory: {lakelocation}")
 
     ### root files without cuts
-    lakefiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\*")
+    lakefiles = shell_command(f"{lfind} {lakelocation} -maxdepth 1 -type f -name {dstbase}\*.root\*")
     DEBUG(f"Found {len(lakefiles)} matching dsts without cuts in the lake.")
 
-    ### indicator files for 'finished'
-    finishedfiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.finished\*")
-    DEBUG(f"Found {len(finishedfiles)} matching .finished files in the lake.")
+    # ### indicator files for 'finished'
+    # finishedfiles = shell_command(f"{lfind} {lakelocation} -maxdepth 1 -type f -name {dstbase}\*.finished\*")
+    # DEBUG(f"Found {len(finishedfiles)} matching .finished files in the lake.")
     
-    ### Mark off dbids (==finished jobs) that can be transferred
-    finished={}
-    for finfile in finishedfiles:
-        pseudolfn=Path(finfile).name
-        _,run,seg,end=parse_lfn(pseudolfn,rule)
-        if binary_contains_bisect(rule.runlist_int,run):
-            fullpath,_,_,_,_,dbid = parse_spiderstuff(finfile)
-            if dbid <= 0:
-                ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
-                exit(0)
-            if dbid in finished:
-                raise KeyError(f"dbid '{dbid}' already exists in the dictionary.")
-            finished[dbid]=finfile
+    # ### Mark off dbids (==finished jobs) that can be transferred
+    # finished={}
+    # for finfile in finishedfiles:
+    #     pseudolfn=Path(finfile).name
+    #     _,run,seg,end=parse_lfn(pseudolfn,rule)
+    #     if binary_contains_bisect(rule.runlist_int,run):
+    #         fullpath,_,_,_,_,dbid = parse_spiderstuff(finfile)
+    #         if dbid <= 0:
+    #             ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
+    #             exit(0)
+    #         if dbid in finished:
+    #             raise KeyError(f"dbid '{dbid}' already exists in the dictionary.")
+    #         finished[dbid]=finfile
 
-    if len(finished) ==0 :
-        INFO(f"No runs have finished yet. TTYL!")
-        exit(0)
-    INFO(f"{len(finished)} runs have finished. Processing their root files.")
+    # if len(finished) ==0 :
+    #     INFO(f"No runs have finished yet. TTYL!")
+    #     exit(0)
+    # INFO(f"{len(finished)} runs have finished. Processing their root files.")
          
     ### Collect root files that satisfy run and dbid requirements
     mvfiles_info=[]
@@ -168,9 +168,9 @@ def main():
                 exit(0)
             info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5)
 
-            if dbid not in finished:
-                CHATTY(f"{dbid} isn't done yet")
-                continue;
+            # if dbid not in finished:
+            #     CHATTY(f"{dbid} isn't done yet")
+            #     continue;
             mvfiles_info.append( (file,info) )
             
     INFO(f"{len(mvfiles_info)} total root files to be processed.")
@@ -192,7 +192,7 @@ def main():
     INFO(f"Destination type template: {leaf_template}")
     DEBUG(f"Destination types: {leaf_types}")
     
-    ####################################### Start moving and regiustering DSTs
+    ####################################### Start moving and registering DSTs
     tstart = datetime.now()
     tlast = tstart
     when2blurb=2000
@@ -225,6 +225,7 @@ def main():
         ### Extract what else we need for file databases
         ### For additional db info. Note: stat is costly. Could be omitted.
         filestat=Path(file).stat()
+        # filestat=None
 
         ###### Here be dragons
         full_file_path = f'{finaldir}/{lfn}'
@@ -306,9 +307,9 @@ def main():
         else:
             continue
 
-        if dbid not in finished:
-            CHATTY(f"{dbid} isn't done yet")
-            continue
+        # if dbid not in finished:
+        #     CHATTY(f"{dbid} isn't done yet")
+        #     continue
 
         ### Extract what else we need for file databases
         ### For additional db info. Note: stat is costly. Could be omitted.
@@ -336,20 +337,18 @@ def main():
                            )
         pass # End of HIST loop 
 
-    ### Finally, update prod db and remove the .finished signal files
-    for dbid,file in finished.items():
-        CHATTY(f"Handling dbid={dbid}.")        
-        update_proddb( dbid=dbid, filestat=Path(file).stat(), dryrun=args.dryrun )
-        if not args.dryrun:
-            Path(file).unlink()
-        
-        #update_proddb( dbid=dbid, filestat=None, dryrun=args.dryrun )
-        
+    # ### finally, update prod db and remove the .finished signal files
+    # for dbid,file in finished.items():
+    #     CHATTY(f"Handling dbid={dbid}.")        
+    #     update_proddb( dbid=dbid, filestat=Path(file).stat(), dryrun=args.dryrun )
+    #     if not args.dryrun:
+    #         Path(file).unlink()
+                
 # ============================================================================================
 
 if __name__ == '__main__':
-    # main()
-    # exit(0)
+    main()
+    exit(0)
 
     cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats
