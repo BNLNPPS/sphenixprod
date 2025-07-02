@@ -10,7 +10,7 @@ import os
 from collections import namedtuple
 filedb_info = namedtuple('filedb_info', ['dsttype','run','seg','fullpath','nevents','first','last','md5'])
 
-from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY # noqa: F401
+from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY  # noqa: E402, F401
 
 """
 This module provides an interface to the sPHENIX databases.
@@ -142,9 +142,17 @@ def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset
         if not dryrun:
             dbstring = 'testw' if test_mode else 'fcw'
             files_curs = dbQuery( cnxn_string_map[ dbstring ], insert_files )
-            files_curs.commit()
+            if files_curs:
+                 files_curs.commit()
+            else: 
+                 ERROR(f"Failed to insert file {lfn} into database {dbstring}")
+                 exit()
             datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
-            datasets_curs.commit()
+            if datasets_curs:
+                datasets_curs.commit()
+            else:
+                ERROR(f"Failed to insert dataset {lfn} into database {dbstring}")
+                exit()
 
 # ============================================================================================
 
@@ -167,7 +175,11 @@ def update_proddb( dbid: int, filestat=None, dryrun=True ):
         if not dryrun:
             dbstring = 'statw'
             prodstate_curs = dbQuery( cnxn_string_map[ dbstring ], update_prodstate )
-            prodstate_curs.commit()
+            if prodstate_curs:
+                prodstate_curs.commit()
+            else:
+                ERROR(f"Failed to update production status for {dbid} in database {dbstring}")
+                exit()
 
 # ============================================================================================
 def printDbInfo( cnxn_string, title ):
