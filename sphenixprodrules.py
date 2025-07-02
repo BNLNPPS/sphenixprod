@@ -12,6 +12,7 @@ import pprint # noqa: F401
 import os
 
 from sphenixdbutils import cnxn_string_map, dbQuery
+from sphenixdbutils import test_mode
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJobConfig
@@ -51,7 +52,7 @@ pSEGFMT = SEGFMT.replace('%','').replace('i','d')
 # /sphenix/lustre01/sphnxpro/{prodmode} / {period}  / {runtype} / dataset={build}_{dbtag}_{version} / {leafdir}       /     {rungroup}       /
 # /sphenix/lustre01/sphnxpro/production / run3auau  /  cosmics  /        new_nocdbtag_v000          / DST_CALOFITTING / run_00057900_00058000/
 _default_filesystem = {
-    'outdir'   :    "/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/",
+    'outdir'   :    "/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/{rulestem}",
     'finaldir' :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}",
     'logdir'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
     'histdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
@@ -60,7 +61,7 @@ _default_filesystem = {
 
 if 'minicondor' in os.uname().nodename or 'local' in os.uname().nodename: # Mac 
     _default_filesystem = {
-        'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/",
+        'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/{rulestem}",
         'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}",
         'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
         'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
@@ -378,6 +379,7 @@ class RuleConfig:
                                                     period=params_data["period"],
                                                     physicsmode=physicsmode,
                                                     dataset=outdataset,
+                                                    rulestem=params_data["rulestem"],
                                                     leafdir='{leafdir}',
                                                     rungroup='{rungroup}',
                                                     )
@@ -661,8 +663,8 @@ where \n\t{descriminator} in {in_types_str}\n
         in_files = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
 
         INFO(f"Total number of available input files: {len(in_files)}")
-        if len(in_files) > 0 :
-            DEBUG(f"First line: \n{in_files[0]}")
+        # if len(in_files) > 0 :
+        #     CHATTY(f"First line: \n{in_files[0]}")
 
         #### Now build up potential output files from what's available
         now=time.time()
@@ -735,35 +737,55 @@ where \n\t{descriminator} in {in_types_str}\n
 select hostname from hostinfo 
 where hostname not like 'seb%' and hostname not like 'gl1%'
 and runnumber={runnumber}"""
-                available_hosts=[ c.hostname for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ]
+                available_hosts=set([ c.hostname for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ])
                 ## TODO: Split between seb-like and not seb-like for tracking and calo!
-                DEBUG(f"available_hosts = {available_hosts}")
                 ### Here we could enforce both mandatory and masked hosts
-                bare_hosts_for_run=available_hosts
+                DEBUG(f"available_hosts = {available_hosts}")
                 # Note: "hostname" means different things for different circumstances. Sometimes it's the full leaf
                 # This is very pedestrian, there's probably a more pythonic way:
-                hosts_for_run=[]
+
+                # FIXME: More TPC hardcoding
+                # 1. require at least N=30 out of the 48 ebdc_[0-24]_[01] to be turned on in the run
+                #    This is an early breakpoint to see if the run can be used for tracking
+                #    run db doesn't have _[01] though
+                TPCset = set( f'ebdc{n:02}' for n in range(0,24) )
+                available_tpc_hosts=available_hosts.intersection(TPCset)
+                DEBUG(f"available TPC hosts: {available_tpc_hosts}")
+                DEBUG(f"  len(available_tpc_hosts) = {len(available_tpc_hosts)}")
+                minNTPC=30 / 2
+                if len(available_tpc_hosts) < minNTPC:
+                    INFO(f"Skip run. Only {2*len(available_tpc_hosts)} TPC detectors turned on in the run.")
+                    continue
+                
+                # 2. How many are TPC hosts are actually there in this run.
+                #    Not necessarily the same as above, if input DSTs aren't completely produced yet.
+                #    Other reason could be if the daq db is wrong.
+                present_tpc_files=set()
                 for host in files_for_run:
-                    for bare in bare_hosts_for_run:
-                        if bare in host:
-                            hosts_for_run.append(host)
+                    for available in available_tpc_hosts:
+                        if available in host:
+                            present_tpc_files.add(host)
                             continue
-                CHATTY(f"hosts_for_run = {hosts_for_run}")
-                # Sort and group the input files by segment
-                # NOTE: We could save a small bit of work by not checking the input files
-                # if the output already exists. But we need the segments for that anyway
-                daqhost="dummy"
+                if len(present_tpc_files) < minNTPC:
+                    WARN(f"Skip run. Only {len(present_tpc_files)} TPC detectors actually in the run.")
+                    continue
+
+                # 3. For INTT, MVTX, enforce that they're all available if possible
+                available_other_hosts=available_hosts.symmetric_difference(TPCset)
+                present_other_files=set(files_for_run).symmetric_difference(present_tpc_files)
+                CHATTY(f"Available non-TPC hosts in the daq db: {available_other_hosts}")
+                CHATTY(f"Present non-TPC leafs: {present_other_files}")
+                ### TODO: Only checking length here. Probably okay forever though.
+                if len(present_other_files) != len(available_other_hosts) :
+                    WARN(f"Skip run. Only {len(present_other_files)} non-TPC detectors actually in the run. {len(available_other_hosts)} possible.")
+                    WARN(f"Available non-TPC hosts in the daq db: {available_other_hosts}")
+                    WARN(f"Present non-TPC leafs: {present_other_files}")
+                    continue
+
+                # Sort and group the input files by segment. Reject if not all hosts are present in the segment yet
                 segments = None
                 rejected = set()
                 for host in files_for_run:
-                    if not host in hosts_for_run:
-                        if files_for_run[host]!=[]:
-                            ERROR(f"Host {host} should not be present for run {runnumber}.")
-                            ERROR( "Yet I find files_for_run[host]:")
-                            pprint.pprint(f"{files_for_run[host]}.")
-                            exit()
-                            continue;
-                    
                     files_for_run[host].sort(key=lambda x: (x.segment))
                     new_segments = list(map(lambda x: x.segment, files_for_run[host]))
                     if segments is None:
@@ -783,16 +805,15 @@ and runnumber={runnumber}"""
                     if output in existing_output:
                         CHATTY(f"Output file {output} already exists. Not submitting.")
                         continue
-                    if output in existing_status: # FIXME
+                    if output in existing_status:
                         WARN(f"Output file {output} already has production status {existing_status[output]}. Not submitting.")
-                        WARN(output)
                         continue
                     in_files_for_seg= []
                     for host in files_for_run:
                         in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
                     CHATTY(f"Creating {output} from {in_files_for_seg}")
                     #rule_matches[output] = in_files_for_seg, outbase, logbase, runnumber, seg, daqhost, self.rulestem
-                    rule_matches[output] = in_types, outbase, logbase, runnumber, seg, daqhost, self.rulestem
+                    rule_matches[output] = in_types, outbase, logbase, runnumber, seg, "dummy", self.rulestem
                     
             ####### Medium case. Streaming and (now also) triggered daq
             if 'gl1daq' in in_types_str:
