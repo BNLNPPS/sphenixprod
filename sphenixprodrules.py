@@ -11,7 +11,7 @@ import subprocess
 import pprint # noqa: F401
 import os
 
-from sphenixdbutils import cnxn_string_map, dbQuery
+from sphenixdbutils import cnxn_string_map, dbQuery,test_mode
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJobConfig
@@ -51,7 +51,7 @@ pSEGFMT = SEGFMT.replace('%','').replace('i','d')
 # /sphenix/lustre01/sphnxpro/{prodmode} / {period}  / {runtype} / dataset={build}_{dbtag}_{version} / {leafdir}       /     {rungroup}       /
 # /sphenix/lustre01/sphnxpro/production / run3auau  /  cosmics  /        new_nocdbtag_v000          / DST_CALOFITTING / run_00057900_00058000/
 _default_filesystem = {
-    'outdir'   :    "/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/",
+    'outdir'   :    "/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/{rulestem}",
     'finaldir' :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}",
     'logdir'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
     'histdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
@@ -60,7 +60,7 @@ _default_filesystem = {
 
 if 'minicondor' in os.uname().nodename or 'local' in os.uname().nodename: # Mac 
     _default_filesystem = {
-        'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/",
+        'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/{rulestem}",
         'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}",
         'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
         'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
@@ -374,6 +374,7 @@ class RuleConfig:
                                                     period=params_data["period"],
                                                     physicsmode=physicsmode,
                                                     dataset=dataset,
+                                                    rulestem=params_data["rulestem"],
                                                     leafdir='{leafdir}',
                                                     rungroup='{rungroup}',
                                                     )
