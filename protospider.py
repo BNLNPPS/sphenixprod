@@ -108,7 +108,25 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-    
+        
+    outstub = rule.outstub
+    INFO(f"Output stub: {outstub}")
+
+    leaf_template = f'{rule.rulestem}'
+    if 'raw' in rule.input_config.db:
+        leaf_template += '_{host}'
+        # Only need the keys, in case of a dictionary
+        # Regrettably, 'dsttype' in the database refers to e.g. DST_STREAMING_EVENT_ebdc01_1_run3auau
+        # Here, we want the base of that without the run3auau. Also known as "leaf" or "leafdir" sometimes.
+        input_stem = inputs_from_output[rule.rulestem]
+        DEBUG(f"Input stem: {input_stem}")
+        leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stem.keys() }
+        DEBUG(f"Destination types: {leaf_types}")
+    else: 
+        leaf_types=[leaf_template]
+
+    INFO(f"DST template: {leaf_template}")
+
     ### Which find command to use for lustre?
     # Lustre's robin hood, rbh-find, doesn't offer advantages for our usecase, and it is more cumbersome to use.
     # But "lfs find" is preferrable to the regular kind.
@@ -130,11 +148,11 @@ def main():
     INFO(f"Original output directory: {lakelocation}")
 
     ### root files without cuts
-    lakefiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\*")
+    lakefiles = shell_command(f"{lfind} {lakelocation} -maxdepth 1 -type f -name {dstbase}\*.root\*")
     DEBUG(f"Found {len(lakefiles)} matching dsts without cuts in the lake.")
 
     ### indicator files for 'finished'
-    finishedfiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.finished\*")
+    finishedfiles = shell_command(f"{lfind} {lakelocation}  -maxdepth 1 -type f -name {dstbase}\*.finished\*")
     DEBUG(f"Found {len(finishedfiles)} matching .finished files in the lake.")
     
     ### Mark off dbids (==finished jobs) that can be transferred
@@ -151,10 +169,10 @@ def main():
                 raise KeyError(f"dbid '{dbid}' already exists in the dictionary.")
             finished[dbid]=finfile
 
-    if len(finished) ==0 :
-        INFO(f"No runs have finished yet. TTYL!")
-        exit(0)
-    INFO(f"{len(finished)} runs have finished. Processing their root files.")
+    # if len(finished) ==0 :
+    #     INFO(f"No runs have finished yet. TTYL!")
+    #     exit(0)
+    # INFO(f"{len(finished)} runs have finished. Processing their root files.")
          
     ### Collect root files that satisfy run and dbid requirements
     mvfiles_info=[]
@@ -168,31 +186,17 @@ def main():
                 exit(0)
             info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5)
 
-            if dbid not in finished:
-                CHATTY(f"{dbid} isn't done yet")
-                continue;
+            # if dbid not in finished:
+            #     CHATTY(f"{dbid} isn't done yet")
+            #     continue;
             mvfiles_info.append( (file,info) )
             
     INFO(f"{len(mvfiles_info)} total root files to be processed.")
     
     finaldir_tmpl=filesystem['finaldir']
     INFO(f"Final destination template: {finaldir_tmpl}")
-
-    input_stem = inputs_from_output[rule.rulestem]
-    DEBUG(f"Input stem: {input_stem}")
-    outstub = rule.outstub
-    INFO(f"Output stub: {outstub}")
-
-    # Regrettably, 'dsttype' in the database refers to e.g. DST_STREAMING_EVENT_ebdc01_1_run3auau
-    # Here, we want the base of that without the run3auau. Also known as "leaf" or "leafdir" sometimes.
-    leaf_template = f'{rule.rulestem}'
-    if 'raw' in rule.input_config.db:
-        leaf_template += '_{host}'
-    leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stem.keys() }
-    INFO(f"Destination type template: {leaf_template}")
-    DEBUG(f"Destination types: {leaf_types}")
     
-    ####################################### Start moving and regiustering DSTs
+    ####################################### Start moving and registering DSTs
     tstart = datetime.now()
     tlast = tstart
     when2blurb=2000
@@ -290,12 +294,12 @@ def main():
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
             tlast = now            
         try:
-            fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(file)
+            lfn,nevents,first,last,md5,dbid = parse_spiderstuff(file)
         except Exception as e:
             WARN(f"Error: {e}")
             continue
 
-        lfn=Path(fullpath).name
+        fullpath=str(Path(file).parent)+'/'+lfn
         dsttype,run,seg,_=parse_lfn(lfn,rule)
         
         if binary_contains_bisect(rule.runlist_int,run):
@@ -306,9 +310,9 @@ def main():
         else:
             continue
 
-        if dbid not in finished:
-            CHATTY(f"{dbid} isn't done yet")
-            continue
+        # if dbid not in finished:
+        #     CHATTY(f"{dbid} isn't done yet")
+        #     continue
 
         ### Extract what else we need for file databases
         ### For additional db info. Note: stat is costly. Could be omitted.
