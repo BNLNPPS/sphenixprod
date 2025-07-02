@@ -189,7 +189,7 @@ def main():
     submission_dir = Path('./tosubmit').resolve()
     if not args.dryrun:
         Path( submission_dir).mkdir( parents=True, exist_ok=True )
-    subbase = f'{rule.rulestem}_{rule.outstub}_{rule.outdataset}'
+    subbase = f'{rule.dsttype}_{rule.dataset}_{rule.outtriplet}'
     INFO(f'Submission files based on {subbase}')
 
     # For a fairly collision-safe identifier that could be used to not trample on existing files:
@@ -254,9 +254,8 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
                     
             # Add to production database
             # FIXME: prod_id
-            dsttype=logbase.split(f'_{rule.outdataset}')[0]
+            dsttype=logbase.split(f'_{rule.dataset}')[0]
             dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
-            # FIXME: SEGMENT?
             # Following is fragile, don't add spaces
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
@@ -307,9 +306,9 @@ returning id
 
     
     prettyfs=pprint.pformat(rule.job_config.filesystem)
-    input_stem=inputs_from_output[rule.rulestem]
+    input_stem=inputs_from_output[rule.dsttype]
     if isinstance(input_stem, list):
-        prettyfs=prettyfs.replace('{leafdir}',rule.rulestem)
+        prettyfs=prettyfs.replace('{leafdir}',rule.dsttype)
     INFO(f"Other location templates:\n{prettyfs}")
 
     if args.andgo and not args.dryrun:

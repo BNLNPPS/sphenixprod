@@ -48,23 +48,23 @@ pSEGFMT = SEGFMT.replace('%','').replace('i','d')
 # "{leafdir}" needs to stay changeable.  Typical leafdir: DST_STREAMING_EVENT_TPC20 or DST_TRKR_CLUSTER
 # "{rungroup}" needs to stay changeable. Typical rungroup: run_00057900_00058000
 # Target example:
-# /sphenix/lustre01/sphnxpro/{prodmode} / {period}  / {runtype} / dataset={build}_{dbtag}_{version} / {leafdir}       /     {rungroup}       /
+# /sphenix/lustre01/sphnxpro/{prodmode} / {period}  / {runtype} / outtriplet={build}_{dbtag}_{version} / {leafdir}       /     {rungroup}       /
 # /sphenix/lustre01/sphnxpro/production / run3auau  /  cosmics  /        new_nocdbtag_v000          / DST_CALOFITTING / run_00057900_00058000/
 _default_filesystem = {
-    'outdir'   :    "/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/{rulestem}",
-    'finaldir' :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}",
-    'logdir'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
-    'histdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
-    'condor'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+    'outdir'   :    "/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/{dsttype}",
+    'finaldir' :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}",
+    'logdir'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
+    'histdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/hist",
+    'condor'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
 }
 
 if 'minicondor' in os.uname().nodename or 'local' in os.uname().nodename: # Mac 
     _default_filesystem = {
-        'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/{rulestem}",
-        'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}",
-        'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
-        'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/hist",
-        'condor'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/log",
+        'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/{dsttype}",
+        'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}",
+        'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
+        'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/hist",
+        'condor'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
     }
 
 
@@ -157,7 +157,7 @@ class InputConfig:
     """Represents the input configuration block in the YAML."""
     db: str
     table: str
-    indataset:        Optional[str] = "" # new_nocdbtag_v001; optional only because it's not needed for event combiners
+    intriplet:        Optional[str] = "" # ==tag, i.e. new_nocdbtag_v001; optional only because it's not needed for event combiners
     min_run_events:   Optional[int] = 100000
     min_run_time:     Optional[int] = 300 # seconds
     prod_identifier:  Optional[str] = None # run3auau, run3cosmics
@@ -173,7 +173,7 @@ class RuleConfig:
     """Represents a single rule configuration in the YAML."""
 
     # Direct input (explictly provided by yaml file + command line arguments)
-    rulestem: str       # DST_CALOFITTING
+    dsttype: str       # DST_CALOFITTING
     period: str         # run3auau
     build: str          # for output; ex. ana.472
     dbtag: str          # for output; ex. 2025p000, nocdbtag
@@ -182,7 +182,7 @@ class RuleConfig:
     # Inferred
     build_string: str   # ana472, new
     version_string: str # v000
-    outdataset: str      # new_2025p000_v000
+    outtriplet: str     # new_2025p000_v000
     runlist_int: List[int] # name chosen to differentiate it from --runlist which points to a text file
 
     # Nested dataclasses
@@ -191,7 +191,7 @@ class RuleConfig:
 
     ### Optional fields have to be down here to allow for default values
     physicsmode: str     # cosmics, commissioning, physics (default: physics)
-    outstub: str         # run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory (default: period)
+    dataset: str         # run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory (default: period)
 
     # ------------------------------------------------
     def dict(self) -> Dict[str, Any]:
@@ -232,14 +232,14 @@ class RuleConfig:
         ### Extract and validate top level rule parameters
         params_data = rule_data.get("params", {})
         check_params(params_data
-                    , required=["rulestem", "period",  "build", "dbtag", "version"]
-                    , optional=["outstub", "physicsmode"] )
+                    , required=["dsttype", "period","build", "dbtag", "version"]
+                    , optional=["dataset", "physicsmode"] )
 
         ### Fill derived data fields
         build_string=params_data["build"].replace(".","")
         version_string = f'v{params_data["version"]:{VERFMT}}'
-        outstub = params_data["outstub"] if "outstub" in params_data else params_data["period"]
-        outdataset = f'{build_string}_{params_data["dbtag"]}_{version_string}'
+        outstub = params_data["dataset"] if "dataset" in params_data else params_data["period"]
+        outtriplet = f'{build_string}_{params_data["dbtag"]}_{version_string}'
         
         ### Which runs to process?
         runs=rule_substitutions["runs"]
@@ -308,13 +308,13 @@ class RuleConfig:
         input_data = rule_data.get("input", {})
         check_params(input_data
                     , required=["db", "table"]
-                    , optional=["indataset",
+                    , optional=["intriplet",
                                 "min_run_events","min_run_time",
                                 "direct_path", "prod_identifier",
                                 "infile_query_constraints",
                                 "status_query_constraints","physicsmode"] )
 
-        indataset=input_data.get("indataset")
+        intriplet=input_data.get("intriplet")
         min_run_events=input_data.get("min_run_events")
         min_run_time=input_data.get("min_run_time")
         # Substitutions in direct input path, if given
@@ -334,7 +334,7 @@ class RuleConfig:
         input_config=InputConfig(
             db=input_data["db"],
             table=input_data["table"],
-            indataset=indataset,
+            intriplet=intriplet,
             min_run_events=min_run_events,
             min_run_time=min_run_time,
             direct_path=input_direct_path,
@@ -377,8 +377,8 @@ class RuleConfig:
             filesystem[key]=filesystem[key].format( prodmode=rule_substitutions["prodmode"],
                                                     period=params_data["period"],
                                                     physicsmode=physicsmode,
-                                                    dataset=outdataset,
-                                                    rulestem=params_data["rulestem"],
+                                                    outtriplet=outtriplet,
+                                                    dsttype=params_data["dsttype"],
                                                     leafdir='{leafdir}',
                                                     rungroup='{rungroup}',
                                                     )
@@ -430,7 +430,7 @@ class RuleConfig:
                         , neventsper=neventsper
                         , buildarg=build_string
                         , tag=params_data["dbtag"]
-                        , dataset=outdataset
+                        , outtriplet=outtriplet
                         # pass remaining per-job parameters forward to be replaced later
                         , outbase='{outbase}'
                         , logbase='{logbase}'
@@ -442,10 +442,29 @@ class RuleConfig:
                 )
             job_data[field] = subsval
             CHATTY(f"After substitution, {field} is {subsval}")
+            print(subsval)
 
             request_memory=rule_substitutions.get("mem")
             if request_memory is None:
                 request_memory=job_data["mem"]
+
+            # catch different production branches - prepend by branch if not main            
+            branch_name="main"
+            try:
+                result = subprocess.run(
+                    [f"git -C {Path(__file__).parent} rev-parse --abbrev-ref HEAD"],
+                    shell=True,
+                    capture_output=True, 
+                    text=True, 
+                    check=True
+                )
+                branch_name = result.stdout.strip()
+                CHATTY(f"Current Git branch: {branch_name}")
+            except Exception as e:
+                print(f"An error occurred: {e}")
+            batch_name=job_data.get("batch_name")
+            if branch_name!="main":
+                batch_name=f"{branch_name}.{batch_name}"
                 
             job_config=CondorJobConfig(
                 executable=script,
@@ -454,7 +473,7 @@ class RuleConfig:
                 comment=comment,
                 neventsper=neventsper,
                 priority=job_data["priority"],
-                batch_name=job_data.get("batch_name"),
+                batch_name=batch_name,
                 arguments_tmpl=job_data["arguments"],
                 log_tmpl=job_data["log"],
                 filesystem=filesystem,
@@ -462,19 +481,19 @@ class RuleConfig:
 
         ### With all preparations done, construct the constant RuleConfig object
         return cls(
-            rulestem=params_data["rulestem"],   # Use direct access for required fields
+            dsttype=params_data["dsttype"],
             period=params_data["period"],
-            outstub=params_data.get("outstub"), # Use get for optional fields
+            physicsmode=physicsmode,
+            dataset=params_data.get("dataset"), 
             build=params_data["build"],
             dbtag=params_data["dbtag"],
             version=params_data["version"],
             build_string=build_string,
             version_string=version_string,
-            outdataset=outdataset,
+            outtriplet=outtriplet,
             runlist_int=runlist_int,
             input_config=input_config,
             job_config=job_config,
-            physicsmode=physicsmode,
         )
 
     # ------------------------------------------------
@@ -506,11 +525,11 @@ class RuleConfig:
 
 @dataclass( frozen = True )
 class MatchConfig:
-    rulestem:       str
+    dsttype:        str
     runlist_int:    str
     input_config:   InputConfig
-    outstub:        str
-    outdataset:     str
+    dataset:        str
+    outtriplet:     str
     physicsmode:    str
     # ------------------------------------------------
     @classmethod
@@ -526,11 +545,11 @@ class MatchConfig:
         """
 
         return cls(
-            rulestem     = rule_config.rulestem,
+            dsttype      = rule_config.dsttype,
             runlist_int  = rule_config.runlist_int,
             input_config = rule_config.input_config,
-            outstub      = rule_config.outstub,
-            outdataset   = rule_config.outdataset,
+            dataset      = rule_config.dataset,
+            outtriplet   = rule_config.outtriplet,
             physicsmode  = rule_config.physicsmode,
         )
 
@@ -546,11 +565,11 @@ class MatchConfig:
         # can be added if the need arises.
         # Note: If the file database is not up to date, we can use a filesystem search in the output directory
         # Note: The db field in the yaml is for input queries only, all output queries go to the FileCatalog
-        dst_type_template = f'{self.rulestem}'
-        # This test should be equivalent: if 'TRIGGERED' in self.rulestem or 'STREAMING' in self.rulestem:
-        if 'raw' in self.input_config.db:
+        dst_type_template = f'{self.dsttype}'
+        # This test should be equivalent: if 'raw' in self.input_config.db:
+        if 'TRIGGERED' in self.dsttype or 'STREAMING' in self.dsttype:
             dst_type_template += '_%'
-        dst_type_template += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
+        dst_type_template += f'_{self.dataset}' # DST_STREAMING_EVENT_%_run3cosmics
         dst_type_template += '%'
 
         ### Which runs to process        
@@ -558,10 +577,12 @@ class MatchConfig:
         run_condition=list_to_condition(runlist_int)
         
         # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
-        ## Note: dataset='{self.dataset}' is not needed but may speed up the query 
+        ## Note: Not all constraints are needed, but they may speed up the query 
         INFO('Checking for already existing output...')
-        exist_query  = f"""select filename from datasets where dataset='{self.outdataset}' and dsttype like '{dst_type_template}'"""
-
+        exist_query  = f"""select filename from datasets 
+        where tag='{self.outtriplet}'
+        and dataset='{self.dataset}'
+        and dsttype like '{dst_type_template}'"""
         if run_condition!="" :
             exist_query += f"\n\tand {run_condition}"
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
@@ -571,12 +592,12 @@ class MatchConfig:
         
         ### Check production status
         INFO('Checking for output already in production...')
-        # dst_type_template doesn't contain "new_nodcbtag_v000". It's not needed, this gets caught later.
+        # dst_type_template doesn't contain "new_nodcbtag_v000". It's not needed; this gets caught later.
         # However, let's tighten the query anyway
         # Could construct a different template but I'm lazy today, just add a second dstname pattern
         status_query  = f"""select dstfile,status from production_status 
-where dstname like '{dst_type_template}' 
-and dstname like '%{self.outdataset}%'"""
+        where dstname like '{dst_type_template}' 
+        and dstname like '%{self.outtriplet}%'"""
         if run_condition!="" :
             status_query += f"\n\tand {run_condition.replace('runnumber','run')}"
         status_query += self.input_config.status_query_constraints
@@ -589,10 +610,10 @@ and dstname like '%{self.outdataset}%'"""
         ###### Now get all existing input files
         ####################################################################################
         INFO("Building candidate inputs...")
-
-        # Here is a good spot to check against golden or bad runlists
-        # and to enforce quality cuts on the runs
-        # RuleConfig and existing output query is too early, distclean, spider, earlier productions may want to be less restricted
+        
+        ### Run quality
+        # Here is a good spot to check against golden or bad runlists and to enforce quality cuts on the runs
+        # RuleConfig and existing output query is too early for that, distclean, spider, earlier productions may want to be less restricted
         INFO("Checking runlist against run quality cuts.")        
         run_quality_tmpl="""
 select distinct(runnumber) from run 
@@ -620,9 +641,10 @@ order by runnumber
         runlist_int = [run for run in goodruns if run in runlist_int]
         run_condition=list_to_condition(runlist_int)
         
-        input_stem = inputs_from_output[self.rulestem]
+        ### Assemble leafs, where needed
+        input_stem = inputs_from_output[self.dsttype]
         DEBUG( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
-
+        
         if isinstance(input_stem, dict):
             in_types = list(input_stem.values())
         else :
@@ -643,12 +665,12 @@ order by runnumber
         # Need status==1 for all files in a given run,host combination
         # Easier to check that after the SQL query
         infile_query = f"""select filename,{descriminator} as daqhost,runnumber,segment,status
-from {self.input_config.table} 
-where \n\t{descriminator} in {in_types_str}\n
-"""
-        indataset=self.input_config.indataset
-        if indataset!="":
-            infile_query+=f"\tand dataset='{indataset}'"
+        from {self.input_config.table}
+        where \n\t{descriminator} in {in_types_str}\n
+        """
+        intriplet=self.input_config.intriplet
+        if intriplet and intriplet!="":
+            infile_query+=f"\tand dataset='{intriplet}'"
         if run_condition!="" :
             infile_query += f"\n\tand {run_condition}"
         infile_query += self.input_config.infile_query_constraints
@@ -663,8 +685,6 @@ where \n\t{descriminator} in {in_types_str}\n
         in_files = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
 
         INFO(f"Total number of available input files: {len(in_files)}")
-        # if len(in_files) > 0 :
-        #     CHATTY(f"First line: \n{in_files[0]}")
 
         #### Now build up potential output files from what's available
         now=time.time()
@@ -674,9 +694,8 @@ where \n\t{descriminator} in {in_types_str}\n
         files_by_run = {k : list(g) for k, g in itertools.groupby(in_files, operator.attrgetter('runnumber'))}
         runlist = list(files_by_run.keys())
         DEBUG(f'All available runnumbers:{runlist}')
-        if len(files_by_run) > 0 :
-            CHATTY(f"First line: \n{files_by_run[next(iter(files_by_run))]}")
 
+        ### Runnumber is the prime differentiator
         for runnumber in files_by_run:
             candidates = files_by_run[runnumber]
             if len(candidates) == 0 :
@@ -684,12 +703,12 @@ where \n\t{descriminator} in {in_types_str}\n
                 ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Aborting.")
                 exit(-1)
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
-            CHATTY(f"First line: \n{candidates[0]}")
+            # CHATTY(f"First line: \n{candidates[0]}")
 
             ######## Cut up the candidates into streams/daqhosts
             candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
             files_for_run = { k : list(g) for
-                           k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
+                              k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
             # Removing the files we just used _could_ be useful to shorten the search space
             # for the next iteration. But this is NOT the way to do it, turned out to be the slowest part of the code
             # in_files = [ f for f in in_files if f.runnumber != runnumber ]
@@ -709,9 +728,10 @@ where \n\t{descriminator} in {in_types_str}\n
                         files_for_run[host]=[]
                     
             ## Output, log, etc, live in
-            ## [somebase]/{prodmode}/{period}/{physicsmode}/{dataset}/{leafdir}/{rungroup}/[.,log,hist]/filename
-            ## where filename = f'{dsttype}_{dataset}-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})[.root, .log, .hist]'
-            ######### Two (originally three) possibilities:
+            ## [somebase]/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/<log|hist/>filename
+            ## where filename = f'{dsttype}_{dataset}-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})[.root, .out, .err]'
+            ## root files on gpfs can also start with HIST_ or CALIB_
+            ######### Two possibilities:
             # - Easy-ish: If the input has a segment number, then the output will have the same segment number
             #     - These are downstream objects (input is already a DST)
             #     - This can be 1-1 or many-to-1 (usually 2-1 for SEED + CLUSTER --> TRACKS)
@@ -727,7 +747,7 @@ where \n\t{descriminator} in {in_types_str}\n
                 if isinstance(input_stem, dict):
                     ERROR( "Input is a downstream object but input_stem is a dictionary.")
                     exit(-1)
-                CHATTY(f'\ninput_stem is a list, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
+                CHATTY(f'\ninput_stem is a list, {self.dsttype} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
 
                 # For every segment, there is exactly one output file, and exactly one input file _from each stream_
                 ### Get available input
@@ -798,7 +818,7 @@ and runnumber={runnumber}"""
                     WARN(f"Run {runnumber}: Removed segments not present in all streams: {rejected}")
 
                 # If the output doesn't exist yet, use input files to create the job
-                outbase=f'{self.rulestem}_{self.outstub}_{self.outdataset}'
+                outbase=f'{self.dsttype}_{self.outstub}_{self.outdataset}'
                 for seg in segments:
                     logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
                     output = f'{logbase}.root'
@@ -812,15 +832,15 @@ and runnumber={runnumber}"""
                     for host in files_for_run:
                         in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
                     CHATTY(f"Creating {output} from {in_files_for_seg}")
-                    #rule_matches[output] = in_files_for_seg, outbase, logbase, runnumber, seg, daqhost, self.rulestem
-                    rule_matches[output] = in_types, outbase, logbase, runnumber, seg, "dummy", self.rulestem
+                    #rule_matches[output] = in_files_for_seg, outbase, logbase, runnumber, seg, daqhost, self.dsttype
+                    rule_matches[output] = in_types, outbase, logbase, runnumber, seg, "dummy", self.dsttype
                     
             ####### Medium case. Streaming and (now also) triggered daq
             if 'gl1daq' in in_types_str:
                 if not isinstance(input_stem, dict):
                     ERROR( "Input is raw daq but input_stem is not a dictionary.")
                     exit(-1)
-                CHATTY(f'\ninput_stem is a dictionary, {self.rulestem} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
+                CHATTY(f'\ninput_stem is a dictionary, {self.dsttype} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
                 
                 # Every runnumber has exactly "one" output file (albeit with many segments), and a gaggle of input files with matching daqhost
                 # Sort and group the input files by host
@@ -832,17 +852,13 @@ and runnumber={runnumber}"""
                     ### But that changes the dictionary during iteration etc. Easier to just check here for []
                     if files_for_run[host]==[]:
                         continue
-                    dsttype = f'{self.rulestem}_{leaf}'
-                    dsttype += f'_{self.outstub}' # DST_STREAMING_EVENT_%_run3auau
-                    # Example arguments for the combiner script:
-                    # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000 \ outbase \
-                    # DST_STREAMING_EVENT_INTT4_run3auau_new_nocdbtag_v000-00061162 \ logbase \
-                    outbase=f'{dsttype}_{self.outdataset}'
+                    dsttype  = f'{self.dsttype}_{leaf}'
+                    dsttype += f'_{self.dataset}' # DST_STREAMING_EVENT_%_run3auau
+                    outbase=f'{dsttype}_{self.outtriplet}'
                     seg=0
                     logbase=f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
                     # check for one existing output file.
                     # These DO have a segment and a .root extension
-                    # first_output=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}.root'
                     first_output=f'{logbase}.root'
                     if first_output in existing_output:
                         CHATTY(f"Output file {first_output} already exists. Not submitting.")
@@ -856,7 +872,7 @@ and runnumber={runnumber}"""
                     CHATTY(f"Creating {first_output} for run {runnumber} with {len(files_for_run[daqhost])} input files")
                     
                     files_for_run[daqhost].sort(key=lambda x: (x.segment)) # not needed but tidier
-                    rule_matches[first_output] = [file.filename for file in files_for_run[daqhost]], outbase, logbase, runnumber, 0, daqhost, self.rulestem+'_'+leaf
+                    rule_matches[first_output] = [file.filename for file in files_for_run[daqhost]], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
         INFO(f'[Parsing time ] {time.time() - now:.2g} seconds' )
 
         return rule_matches
