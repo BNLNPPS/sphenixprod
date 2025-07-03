@@ -442,8 +442,6 @@ class RuleConfig:
                 )
             job_data[field] = subsval
             CHATTY(f"After substitution, {field} is {subsval}")
-            print(subsval)
-
             request_memory=rule_substitutions.get("mem")
             if request_memory is None:
                 request_memory=job_data["mem"]
@@ -882,36 +880,28 @@ def parse_lfn(lfn: str, rule: RuleConfig) -> Tuple[str,...] :
     # If there's a colon, throw everything away after the first one; that's another parser's problem
     try:
         name=lfn.split(':')[0]
-        dsttype,runsegend=name.split(rule.outdataset) # 'DST_..._run3auau', '-00066582-00000.root' (or .finished)
+        name=Path(name).name # could throw an error instead if we're handed a full path.
+         #  split at, and remove, run3auau_new_nocbdtag_v001, remainder is 'DST_...', '-00066582-00000.root' (or .finished)
+        dsttype,runsegend=name.split(f'_{rule.dataset}_{rule.outtriplet}')
         _,run,segend=runsegend.split('-')
         seg,end=segend.split('.')
     except ValueError as e:
         print(f"[parse_lfn] Caught error {e}")
         print(f"lfn = {lfn}")
-        print(f"lfn.split(':') = {lfn.split(':')}")
-        print(f"name = {lfn.split(':')[0]}")
-        name=lfn.split(':')[0]
-        print(f"dsttype,runsegend = name.split(rule.outdataset) = {name.split(rule.outdataset)}")        
-        dsttype,runsegend=name.split(rule.outdataset) # 'DST_..._run3auau', '-00066582-00000.root' (or .finished)
-        print(f"_,run,segend = runsegend.split('-') = {runsegend.split('-')}")
-        _,run,segend=runsegend.split('-')
-        print(f"seg,end = segend.split('.') = {segend.split('.')})")
-        seg,end=segend.split('.')
-        exit(-1)
-        
-
-    # "dsttype" as currently used in the datasets table is e.g. DST_STREAMING_EVENT_ebdc01_1_run3auau
-    # We almost have that but need to strip off a trailing "_"
-    if dsttype[-1] == '_':
-        dsttype=dsttype[0:-1]
-
+        exit(-1)        
     return dsttype,int(run),int(seg),end
 
 
 # ============================================================================
 def parse_spiderstuff(filename: str) -> Tuple[str,...] :
     try:
-        lfn,_,nevents,_,first,_,last,_,md5,_,dbid = filename.split(':')
+        size=-1
+        ctime=-1
+        if 'size' in filename and 'ctime'in filename:
+            lfn,_,nevents,_,first,_,last,_,md5,_,size,_,ctime,_,dbid = filename.split(':')
+        else:
+            lfn,_,nevents,_,first,_,last,_,md5,_,dbid = filename.split(':')
+
         lfn=Path(lfn).name
     except Exception as e:
         ERROR(f"Error: {e}")
@@ -919,6 +909,6 @@ def parse_spiderstuff(filename: str) -> Tuple[str,...] :
         print(filename.split(':'))
         exit(-1)
 
-    return lfn,int(nevents),int(first),int(last),md5,int(dbid)
+    return lfn,int(nevents),int(first),int(last),md5,int(size),int(ctime),int(dbid)
 
 # ============================================================================
