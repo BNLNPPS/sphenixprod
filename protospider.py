@@ -111,20 +111,16 @@ def main():
     outstub = rule.outstub
     INFO(f"Output stub: {outstub}")
 
-    leaf_template = f'{rule.rulestem}'
+    input_stubs = inputs_from_output[rule.dsttype]
+    DEBUG(f"Input stub(s): {input_stubs}")
+    dataset = rule.dataset
+    INFO(f"Dataset identifier: {dataset}")
+    leaf_template = f'{rule.dsttype}'
     if 'raw' in rule.input_config.db:
         leaf_template += '_{host}'
-        # Only need the keys, in case of a dictionary
-        # Regrettably, 'dsttype' in the database refers to e.g. DST_STREAMING_EVENT_ebdc01_1_run3auau
-        # Here, we want the base of that without the run3auau. Also known as "leaf" or "leafdir" sometimes.
-        input_stem = inputs_from_output[rule.rulestem]
-        DEBUG(f"Input stem: {input_stem}")
-        leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stem.keys() }
-        DEBUG(f"Destination types: {leaf_types}")
-    else: 
-        leaf_types=[leaf_template]
-
-    INFO(f"DST template: {leaf_template}")
+    leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stubs.keys() }
+    INFO(f"Destination type template: {leaf_template}")
+    DEBUG(f"Destination types: {leaf_types}")
 
     ### Which find command to use for lustre?
     # Lustre's robin hood, rbh-find, doesn't offer advantages for our usecase, and it is more cumbersome to use.
@@ -366,6 +362,8 @@ def main():
 # ============================================================================================
 
 if __name__ == '__main__':
+    ERROR("This script is deprecated and not functional. Use dstspider and histspider instead.")
+    exit(1)
     main()
     exit(0)
 

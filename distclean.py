@@ -456,6 +456,11 @@ returning *
 # ============================================================================================
 
 if __name__ == '__main__':
+    ERROR("This script is currently not functional. It needs an overhaul following the logic in dstspider, histspider.")
+    ERROR("Furthermore, it doesn't work well at the scale of full production.")
+    exit(1)
+
+
     # main()
     # exit(0)
 
