@@ -2,14 +2,12 @@
 
 import pyodbc
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime  # noqa: F401
 import yaml
 import cProfile
 import subprocess
 import sys
 import shutil
-import math
-# from contextlib import nullcontext
 
 # from dataclasses import fields
 import pprint # noqa F401
@@ -17,11 +15,10 @@ import pprint # noqa F401
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig,inputs_from_output,list_to_condition
-from sphenixprodrules import parse_lfn,parse_spiderstuff
+from sphenixprodrules import RuleConfig,list_to_condition
+from sphenixprodrules import parse_lfn
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import cnxn_string_map
-from sphenixdbutils import insert_files_tmpl, insert_datasets_tmpl
 from sphenixmisc import remove_empty_directories, binary_contains_bisect, make_chunks
 
 # ============================================================================================
@@ -163,7 +160,7 @@ def main():
 
     ### Submission directory. Hacky.
     submission_dir = Path('./tosubmit').resolve() 
-    subbase = f'{rule.rulestem}_{rule.outstub}_{rule.dataset}'
+    subbase = f'{rule.rulestem}_{rule.outstub}_{rule.outdataset}'
     INFO(f'Submission files based on {subbase}')
     existing_sub_files =  list(Path(submission_dir).glob(f'{subbase}*.in'))
     existing_sub_files += list(Path(submission_dir).glob(f'{subbase}*.sub'))
@@ -181,7 +178,7 @@ def main():
     ############# DSTs still in the lake
     filesystem = rule.job_config.filesystem
     DEBUG(f"Filesystem: {filesystem}")
-    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.dataset}\*'
+    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.outdataset}\*'
     INFO(f'DST files filtered as {dstbase}')
 
     lakelocation=filesystem['outdir']
@@ -459,6 +456,11 @@ returning *
 # ============================================================================================
 
 if __name__ == '__main__':
+    ERROR("This script is currently not functional. It needs an overhaul following the logic in dstspider, histspider.")
+    ERROR("Furthermore, it doesn't work well at the scale of full production.")
+    exit(1)
+
+
     # main()
     # exit(0)
 

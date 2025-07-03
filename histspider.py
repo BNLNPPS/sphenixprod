@@ -7,20 +7,18 @@ import cProfile
 import subprocess
 import sys
 import shutil
-import math
-from typing import Tuple,List
+from typing import List
 
 # from dataclasses import fields
 import pprint # noqa F401
 
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
+from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig,inputs_from_output
+from sphenixprodrules import RuleConfig
 from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
-from sphenixdbutils import cnxn_string_map, dbQuery
-from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb
+from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb # noqa: F401
 from sphenixmisc import binary_contains_bisect
 
 # ============================================================================================
@@ -151,9 +149,9 @@ def main():
             now = datetime.now()
             print( f'HIST #{f}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
-            tlast = now            
+            tlast = now
         try:
-            lfn,nevents,first,last,md5,dbid = parse_spiderstuff(file)
+            lfn,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
         except Exception as e:
             WARN(f"Error: {e}")
             continue
@@ -164,37 +162,37 @@ def main():
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
                 exit(0)
-            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5)
+            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
         else:
             continue
 
-        ### For additional db info. Note: stat is costly. Could be omitted with filestat=None
-        # Do it before the mv.
-        filestat=Path(file).stat()
-
         ### Extract what else we need for file databases
+        ### For additional db info. Note: stat is costly. Use only if the determination on the worker node isn't sufficient
+        filestat=None
+        
+        ###### Here be dragons
         full_file_path = fullpath
 
 
-        ### Move
-        if args.dryrun:
-            if f%when2blurb == 0:
-                print( f"Dryrun: Pretending to do:\n mv {file} {full_file_path}" )
-        else:   
-            # Move (rename) the file
-            try:
-                shutil.move( file, full_file_path )
-            except Exception as e:
-                WARN(e)
-
-        ### ... and upsert catalog tables
+        ### Register first, then move. 
         upsert_filecatalog(lfn=lfn,
                            info=info,
                            full_file_path = full_file_path,
                            filestat=filestat,
                            dataset=rule.dataset,
-                           dryrun=args.dryrun
+                           tag=rule.outtriplet,
+                           dryrun=args.dryrun # only prints the query if True
                            )
+        if args.dryrun:
+            continue
+        # Move
+        try:
+            shutil.move( file, full_file_path )
+            # os.rename( file, full_file_path )
+        except Exception as e:
+            WARN(e)
+            # exit(-1)
+
         pass # End of HIST loop 
                 
 # ============================================================================================

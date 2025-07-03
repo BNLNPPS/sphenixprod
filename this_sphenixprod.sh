@@ -81,7 +81,12 @@ PS1="\u@\h \W> "
 if [[ `ssh-add -l` =~ "kolja" ]] ; then
     echo "Hello Kolja"    
     git config --global user.name "Kolja Kauder"
-    git config --global user.email "kkauder@gmail.com"    
+    git config --global user.email "kkauder@gmail.com"
     #git config --global push.default simple
+
+    # zsh-style history search
+    bind '"\e[A": history-search-backward'
+    bind '"\e[B": history-search-forward'
+
 fi
 

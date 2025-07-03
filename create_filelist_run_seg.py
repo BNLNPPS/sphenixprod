@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
-from collections import defaultdict
-
+from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixdbutils import cnxn_string_map, dbQuery # type: ignore
 
 def main():
@@ -23,14 +22,11 @@ def main():
         print(f"     : segment '{segment_str}' must be an integer.")
         sys.exit(1)
 
-    # Using a defaultdict to easily append to lists of filenames per host
-    #file_list_by_host = defaultdict(list)
-
     # Note: dsttype isn't actually needed
     sql_query = f"""
     SELECT filename, dsttype 
     FROM datasets 
-    WHERE filename like '{inbase}%'
+    WHERE dsttype in ( '{inbase}' )
       AND runnumber = {runnumber}
       AND segment ={segment}
     ORDER BY filename
@@ -39,7 +35,6 @@ def main():
     file_list=[]
     for row in rows:
         filename, dsttype = row
-        # file_list_by_host[dsttype].append(filename)
         file_list.append(filename)
 
     if not file_list:

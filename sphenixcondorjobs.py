@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, ClassVar, List
 import math
-from pathlib import Path
 import pprint # noqa: F401
 
 from simpleLogger import ERROR, WARN, CHATTY, INFO, DEBUG  # noqa: F401
@@ -159,9 +158,9 @@ class CondorJob:
         Constructs a CondorJob instance.
         """
         # Overwrite the input file list. We could hand it over but using the db on the nodes is preferred
-        inputs = [ "UsingDbInput" ] # + ",".join(lipsum.generate_words(12000).split()), # for testing, fill up with lorem ipsum
+        #inputs = [ "UsingDbInput" ] # + ",".join(lipsum.generate_words(12000).split()), # for testing, fill up with lorem ipsum
         # Group blocks of 100 runnumbers together to control directory size
-        rungroup=cls.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100)) 
+        rungroup=cls.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
         arguments = cls.job_config.arguments_tmpl.format(rungroup=rungroup,
                                                 leafdir=leafdir,
                                                 neventsper=cls.job_config.neventsper,
@@ -171,6 +170,7 @@ class CondorJob:
                                                 seg=seg,
                                                 daqhost=daqhost,
                                                 inputs=','.join(inputs),
+                                                inbase="','".join(inputs),
                                                 )
         outdir    = cls.job_config.filesystem['outdir'] .format(rungroup=rungroup, leafdir=leafdir)
         finaldir  = cls.job_config.filesystem['finaldir'].format(rungroup=rungroup, leafdir=leafdir)

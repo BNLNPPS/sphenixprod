@@ -8,9 +8,9 @@ import random
 import os
 
 from collections import namedtuple
-filedb_info = namedtuple('filedb_info', ['dsttype','run','seg','fullpath','nevents','first','last','md5'])
+filedb_info = namedtuple('filedb_info', ['dsttype','run','seg','lfn','nevents','first','last','md5','size','ctime'])
 
-from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY # noqa: F401
+from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY  # noqa: E402, F401
 
 """
 This module provides an interface to the sPHENIX databases.
@@ -97,8 +97,8 @@ md5=EXCLUDED.md5
 """
 # ---------------------------------------------------------------------------------------------
 insert_datasets_tmpl="""
-insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events,firstevent,lastevent)
-values ('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{lastevent})
+insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events,firstevent,lastevent,tag)
+values ('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{lastevent},'{tag}')
 on conflict
 on constraint {datasets_table}_pkey
 do update set
@@ -108,41 +108,52 @@ size=EXCLUDED.size,
 dsttype=EXCLUDED.dsttype,
 events=EXCLUDED.events,
 firstevent=EXCLUDED.firstevent,
-lastevent=EXCLUDED.lastevent
+lastevent=EXCLUDED.lastevent,
+tag=EXCLUDED.tag
 ;
 """
 # ---------------------------------------------------------------------------------------------
-def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset: str, filestat=None, dryrun=True ):
-        # for "files"
-        insert_files=insert_files_tmpl.format(
-            files_table='test_files' if test_mode else 'files',
-            lfn=lfn,
-            md5=info.md5,
-            full_host_name = "lustre" if 'lustre' in full_file_path else 'gpfs',
-            full_file_path = full_file_path,
-            ctimestamp = datetime.fromtimestamp(filestat.st_ctime) if filestat else str(datetime.now().replace(microsecond=0)),
-            file_size_bytes = filestat.st_size if filestat else -1,
-        )
-        CHATTY(insert_files)
-        insert_datasets=insert_datasets_tmpl.format(
-            datasets_table='test_datasets' if test_mode else 'datasets',
-            lfn=lfn,
-            md5=info.md5,
-            run=info.run, segment=info.seg,
-            file_size_bytes=filestat.st_size if filestat else -1,
-            dataset=dataset,
-            dsttype=info.dsttype,
-            nevents=info.nevents,
-            firstevent=info.first,
-            lastevent=info.last,
-        )
-        CHATTY(insert_datasets)
-        if not dryrun:
-            dbstring = 'testw' if test_mode else 'fcw'
-            files_curs = dbQuery( cnxn_string_map[ dbstring ], insert_files )
+def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset: str, tag: str, filestat=None, dryrun=True ):
+    # for "files"
+    ctimestamp = datetime.fromtimestamp(info.ctime) if info.ctime>0 else str(datetime.now().replace(microsecond=0))
+    insert_files=insert_files_tmpl.format(
+        files_table='test_files' if test_mode else 'files',
+        lfn=lfn,
+        md5=info.md5,
+        full_host_name = "lustre" if 'lustre' in full_file_path else 'gpfs',
+        full_file_path = full_file_path,
+        ctimestamp = ctimestamp,
+        file_size_bytes = info.size,
+    )
+    CHATTY(insert_files)
+    insert_datasets=insert_datasets_tmpl.format(
+        datasets_table='test_datasets' if test_mode else 'datasets',
+        lfn=lfn,
+        md5=info.md5,
+        run=info.run, segment=info.seg,
+        file_size_bytes=info.size,
+        dataset=dataset,
+        dsttype=info.dsttype,
+        nevents=info.nevents,
+        firstevent=info.first,
+        lastevent=info.last,
+        tag=tag,
+    )
+    CHATTY(insert_datasets)
+    if not dryrun:
+        dbstring = 'testw' if test_mode else 'fcw'
+        files_curs = dbQuery( cnxn_string_map[ dbstring ], insert_files )
+        if files_curs:
             files_curs.commit()
-            datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
+        else: 
+            ERROR(f"Failed to insert file {lfn} into database {dbstring}")
+            exit(1)
+        datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
+        if datasets_curs:
             datasets_curs.commit()
+        else:
+            ERROR(f"Failed to insert dataset {lfn} into database {dbstring}")
+            exit(1)
 
 # ============================================================================================
 
@@ -165,7 +176,11 @@ def update_proddb( dbid: int, filestat=None, dryrun=True ):
         if not dryrun:
             dbstring = 'statw'
             prodstate_curs = dbQuery( cnxn_string_map[ dbstring ], update_prodstate )
-            prodstate_curs.commit()
+            if prodstate_curs:
+                prodstate_curs.commit()
+            else:
+                ERROR(f"Failed to update production status for {dbid} in database {dbstring}")
+                exit()
 
 # ============================================================================================
 def printDbInfo( cnxn_string, title ):

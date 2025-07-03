@@ -15,7 +15,7 @@ if os.uname().sysname!='Darwin' :
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig, MatchConfig,list_to_condition
+from sphenixprodrules import RuleConfig, MatchConfig
 from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJob
@@ -71,8 +71,22 @@ def main():
     ### Copy our own files to the worker:
     # For database access - from _production script_ directory
     script_path = Path(__file__).parent.resolve()
-    payload_list += [ importlib.util.find_spec('sphenixdbutils').origin ]
-    payload_list += [ importlib.util.find_spec('simpleLogger').origin ]
+
+    # Safely add module origins
+    sphenixdbutils_spec = importlib.util.find_spec('sphenixdbutils')
+    if sphenixdbutils_spec and sphenixdbutils_spec.origin:
+        payload_list += [sphenixdbutils_spec.origin]
+    else:
+        ERROR("sphenixdbutils module not found.")
+        exit(1)
+
+    simplelogger_spec = importlib.util.find_spec('simpleLogger')
+    if simplelogger_spec and simplelogger_spec.origin:
+        payload_list += [simplelogger_spec.origin]
+    else:
+        ERROR("simpleLogger module not found.")
+        exit(1)
+
     payload_list += [ f"{script_path}/stageout.sh" ]
     payload_list += [ f"{script_path}/GetNumbers.C" ]
     payload_list += [ f"{script_path}/create_filelist_run_daqhost.py" ]
@@ -93,18 +107,8 @@ def main():
     rule_substitutions["payload_list"] = payload_list
 
     # Limit the number of results from the query?
-    limit_condition = ""
     if args.limit:
-        ERROR(f"A general limit constraint doesn't make sense. Deprecated and ignored." )
-        # limit_condition = f"limit {args.limit}"
-        # DEBUG( f"Limit condition is \"{limit_condition}\"" )
-        # WARN( f"For testing, limiting input query to {args.limit} entries. Probably not what you want." )
-        # limit_condition = f"\t{limit_condition}\n"
-
-    # rule_substitutions["infile_query_constraints"] = f"""{run_condition}{limit_condition}"""
-    # rule_substitutions["status_query_constraints"] = f"""{run_condition.replace('runnumber','run')}{limit_condition}"""
-    # DEBUG( f"Input query constraints: {rule_substitutions['infile_query_constraints']}")
-    # DEBUG(f"Status query constraints: {rule_substitutions['status_query_constraints']}")
+        ERROR("A general limit constraint doesn't make sense. Deprecated and ignored." )
 
     # Rest of the input substitutions
     if args.physicsmode is not None:
@@ -185,7 +189,7 @@ def main():
     submission_dir = Path('./tosubmit').resolve()
     if not args.dryrun:
         Path( submission_dir).mkdir( parents=True, exist_ok=True )
-    subbase = f'{rule.rulestem}_{rule.outstub}_{rule.dataset}'
+    subbase = f'{rule.dsttype}_{rule.dataset}_{rule.outtriplet}'
     INFO(f'Submission files based on {subbase}')
 
     # For a fairly collision-safe identifier that could be used to not trample on existing files:
@@ -249,10 +253,9 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
                     Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
                     
             # Add to production database
-            # FIXME: inputs, prod_id
+            # FIXME: prod_id
             dsttype=logbase.split(f'_{rule.dataset}')[0]
             dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
-            # FIXME: SEGMENT?
             # Following is fragile, don't add spaces
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
@@ -303,9 +306,9 @@ returning id
 
     
     prettyfs=pprint.pformat(rule.job_config.filesystem)
-    input_stem=inputs_from_output[rule.rulestem]
+    input_stem=inputs_from_output[rule.dsttype]
     if isinstance(input_stem, list):
-        prettyfs=prettyfs.replace('{leafdir}',rule.rulestem)
+        prettyfs=prettyfs.replace('{leafdir}',rule.dsttype)
     INFO(f"Other location templates:\n{prettyfs}")
 
     if args.andgo and not args.dryrun:

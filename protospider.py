@@ -8,7 +8,7 @@ import subprocess
 import sys
 import shutil
 import math
-from typing import Tuple,List
+from typing import List
 
 # from dataclasses import fields
 import pprint # noqa F401
@@ -19,8 +19,7 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 from sphenixprodrules import RuleConfig,inputs_from_output
 from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
-from sphenixdbutils import cnxn_string_map, dbQuery
-from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb
+from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect
 
 # ============================================================================================
@@ -108,7 +107,21 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-    
+        
+    outstub = rule.outstub
+    INFO(f"Output stub: {outstub}")
+
+    input_stubs = inputs_from_output[rule.dsttype]
+    DEBUG(f"Input stub(s): {input_stubs}")
+    dataset = rule.dataset
+    INFO(f"Dataset identifier: {dataset}")
+    leaf_template = f'{rule.dsttype}'
+    if 'raw' in rule.input_config.db:
+        leaf_template += '_{host}'
+    leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stubs.keys() }
+    INFO(f"Destination type template: {leaf_template}")
+    DEBUG(f"Destination types: {leaf_types}")
+
     ### Which find command to use for lustre?
     # Lustre's robin hood, rbh-find, doesn't offer advantages for our usecase, and it is more cumbersome to use.
     # But "lfs find" is preferrable to the regular kind.
@@ -124,7 +137,7 @@ def main():
     # Original output directory, the final destination, and the file name trunk
     filesystem = rule.job_config.filesystem
     DEBUG(f"Filesystem: {filesystem}")
-    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.dataset}\*'
+    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.outdataset}\*'
     INFO(f'DST files filtered as {dstbase}')
     lakelocation=filesystem['outdir']
     INFO(f"Original output directory: {lakelocation}")
@@ -162,11 +175,11 @@ def main():
         pseudolfn=Path(file).name
         dsttype,run,seg,_=parse_lfn(pseudolfn,rule)
         if binary_contains_bisect(rule.runlist_int,run):
-            fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(file)
+            lfn,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
                 exit(0)
-            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5)
+            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
 
             # if dbid not in finished:
             #     CHATTY(f"{dbid} isn't done yet")
@@ -241,13 +254,14 @@ def main():
                 shutil.move( file, full_file_path )
             except Exception as e:
                 WARN(e)
-
+                
         ### ... and upsert catalog tables
         upsert_filecatalog(lfn=lfn,
                            info=info,
                            full_file_path = full_file_path,
                            filestat=filestat,
-                           dataset=rule.dataset,
+                           dataset=rule.outdataset,
+                           tag=rule.outtriplet,
                            dryrun=args.dryrun
                            )
         pass # End of DST loop 
@@ -291,12 +305,12 @@ def main():
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
             tlast = now            
         try:
-            fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(file)
+            lfn,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
         except Exception as e:
             WARN(f"Error: {e}")
             continue
 
-        lfn=Path(fullpath).name
+        fullpath=str(Path(file).parent)+'/'+lfn
         dsttype,run,seg,_=parse_lfn(lfn,rule)
         
         if binary_contains_bisect(rule.runlist_int,run):
@@ -332,7 +346,8 @@ def main():
                            info=info,
                            full_file_path = full_file_path,
                            filestat=filestat,
-                           dataset=rule.dataset,
+                           dataset=rule.outdataset,
+                           tag=rule.outtriplet,                           
                            dryrun=args.dryrun
                            )
         pass # End of HIST loop 
@@ -347,6 +362,8 @@ def main():
 # ============================================================================================
 
 if __name__ == '__main__':
+    ERROR("This script is deprecated and not functional. Use dstspider and histspider instead.")
+    exit(1)
     main()
     exit(0)
 

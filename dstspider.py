@@ -9,7 +9,7 @@ import sys
 import shutil
 import os
 import math
-from typing import Tuple,List
+from typing import List
 
 # from dataclasses import fields
 import pprint # noqa F401
@@ -20,8 +20,7 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 from sphenixprodrules import RuleConfig,inputs_from_output
 from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
-from sphenixdbutils import cnxn_string_map, dbQuery
-from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb
+from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect
 
 # ============================================================================================
@@ -126,7 +125,7 @@ def main():
 
     ##################### DSTs, from lustre to lustre
     # Original output directory, the final destination, and the file name trunk
-    dstbase = f'{rule.rulestem}\*{rule.outstub}_{rule.dataset}\*'
+    dstbase = f'{rule.dsttype}\*{rule.dataset}_{rule.outtriplet}\*'
     INFO(f'DST files filtered as {dstbase}')
     lakelocation=filesystem['outdir']
     INFO(f"Original output directory: {lakelocation}")
@@ -134,29 +133,6 @@ def main():
     ### root files without cuts
     lakefiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\*")
     DEBUG(f"Found {len(lakefiles)} matching dsts without cuts in the lake.")
-
-    # ### indicator files for 'finished'
-    # finishedfiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.finished\*")
-    # DEBUG(f"Found {len(finishedfiles)} matching .finished files in the lake.")
-    
-    # ### Mark off dbids (==finished jobs) that can be transferred
-    # finished={}
-    # for finfile in finishedfiles:
-    #     pseudolfn=Path(finfile).name
-    #     _,run,seg,end=parse_lfn(pseudolfn,rule)
-    #     if binary_contains_bisect(rule.runlist_int,run):
-    #         fullpath,_,_,_,_,dbid = parse_spiderstuff(finfile)
-    #         if dbid <= 0:
-    #             ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
-    #             exit(0)
-    #         if dbid in finished:
-    #             raise KeyError(f"dbid '{dbid}' already exists in the dictionary.")
-    #         finished[dbid]=finfile
-
-    # if len(finished) ==0 :
-    #     INFO(f"No runs have finished yet. TTYL!")
-    #     exit(0)
-    # INFO(f"{len(finished)} runs have finished. Processing their root files.")
          
     ### Collect root files that satisfy run and dbid requirements
     mvfiles_info=[]
@@ -164,15 +140,11 @@ def main():
         pseudolfn=Path(file).name
         dsttype,run,seg,_=parse_lfn(pseudolfn,rule)
         if binary_contains_bisect(rule.runlist_int,run):
-            fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(file)
+            fullpath,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
                 exit(0)
-            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5)
-
-            # if dbid not in finished:
-            #     CHATTY(f"{dbid} isn't done yet")
-            #     continue;
+            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
             mvfiles_info.append( (file,info) )
             
     INFO(f"{len(mvfiles_info)} total root files to be processed.")
@@ -180,17 +152,14 @@ def main():
     finaldir_tmpl=filesystem['finaldir']
     INFO(f"Final destination template: {finaldir_tmpl}")
 
-    input_stem = inputs_from_output[rule.rulestem]
-    DEBUG(f"Input stem: {input_stem}")
-    outstub = rule.outstub
-    INFO(f"Output stub: {outstub}")
-
-    # Regrettably, 'dsttype' in the database refers to e.g. DST_STREAMING_EVENT_ebdc01_1_run3auau
-    # Here, we want the base of that without the run3auau. Also known as "leaf" or "leafdir" sometimes.
-    leaf_template = f'{rule.rulestem}'
+    input_stubs = inputs_from_output[rule.dsttype]
+    DEBUG(f"Input stub(s): {input_stubs}")
+    dataset = rule.dataset
+    INFO(f"Dataset identifier: {dataset}")
+    leaf_template = f'{rule.dsttype}'
     if 'raw' in rule.input_config.db:
         leaf_template += '_{host}'
-    leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stem.keys() }
+    leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stubs.keys() }
     INFO(f"Destination type template: {leaf_template}")
     DEBUG(f"Destination types: {leaf_types}")
     
@@ -210,8 +179,7 @@ def main():
 
         for file_and_info in chunk:
             file,info=file_and_info
-            dsttype,run,seg,lfn,nevents,first,last,md5=info
-                
+            dsttype,run,seg,lfn,nevents,first,last,md5,size,time=info
             # Check if we recognize the file name
             leaf=None
             for leaf_type in leaf_types:
@@ -219,8 +187,6 @@ def main():
                     leaf=leaf_type
                     break
             if leaf is None:
-                # DEBUG(f"Unknown file name: {lfn}")
-                # continue
                 ERROR(f"Unknown file name: {lfn}")
                 exit(-1)
 
@@ -229,50 +195,38 @@ def main():
             finaldir = finaldir_tmpl.format( leafdir=leaf, rungroup=rungroup )
 
             ### Extract what else we need for file databases
-            ### For additional db info. Note: stat is costly. Could be omitted.
-            filestat=Path(file).stat()
+            ### For additional db info. Note: stat is costly. Use only if the determination on the worker node isn't sufficient
+            filestat=None
             
             ###### Here be dragons
             full_file_path = f'{finaldir}/{lfn}'
-            ### Move
-            if args.dryrun: # This does nothing! Just a weay to print the query
-                upsert_filecatalog(lfn=lfn,
-                                   info=info,
-                                   full_file_path = full_file_path,
-                                   filestat=filestat,
-                                   dataset=rule.dataset,
-                                   dryrun=True
-                                   )
-                continue
-           
-            # Create destination dir if it doesn't exit. Can't be done elsewhere/earlier, we need the full relevant runnumber range
-            # print(finaldir)
-            Path(finaldir).mkdir( parents=True, exist_ok=True )
-            # Move the file
-            # print(file)
-            # print(full_file_path)
-            try:
-                # shutil.move( file, full_file_path )
-                os.rename( file, full_file_path )
-            except Exception as e:
-                WARN(e)
-                # exit(-1)
-            ### ... and upsert catalog tables
+            ### Register first, then move. 
             upsert_filecatalog(lfn=lfn,
                                info=info,
                                full_file_path = full_file_path,
                                filestat=filestat,
                                dataset=rule.dataset,
-                               dryrun=args.dryrun
+                               tag=rule.outtriplet,
+                               dryrun=args.dryrun # only prints the query if True
                                )
+            if args.dryrun:
+                continue
+            # Create destination dir if it doesn't exit. Can't be done elsewhere/earlier, we need the full relevant runnumber range
+            Path(finaldir).mkdir( parents=True, exist_ok=True )
+            try:
+                shutil.move( file, full_file_path )
+                # os.rename( file, full_file_path )
+            except Exception as e:
+                WARN(e)
+                # exit(-1)
             pass # end of chunk loop
         pass # End of DST loop 
                 
 # ============================================================================================
 
 if __name__ == '__main__':
-    # main()
-    # exit(0)
+    main()
+    exit(0)
 
     cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats
