@@ -89,7 +89,7 @@ def main():
         DEBUG("Mangling DST name")
         rule_substitutions['DST']=args.mangle_dstname
 
-    # filesystem is the se for all output, allow for mangling here
+    # filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
     rule_substitutions["prodmode"] = "production"
     if args.mangle_dirpath:
