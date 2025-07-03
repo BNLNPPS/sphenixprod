@@ -179,11 +179,11 @@ def main():
         pseudolfn=Path(file).name
         dsttype,run,seg,_=parse_lfn(pseudolfn,rule)
         if binary_contains_bisect(rule.runlist_int,run):
-            fullpath,nevents,first,last,md5,dbid = parse_spiderstuff(file)
+            lfn,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
                 exit(0)
-            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5)
+            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
 
             # if dbid not in finished:
             #     CHATTY(f"{dbid} isn't done yet")
@@ -258,13 +258,14 @@ def main():
                 shutil.move( file, full_file_path )
             except Exception as e:
                 WARN(e)
-
+                
         ### ... and upsert catalog tables
         upsert_filecatalog(lfn=lfn,
                            info=info,
                            full_file_path = full_file_path,
                            filestat=filestat,
                            dataset=rule.outdataset,
+                           tag=rule.outtriplet,
                            dryrun=args.dryrun
                            )
         pass # End of DST loop 
@@ -308,7 +309,7 @@ def main():
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
             tlast = now            
         try:
-            lfn,nevents,first,last,md5,dbid = parse_spiderstuff(file)
+            lfn,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
         except Exception as e:
             WARN(f"Error: {e}")
             continue
@@ -350,6 +351,7 @@ def main():
                            full_file_path = full_file_path,
                            filestat=filestat,
                            dataset=rule.outdataset,
+                           tag=rule.outtriplet,                           
                            dryrun=args.dryrun
                            )
         pass # End of HIST loop 

@@ -149,9 +149,9 @@ def main():
             now = datetime.now()
             print( f'HIST #{f}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
-            tlast = now            
+            tlast = now
         try:
-            lfn,nevents,first,last,md5,dbid = parse_spiderstuff(file)
+            lfn,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
         except Exception as e:
             WARN(f"Error: {e}")
             continue
@@ -162,37 +162,37 @@ def main():
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
                 exit(0)
-            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5)
+            info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
         else:
             continue
 
-        ### For additional db info. Note: stat is costly. Could be omitted with filestat=None
-        # Do it before the mv.
-        filestat=Path(file).stat()
-
         ### Extract what else we need for file databases
+        ### For additional db info. Note: stat is costly. Use only if the determination on the worker node isn't sufficient
+        filestat=None
+        
+        ###### Here be dragons
         full_file_path = fullpath
 
 
-        ### Move
-        if args.dryrun:
-            if f%when2blurb == 0:
-                print( f"Dryrun: Pretending to do:\n mv {file} {full_file_path}" )
-        else:   
-            # Move (rename) the file
-            try:
-                shutil.move( file, full_file_path )
-            except Exception as e:
-                WARN(e)
-
-        ### ... and upsert catalog tables
+        ### Register first, then move. 
         upsert_filecatalog(lfn=lfn,
                            info=info,
                            full_file_path = full_file_path,
                            filestat=filestat,
                            dataset=rule.dataset,
-                           dryrun=args.dryrun
+                           tag=rule.outtriplet,
+                           dryrun=args.dryrun # only prints the query if True
                            )
+        if args.dryrun:
+            continue
+        # Move
+        try:
+            shutil.move( file, full_file_path )
+            # os.rename( file, full_file_path )
+        except Exception as e:
+            WARN(e)
+            # exit(-1)
+
         pass # End of HIST loop 
                 
 # ============================================================================================
