@@ -158,8 +158,8 @@ class InputConfig:
     db: str
     table: str
     intriplet:        Optional[str] = "" # ==tag, i.e. new_nocdbtag_v001; optional only because it's not needed for event combiners
-    min_run_events:   Optional[int] = 100000
-    min_run_time:     Optional[int] = 300 # seconds
+    min_run_events:   Optional[int] = None
+    min_run_time:     Optional[int] = None
     prod_identifier:  Optional[str] = None # run3auau, run3cosmics
 
     infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
@@ -315,8 +315,8 @@ class RuleConfig:
                                 "status_query_constraints","physicsmode"] )
 
         intriplet=input_data.get("intriplet")
-        min_run_events=input_data.get("min_run_events")
-        min_run_time=input_data.get("min_run_time")
+        min_run_events=input_data.get("min_run_events",100000)
+        min_run_time=input_data.get("min_run_time",300)
         # Substitutions in direct input path, if given
         input_direct_path = input_data.get("direct_path")
         if input_direct_path is not None:
@@ -587,7 +587,7 @@ class MatchConfig:
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
             CHATTY(f"First line: \n{existing_output[0]}")
-        
+
         ### Check production status
         INFO('Checking for output already in production...')
         # dst_type_template doesn't contain "new_nodcbtag_v000". It's not needed; this gets caught later.
@@ -603,7 +603,7 @@ class MatchConfig:
         INFO(f"Already have {len(existing_status)} output files in the production db")
         if len(existing_status) > 0 :
             CHATTY(f"First line: \n{next(iter(existing_status))}")
-
+            
         ####################################################################################
         ###### Now get all existing input files
         ####################################################################################
@@ -626,18 +626,20 @@ EXTRACT(EPOCH FROM (ertimestamp-brtimestamp)) >={min_run_time}
 order by runnumber
 ;
 """
-        min_run_events=100000
-        min_run_time=300 # seconds
         run_quality_query=run_quality_tmpl.format(
             runmin=min(runlist_int),
             runmax=max(runlist_int),
             physicsmode=self.physicsmode,
-            min_run_events=min_run_events,
-            min_run_time=min_run_time,
+            min_run_events=self.input_config.min_run_events,
+            min_run_time=self.input_config.min_run_time,
         )
         goodruns=[ int(r) for (r,) in dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall() ]
-        runlist_int = [run for run in goodruns if run in runlist_int]
+        # tighten run condition now
+        if runlist_int==[]:
+            return {}
         run_condition=list_to_condition(runlist_int)
+        INFO(f"{len(runlist_int)} runs pass run quality cuts.")
+        DEBUG(f"Runlist: {runlist_int}")
         
         ### Assemble leafs, where needed
         input_stem = inputs_from_output[self.dsttype]
@@ -654,7 +656,7 @@ order by runnumber
             in_types.insert(0,'gl1daq') # all raw daq files need an extra GL1 file
         else:
             descriminator='dsttype'
-            in_types = [ f'{t}_{self.input_config.prod_identifier}' for t in in_types ]
+            in_types = [ f'{t}' for t in in_types ]
 
         # Transform list to ('<v1>','<v2>', ...) format. (one-liner doesn't work in python 3.9)
         in_types_str = f'( QUOTE{"QUOTE,QUOTE".join(in_types)}QUOTE )'
@@ -668,7 +670,7 @@ order by runnumber
         """
         intriplet=self.input_config.intriplet
         if intriplet and intriplet!="":
-            infile_query+=f"\tand dataset='{intriplet}'"
+            infile_query+=f"\tand tag='{intriplet}'"
         if run_condition!="" :
             infile_query += f"\n\tand {run_condition}"
         infile_query += self.input_config.infile_query_constraints
@@ -678,7 +680,7 @@ order by runnumber
         else:
             infile_query=infile_query.replace('status','\'1\' as status')
         db_result = dbQuery( cnxn_string_map[ self.input_config.db ], infile_query ).fetchall()
-        
+
         # TODO: Support rule.printquery
         in_files = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
 
@@ -785,7 +787,7 @@ and runnumber={runnumber}"""
                             present_tpc_files.add(host)
                             continue
                 if len(present_tpc_files) < minNTPC:
-                    WARN(f"Skip run. Only {len(present_tpc_files)} TPC detectors actually in the run.")
+                    WARN(f"Skip run {runnumber}. Only {len(present_tpc_files)} TPC detectors actually in the run.")
                     continue
 
                 # 3. For INTT, MVTX, enforce that they're all available if possible
@@ -813,10 +815,11 @@ and runnumber={runnumber}"""
                         segments = list( set(segments).intersection(new_segments))
                         
                 if len(rejected) > 0:
-                    WARN(f"Run {runnumber}: Removed segments not present in all streams: {rejected}")
+                    DEBUG(f"Run {runnumber}: Removed segments not present in all streams: {rejected}")
 
                 # If the output doesn't exist yet, use input files to create the job
-                outbase=f'{self.dsttype}_{self.outstub}_{self.outdataset}'
+                # outbase=f'{self.dsttype}_{self.outtriplet}_{self.outdataset}'
+                outbase=f'{self.dsttype}_{self.outtriplet}_{self.dataset}'
                 for seg in segments:
                     logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
                     output = f'{logbase}.root'
