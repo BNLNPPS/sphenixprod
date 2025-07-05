@@ -135,8 +135,7 @@ def main():
     foundhists=[]
     for hdir in allhistdirs:        
         tmpfound = shell_command(f"{find} {hdir} -type f -name HIST\* -o -name CALIB\*")
-        # tmpfound = shell_command(f"{find} {hdir} -type f -name HIST\*")
-        # Remove files that already end in ".root" 
+        # Remove files that already end in ".root" - they're already registered
         foundhists += [ file for file in tmpfound if not file.endswith(".root") ]
     INFO(f"Found {len(foundhists)} histograms to register.")
     
