@@ -131,7 +131,7 @@ def main():
     INFO(f"Original output directory: {lakelocation}")
 
     ### root files without cuts
-    lakefiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\*")
+    lakefiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\* | head -n 500000")
     DEBUG(f"Found {len(lakefiles)} matching dsts without cuts in the lake.")
          
     ### Collect root files that satisfy run and dbid requirements
