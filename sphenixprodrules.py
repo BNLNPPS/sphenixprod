@@ -567,7 +567,6 @@ class MatchConfig:
         # This test should be equivalent: if 'raw' in self.input_config.db:
         if 'TRIGGERED' in self.dsttype or 'STREAMING' in self.dsttype:
             dst_type_template += '_%'
-        dst_type_template += f'_{self.dataset}' # DST_STREAMING_EVENT_%_run3cosmics
         dst_type_template += '%'
 
         ### Which runs to process        
@@ -583,6 +582,8 @@ class MatchConfig:
         and dsttype like '{dst_type_template}'"""
         if run_condition!="" :
             exist_query += f"\n\tand {run_condition}"
+        print(exist_query)
+        exit()
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
@@ -819,7 +820,7 @@ and runnumber={runnumber}"""
 
                 # If the output doesn't exist yet, use input files to create the job
                 # outbase=f'{self.dsttype}_{self.outtriplet}_{self.outdataset}'
-                outbase=f'{self.dsttype}_{self.outtriplet}_{self.dataset}'
+                outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'
                 for seg in segments:
                     logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
                     output = f'{logbase}.root'
@@ -884,7 +885,8 @@ def parse_lfn(lfn: str, rule: RuleConfig) -> Tuple[str,...] :
     try:
         name=lfn.split(':')[0]
         name=Path(name).name # could throw an error instead if we're handed a full path.
-         #  split at, and remove, run3auau_new_nocbdtag_v001, remainder is 'DST_...', '-00066582-00000.root' (or .finished)
+        #  split at, and remove, run3auau_new_nocbdtag_v001, remainder is 'DST_...', '-00066582-00000.root' (or .finished)
+        # dsttype,runsegend=name.split(f'_{rule.outtriplet}_{rule.dataset}')
         dsttype,runsegend=name.split(f'_{rule.dataset}_{rule.outtriplet}')
         _,run,segend=runsegend.split('-')
         seg,end=segend.split('.')
