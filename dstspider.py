@@ -126,6 +126,7 @@ def main():
     ##################### DSTs, from lustre to lustre
     # Original output directory, the final destination, and the file name trunk
     dstbase = f'{rule.dsttype}\*{rule.dataset}_{rule.outtriplet}\*'
+    # dstbase = f'{rule.dsttype}\*{rule.outtriplet}_{rule.dataset}\*' ## WRONG
     INFO(f'DST files filtered as {dstbase}')
     lakelocation=filesystem['outdir']
     INFO(f"Original output directory: {lakelocation}")
@@ -159,7 +160,9 @@ def main():
     leaf_template = f'{rule.dsttype}'
     if 'raw' in rule.input_config.db:
         leaf_template += '_{host}'
-    leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stubs.keys() }
+        leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stubs.keys() }
+    else:
+        leaf_types=rule.dsttype
     INFO(f"Destination type template: {leaf_template}")
     DEBUG(f"Destination types: {leaf_types}")
     
