@@ -20,7 +20,7 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 from sphenixprodrules import RuleConfig,inputs_from_output
 from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
-from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb  # noqa: F401
+from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect
 
 # ============================================================================================
@@ -166,7 +166,7 @@ def main():
         INFO(f" ... found. List contains {ret[0]} files.")
 
     ### Grab the first N files and work on those.
-    nfiles_to_process=50000
+    nfiles_to_process=5
     exhausted=False
     lakefiles=[]
     tmpname=f"{lakelistname}.tmp"
@@ -194,8 +194,8 @@ def main():
     ### Collect root files that satisfy run and dbid requirements
     mvfiles_info=[]
     for file in lakefiles:
-        pseudolfn=Path(file).name
-        dsttype,run,seg,_=parse_lfn(pseudolfn,rule)
+        lfn=Path(file).name
+        dsttype,run,seg,_=parse_lfn(lfn,rule)
         if binary_contains_bisect(rule.runlist_int,run):
             fullpath,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
             if dbid <= 0:
@@ -203,7 +203,7 @@ def main():
                 exit(0)
             info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
             mvfiles_info.append( (file,info) )
-            
+                
     INFO(f"{len(mvfiles_info)} total root files to be processed.")
     
     finaldir_tmpl=filesystem['finaldir']
@@ -259,6 +259,17 @@ def main():
             
             ###### Here be dragons
             full_file_path = f'{finaldir}/{lfn}'
+        
+            fullinfo=full_db_info(
+                info=info,
+                lfn=lfn,
+                full_file_path=full_file_path,
+                dataset=rule.dataset,
+                tag=rule.outtriplet,
+                )
+            pprint.pprint(fullinfo)
+            exit()
+
             ### Register first, then move. 
             upsert_filecatalog(lfn=lfn,
                                info=info,

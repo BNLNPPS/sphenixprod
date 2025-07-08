@@ -9,6 +9,10 @@ import os
 
 from collections import namedtuple
 filedb_info = namedtuple('filedb_info', ['dsttype','run','seg','lfn','nevents','first','last','md5','size','ctime'])
+long_filedb_info = namedtuple('long_filedb_info', [
+    'lfn','full_host_name','full_file_path','ctime','size','md5',             # for files
+    'run','seg','dataset','dsttype','nevents','first','last','status','tag',  # addtl. for datasets
+])
 
 from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY  # noqa: E402, F401
 
@@ -83,6 +87,24 @@ if Path('/.dockerenv').exists() :
     }
 
 # ============================================================================================
+def full_db_info(info: filedb_info, lfn: str, full_file_path: str, dataset: str, tag: str) -> long_filedb_info:
+    return long_filedb_info(
+        lfn=lfn,
+        full_host_name = "lustre" if 'lustre' in full_file_path else 'gpfs',
+        full_file_path=full_file_path,
+        ctime=info.ctime,
+        size=info.size,
+        md5=info.md5,
+        run=info.run,
+        seg=info.seg,
+        dataset=dataset,
+        dsttype=info.dsttype,
+        nevents=info.nevents,first=info.first,last=info.last,
+        status=1,
+        tag=tag,
+    )
+
+# ============================================================================================
 files_db_line = "('{lfn}','{full_host_name}','{full_file_path}','{ctimestamp}',{file_size_bytes},'{md5}')"
 insert_files_tmpl="""
 insert into {files_table} (lfn,full_host_name,full_file_path,time,size,md5) 
@@ -96,6 +118,7 @@ size=EXCLUDED.size,
 md5=EXCLUDED.md5
 ;
 """
+
 # ---------------------------------------------------------------------------------------------
 datasets_db_line="('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{lastevent},'{tag}')"
 insert_datasets_tmpl="""
@@ -115,6 +138,7 @@ lastevent=EXCLUDED.lastevent,
 tag=EXCLUDED.tag
 ;
 """
+
 # ---------------------------------------------------------------------------------------------
 def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset: str, tag: str, filestat=None, dryrun=True ):
     # for "files"
