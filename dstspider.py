@@ -131,10 +131,66 @@ def main():
     lakelocation=filesystem['outdir']
     INFO(f"Original output directory: {lakelocation}")
 
-    ### root files without cuts
-    lakefiles = shell_command(f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\* | head -n 500000")
-    DEBUG(f"Found {len(lakefiles)} matching dsts without cuts in the lake.")
-         
+    ### Use or create a list file containing all the existing lake files to work on.
+    ### This reduces memory footprint and repeated slow `find` commands for large amounts of files
+    # Use the name of the lake directory
+    lakelistname=lakelocation
+    while lakelistname.endswith("/"):
+        lakelistname=lakelistname[0:-1]
+    lakelistname+="_lakelist"
+    lakelistlock=lakelistname+".lock"
+    # First, lock. This way multiple spiders can work on a file without stepping on each others' (8) toes
+    if Path(lakelistlock).exists():
+        WARN(f"Lock file {lakelistlock} already exists, indicating another spider is running over the same rule.")
+        # Safety valve. If it's old, we assume some job didn't end gracefully and proceed anyway.
+        mod_timestamp = Path(lakelistlock).stat().st_mtime 
+        mod_datetime = datetime.fromtimestamp(mod_timestamp) 
+        time_difference = datetime.now() - mod_datetime
+        threshold = 8 * 60 * 60
+        if time_difference.total_seconds() > threshold:
+            WARN(f"lock file is already {time_difference.total_seconds()} seconds old. Overriding.")
+        else:
+            exit(0)
+    if not args.dryrun:
+        Path(lakelistlock).touch()
+    INFO(f"Looking for existing filelist {lakelistname}")
+    if not Path(lakelistname).exists():
+        INFO(" ... not found. Creating a new one.")
+        findcommand=f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\* > {lakelistname}; wc -l {lakelistname}"
+        DEBUG(f"Using:\n{findcommand}")
+        ret = shell_command(findcommand)
+        INFO(f"Found {ret[0]} matching dsts without cuts in the lake, piped into {ret[1]}")
+    else:
+        wccommand=f"wc -l {lakelistname}"
+        ret = shell_command(wccommand)
+        INFO(f" ... found. List contains {ret[0]} files.")
+
+    ### Grab the first N files and work on those.
+    nfiles_to_process=50000
+    exhausted=False
+    lakefiles=[]
+    tmpname=f"{lakelistname}.tmp"
+    with open(lakelistname,"r") as infile, open(f"{lakelistname}.tmp", "w") as smallerlakefile:
+        for _ in range(nfiles_to_process):
+            line=infile.readline()
+            if line:
+                lakefiles.append(line.strip())
+            else:
+                exhausted=True
+                break
+        for line in infile:
+            smallerlakefile.write(line)
+    if not args.dryrun:
+        shutil.move(tmpname,lakelistname)
+        if exhausted: # Used up the existing list.
+            INFO("Used up all previously found lake files. Next call will create a new list")
+            Path(lakelistname).unlink(missing_ok=True)
+    else:
+        Path(tmpname).unlink(missing_ok=True)
+    # Done with selecting or creating our chunk, release the lock
+    if not args.dryrun:
+        Path(lakelistlock).unlink()
+
     ### Collect root files that satisfy run and dbid requirements
     mvfiles_info=[]
     for file in lakefiles:
@@ -162,7 +218,7 @@ def main():
         leaf_template += '_{host}'
         leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stubs.keys() }
     else:
-        leaf_types=rule.dsttype
+        leaf_types=[rule.dsttype]
     INFO(f"Destination type template: {leaf_template}")
     DEBUG(f"Destination types: {leaf_types}")
     
