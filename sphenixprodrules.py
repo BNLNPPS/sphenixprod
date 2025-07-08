@@ -350,7 +350,8 @@ class RuleConfig:
                     "script", "payload", "neventsper", "payload", "mem",
                     "arguments", "log","priority",
                     ]
-                    , optional=["batch_name", "comment","filesystem", 
+                    , optional=["batch_name", "comment","filesystem",
+                                "request_cpus",
                         # "accounting_group","accounting_group_user",
                     ]
                  )
@@ -468,6 +469,7 @@ class RuleConfig:
                 executable=script,
                 request_memory=request_memory,
                 request_disk=job_data.get("request_disk", "10GB"),
+                request_cpus=job_data.get("request_cpus", "1"),
                 comment=comment,
                 neventsper=neventsper,
                 priority=job_data["priority"],
@@ -582,8 +584,6 @@ class MatchConfig:
         and dsttype like '{dst_type_template}'"""
         if run_condition!="" :
             exist_query += f"\n\tand {run_condition}"
-        print(exist_query)
-        exit()
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
