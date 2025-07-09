@@ -166,7 +166,7 @@ def main():
         INFO(f" ... found. List contains {ret[0]} files.")
 
     ### Grab the first N files and work on those.
-    nfiles_to_process=5
+    nfiles_to_process=500000
     exhausted=False
     lakefiles=[]
     tmpname=f"{lakelistname}.tmp"
@@ -225,17 +225,17 @@ def main():
     ####################################### Start moving and registering DSTs
     tstart = datetime.now()
     tlast = tstart
-    when2blurb=2000
+    chunksize=2000
     fmax=len(mvfiles_info)
     
-    # chunk_size = 500
-    chunked_mvfiles = make_chunks(mvfiles_info, when2blurb)
+    chunked_mvfiles = make_chunks(mvfiles_info, chunksize)
     for i, chunk in enumerate(chunked_mvfiles):
         now = datetime.now()            
-        print( f'DST #{i*when2blurb}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
-        print( f'                   time since the start:       \t {(now - tstart).total_seconds():.2f} seconds (cum. {i*when2blurb/(now - tstart).total_seconds():.2f} Hz). ' )
+        print( f'DST #{i*chunksize}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({chunksize/(now - tlast).total_seconds():.2f} Hz). ' )
+        print( f'                   time since the start:       \t {(now - tstart).total_seconds():.2f} seconds (cum. {i*chunksize/(now - tstart).total_seconds():.2f} Hz). ' )
         tlast = now
 
+        fullinfo_chunk=[]
         for file_and_info in chunk:
             file,info=file_and_info
             dsttype,run,seg,lfn,nevents,first,last,md5,size,time=info
@@ -249,54 +249,46 @@ def main():
                 ERROR(f"Unknown file name: {lfn}")
                 exit(-1)
 
-            ### Fill in templates
+            ### Fill in templates and save full information
             rungroup= rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
             finaldir = finaldir_tmpl.format( leafdir=leaf, rungroup=rungroup )
+            # Create destination dir if it doesn't exit. Can't be done elsewhere/earlier, we need the full relevant runnumber range
+            if not args.dryrun:
+                Path(finaldir).mkdir( parents=True, exist_ok=True )
 
-            ### Extract what else we need for file databases
-            ### For additional db info. Note: stat is costly. Use only if the determination on the worker node isn't sufficient
-            filestat=None
-            
-            ###### Here be dragons
             full_file_path = f'{finaldir}/{lfn}'
-        
-            fullinfo=full_db_info(
+            fullinfo_chunk.append(full_db_info(
+                origfile=file,
                 info=info,
                 lfn=lfn,
                 full_file_path=full_file_path,
                 dataset=rule.dataset,
                 tag=rule.outtriplet,
-                )
-            pprint.pprint(fullinfo)
-            exit()
-
-            ### Register first, then move. 
-            upsert_filecatalog(lfn=lfn,
-                               info=info,
-                               full_file_path = full_file_path,
-                               filestat=filestat,
-                               dataset=rule.dataset,
-                               tag=rule.outtriplet,
-                               dryrun=args.dryrun # only prints the query if True
-                               )
-            if args.dryrun:
-                continue
-            # Create destination dir if it doesn't exit. Can't be done elsewhere/earlier, we need the full relevant runnumber range
-            Path(finaldir).mkdir( parents=True, exist_ok=True )
-            try:
-                shutil.move( file, full_file_path )
-                # os.rename( file, full_file_path )
-            except Exception as e:
-                WARN(e)
-                # exit(-1)
-            pass # end of chunk loop
+                ))
+            # end of chunk creation loop
+            
+        ###### Here be dragons        
+        ### Register first, then move. 
+        upsert_filecatalog(fullinfos=fullinfo_chunk,
+                           dryrun=args.dryrun # only prints the query if True
+                           )
+        if not args.dryrun:
+            for fullinfo in fullinfo_chunk:
+                try:
+                    os.rename( fullinfo.origfile, fullinfo.full_file_path )
+                    # shutil.move( fullinfo.origfile, fullinfo.full_file_path )
+                except Exception as e:
+                    WARN(e)
+                    # exit(-1)
+                # end of chunk move loop
+            # dryrun?
         pass # End of DST loop 
                 
 # ============================================================================================
 
 if __name__ == '__main__':
-    main()
-    exit(0)
+    # main()
+    # exit(0)
 
     cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats
