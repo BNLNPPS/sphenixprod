@@ -162,7 +162,7 @@ def main():
         leaf_template += '_{host}'
         leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stubs.keys() }
     else:
-        leaf_types=rule.dsttype
+        leaf_types=[rule.dsttype]
     INFO(f"Destination type template: {leaf_template}")
     DEBUG(f"Destination types: {leaf_types}")
     
