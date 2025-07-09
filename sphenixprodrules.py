@@ -10,6 +10,7 @@ import stat
 import subprocess
 import pprint # noqa: F401
 import os
+import psutil
 
 from sphenixdbutils import cnxn_string_map, dbQuery
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
@@ -609,7 +610,7 @@ class MatchConfig:
         ###### Now get all existing input files
         ####################################################################################
         INFO("Building candidate inputs...")
-        
+        INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         ### Run quality
         # Here is a good spot to check against golden or bad runlists and to enforce quality cuts on the runs
         # RuleConfig and existing output query is too early for that, distclean, spider, earlier productions may want to be less restricted
@@ -636,21 +637,22 @@ order by runnumber
         )
         goodruns=[ int(r) for (r,) in dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall() ]
         # tighten run condition now
+        runlist_int=[ run for run in runlist_int if run in goodruns ]
         if runlist_int==[]:
             return {}
         run_condition=list_to_condition(runlist_int)
         INFO(f"{len(runlist_int)} runs pass run quality cuts.")
         DEBUG(f"Runlist: {runlist_int}")
-        
+
         ### Assemble leafs, where needed
         input_stem = inputs_from_output[self.dsttype]
-        DEBUG( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
-        
+        DEBUG( f'Input files are of the form:\n{pprint.pformat(input_stem)}')        
         if isinstance(input_stem, dict):
             in_types = list(input_stem.values())
         else :
             in_types = input_stem
 
+        # TODO: Support rule.printquery
         # Manipulate the input types to match the database
         if 'raw' in self.input_config.db:
             descriminator='daqhost'
@@ -672,37 +674,56 @@ order by runnumber
         intriplet=self.input_config.intriplet
         if intriplet and intriplet!="":
             infile_query+=f"\tand tag='{intriplet}'"
-        if run_condition!="" :
-            infile_query += f"\n\tand {run_condition}"
-        infile_query += self.input_config.infile_query_constraints
-
         if 'raw' in self.input_config.db:
             infile_query+= f" and dataset='{self.physicsmode}'"
         else:
             infile_query=infile_query.replace('status','\'1\' as status')
-        db_result = dbQuery( cnxn_string_map[ self.input_config.db ], infile_query ).fetchall()
+        infile_query += self.input_config.infile_query_constraints
+        # Keeping the run condition as a fallback; it should never matter though
+        if run_condition!="" :
+            infile_query += f"\n\tand {run_condition}"
 
-        # TODO: Support rule.printquery
-        in_files = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
 
-        INFO(f"Total number of available input files: {len(in_files)}")
+        ### Change on July 9 2025: Getting all runs at once is marginally faster
+        ### while blowing up resident memory size from 200MB to 10GB or more (unlimited; scales with number of good runs)
+        ### So stop doing it that way... 
+        # if run_condition!="" :
+        #     infile_query += f"\n\tand {run_condition}"
+        # infile_query += self.input_config.infile_query_constraints
+        # DEBUG(f"infile_query:\n{infile_query}")
+        # INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+        # db_result = dbQuery( cnxn_string_map[ self.input_config.db ], infile_query ).fetchall()
+        # in_files = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
+        # DEBUG(in_files)
+        # print(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+        # INFO(f"Total number of available input files: {len(in_files)}")
+        # in_files.sort(key=lambda x: (x.runnumber)) # itertools.groupby depends on data being sorted
+        # files_by_run = {k : list(g) for k, g in itertools.groupby(in_files, operator.attrgetter('runnumber'))}
+        # runlist = list(files_by_run.keys())
+        # DEBUG(f'All available runnumbers:{runlist}')
+        # for runnumber in files_by_run:
+        #     candidates = files_by_run[runnumber]
+        #     ...
+        # exit()
 
+        ### ... and instead, move the query into the run loop
+        
         #### Now build up potential output files from what's available
         now=time.time()
         rule_matches = {}
-        #### Key on runnumber
-        in_files.sort(key=lambda x: (x.runnumber)) # itertools.groupby depends on data being sorted
-        files_by_run = {k : list(g) for k, g in itertools.groupby(in_files, operator.attrgetter('runnumber'))}
-        runlist = list(files_by_run.keys())
-        DEBUG(f'All available runnumbers:{runlist}')
 
         ### Runnumber is the prime differentiator
-        for runnumber in files_by_run:
-            candidates = files_by_run[runnumber]
+        INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+        for runnumber in runlist_int:
+            run_query = infile_query + f" and runnumber={runnumber} "
+            CHATTY(f"run_query:\n{run_query}")
+            db_result = dbQuery( cnxn_string_map[ self.input_config.db ], run_query ).fetchall()
+            candidates = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
+            DEBUG(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
             if len(candidates) == 0 :
                 # By construction of runlist, every runnumber now should have at least one file
-                ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Aborting.")
-                exit(-1)
+                ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Skipping run.")
+                continue
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
             # CHATTY(f"First line: \n{candidates[0]}")
 
@@ -816,7 +837,8 @@ and runnumber={runnumber}"""
                         segments = list( set(segments).intersection(new_segments))
                         
                 if len(rejected) > 0:
-                    DEBUG(f"Run {runnumber}: Removed segments not present in all streams: {rejected}")
+                    DEBUG(f"Run {runnumber}: Removed {len(rejected)} segments not present in all streams.")
+                    CHATTY(f"Rejected segments: {rejected}")
 
                 # If the output doesn't exist yet, use input files to create the job
                 # outbase=f'{self.dsttype}_{self.outtriplet}_{self.outdataset}'
