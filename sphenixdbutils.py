@@ -7,9 +7,11 @@ from datetime import datetime
 import random
 import os
 
+from typing import overload, List, Union
 from collections import namedtuple
 filedb_info = namedtuple('filedb_info', ['dsttype','run','seg','lfn','nevents','first','last','md5','size','ctime'])
 long_filedb_info = namedtuple('long_filedb_info', [
+    'origfile',                                                               # for moving
     'lfn','full_host_name','full_file_path','ctime','size','md5',             # for files
     'run','seg','dataset','dsttype','nevents','first','last','status','tag',  # addtl. for datasets
 ])
@@ -87,8 +89,9 @@ if Path('/.dockerenv').exists() :
     }
 
 # ============================================================================================
-def full_db_info(info: filedb_info, lfn: str, full_file_path: str, dataset: str, tag: str) -> long_filedb_info:
+def full_db_info(origfile: str, info: filedb_info, lfn: str, full_file_path: str, dataset: str, tag: str) -> long_filedb_info:
     return long_filedb_info(
+        origfile=origfile,
         lfn=lfn,
         full_host_name = "lustre" if 'lustre' in full_file_path else 'gpfs',
         full_file_path=full_file_path,
@@ -140,18 +143,47 @@ tag=EXCLUDED.tag
 """
 
 # ---------------------------------------------------------------------------------------------
-def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset: str, tag: str, filestat=None, dryrun=True ):
-    # for "files"
-    ctimestamp = datetime.fromtimestamp(info.ctime) if info.ctime>0 else str(datetime.now().replace(microsecond=0))
+#def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset: str, tag: str, filestat=None, dryrun=True ):
+# ---------------------------------------------------------------------------------------------
+@overload
+def upsert_filecatalog(fullinfos: long_filedb_info, dryrun=True ):
+    ...
+@overload
+def upsert_filecatalog(fullinfos: List[long_filedb_info], dryrun=True ):
+    ...
+    
+def upsert_filecatalog(fullinfos: Union[long_filedb_info,List[long_filedb_info]], dryrun=True ):
+    if isinstance(fullinfos, long_filedb_info):
+        fullinfos=[fullinfos]
+    elif isinstance(fullinfos, list):
+        pass
+    else:
+        raise TypeError("Unsupported data type")
+
     files_db_lines = []
-    files_db_lines.append( files_db_line.format(
-        lfn=lfn,
-        full_host_name = "lustre" if 'lustre' in full_file_path else 'gpfs',
-        full_file_path = full_file_path,
-        ctimestamp = ctimestamp,
-        file_size_bytes = info.size,
-        md5=info.md5,
-    ))
+    datasets_db_lines=[]
+    for fullinfo in fullinfos:
+        files_db_lines.append( files_db_line.format(
+            lfn=fullinfo.lfn,
+            full_host_name = fullinfo.full_host_name,
+            full_file_path = fullinfo.full_file_path,
+            ctimestamp = datetime.fromtimestamp(fullinfo.ctime),
+            file_size_bytes = fullinfo.size,
+            md5=fullinfo.md5,
+        ))
+        datasets_db_lines.append( datasets_db_line.format(
+            lfn=fullinfo.lfn,
+            md5=fullinfo.md5,
+            run=fullinfo.run, segment=fullinfo.seg,
+            file_size_bytes=fullinfo.size,
+            dataset=fullinfo.dataset,
+            dsttype=fullinfo.dsttype,
+            nevents=fullinfo.nevents,
+            firstevent=fullinfo.first,
+            lastevent=fullinfo.last,
+            tag=fullinfo.tag,
+        ))
+        
     files_db_lines = ",\n".join(files_db_lines)
     insert_files=insert_files_tmpl.format(
         files_table='test_files' if test_mode else 'files',
@@ -159,19 +191,6 @@ def upsert_filecatalog(lfn: str, info: filedb_info, full_file_path: str, dataset
     )
     CHATTY(insert_files)
 
-    datasets_db_lines=[]
-    datasets_db_lines.append( datasets_db_line.format(
-        lfn=lfn,
-        md5=info.md5,
-        run=info.run, segment=info.seg,
-        file_size_bytes=info.size,
-        dataset=dataset,
-        dsttype=info.dsttype,
-        nevents=info.nevents,
-        firstevent=info.first,
-        lastevent=info.last,
-        tag=tag,
-    ))
     datasets_db_lines=",\n".join(datasets_db_lines)
     insert_datasets=insert_datasets_tmpl.format(
         datasets_table='test_datasets' if test_mode else 'datasets',
