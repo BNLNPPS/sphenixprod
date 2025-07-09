@@ -7,6 +7,7 @@ import cProfile
 import subprocess
 import sys
 import shutil
+import os
 from typing import List
 
 # from dataclasses import fields
@@ -18,7 +19,7 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 from sphenixprodrules import RuleConfig
 from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
-from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb # noqa: F401
+from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect
 
 # ============================================================================================
@@ -166,28 +167,26 @@ def main():
             continue
 
         ### Extract what else we need for file databases
-        ### For additional db info. Note: stat is costly. Use only if the determination on the worker node isn't sufficient
-        filestat=None
-        
-        ###### Here be dragons
         full_file_path = fullpath
 
+        fullinfo=full_db_info(
+                origfile=file,
+                info=info,
+                lfn=lfn,
+                full_file_path=full_file_path,
+                dataset=rule.dataset,
+                tag=rule.outtriplet,
+                )
 
+        ###### Here be dragons
         ### Register first, then move. 
-        upsert_filecatalog(lfn=lfn,
-                           info=info,
-                           full_file_path = full_file_path,
-                           filestat=filestat,
-                           dataset=rule.dataset,
-                           tag=rule.outtriplet,
+        upsert_filecatalog(fullinfos=fullinfo,
                            dryrun=args.dryrun # only prints the query if True
                            )
         if args.dryrun:
             continue
-        # Move
         try:
-            shutil.move( file, full_file_path )
-            # os.rename( file, full_file_path )
+            os.rename( file, full_file_path )
         except Exception as e:
             WARN(e)
             # exit(-1)
