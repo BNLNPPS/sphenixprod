@@ -196,6 +196,11 @@ def main():
     for file in lakefiles:
         lfn=Path(file).name
         dsttype,run,seg,_=parse_lfn(lfn,rule)
+        if run<=66456:
+            WARN(f"Deleting {lfn}")
+            Path(file).unlink()
+            continue
+
         if binary_contains_bisect(rule.runlist_int,run):
             fullpath,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
             if dbid <= 0:
@@ -203,7 +208,7 @@ def main():
                 exit(0)
             info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
             mvfiles_info.append( (file,info) )
-                
+            
     INFO(f"{len(mvfiles_info)} total root files to be processed.")
     
     finaldir_tmpl=filesystem['finaldir']
@@ -236,9 +241,18 @@ def main():
         tlast = now
 
         fullinfo_chunk=[]
+        seen_lfns=set()
         for file_and_info in chunk:
             file,info=file_and_info
             dsttype,run,seg,lfn,nevents,first,last,md5,size,time=info
+            ## lfn duplication can happen for unclean productions. Detect here.
+            ## We could try and id the "best" one but that's pricey for a rare occasion. Just delete the file and move on.
+            if lfn in seen_lfns:
+                WARN(f"We already have a file with lfn {lfn}. Deleting {file}.")
+                Path(file).unlink()
+                continue
+            seen_lfns.add(lfn)
+
             # Check if we recognize the file name
             leaf=None
             for leaf_type in leaf_types:
@@ -287,8 +301,8 @@ def main():
 # ============================================================================================
 
 if __name__ == '__main__':
-    # main()
-    # exit(0)
+    main()
+    exit(0)
 
     cProfile.run('main()', '/tmp/sphenixprod.prof')
     import pstats
