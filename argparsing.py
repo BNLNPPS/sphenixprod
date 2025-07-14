@@ -24,7 +24,8 @@ def submission_args():
     exclusive_vgroup.add_argument( '-v', '--verbose', help="Prints more information per repetition", action='count', default=0)
     exclusive_vgroup.add_argument( '-d', '--debug', help="Prints even more information", action="store_true")
     exclusive_vgroup.add_argument( '-c', '--chatty', help="Prints the most information", action="store_true")
-    exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO', help="Specific logging level (CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL)" )
+    exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO',
+                                   help="Specific logging level (CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL)" )
     
     arg_parser.add_argument( '--sublogdir', dest='sublogdir', default=None, help="Directory for submission script logging (defaults under /tmp)" )
     ## TODO dbinput is now the default, different forms should be deprecated
