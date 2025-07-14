@@ -91,6 +91,7 @@ def main():
     payload_list += [ f"{script_path}/GetNumbers.C" ]
     payload_list += [ f"{script_path}/create_filelist_run_daqhost.py" ]
     payload_list += [ f"{script_path}/create_filelist_run_seg.py" ]
+    payload_list += [ f"{script_path}/create_full_filelist_run_seg.py" ]
     
     # .testbed, .slurp (deprecated): indicate test mode -- Search in the _submission_ directory
     if Path(".testbed").exists():
@@ -253,9 +254,11 @@ queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
                     Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
                     
             # Add to production database
-            # FIXME: prod_id
             dsttype=logbase.split(f'_{rule.dataset}')[0]
-            dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
+            if 'TRIGGERED_EVENT' in dsttype or 'STREAMING_EVENT' in dsttype: # TODO: FIXME for those as well
+                dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
+            else:
+                dstfile=out_file # this is much more robust and correct
             # Following is fragile, don't add spaces
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
@@ -279,9 +282,8 @@ insert into production_status
 values 
 {comma_prod_state_rows}
 returning id
-"""
-        CHATTY(insert_prod_state+";")
-        
+"""        
+        #print(insert_prod_state)
         # important note: dstfile is not UNIQUE, so we can't detect conflict here and need to rely
         # on catching already submitted files earlier. could doublecheck with a query here
         if not args.dryrun:
@@ -303,7 +305,6 @@ returning id
         INFO("No jobs to submit.")
     else:
         INFO(f"Created {i+1} submission chunk(s) in {submission_dir} for {len(rule_matches)} jobs.")
-
     
     prettyfs=pprint.pformat(rule.job_config.filesystem)
     input_stem=inputs_from_output[rule.dsttype]
