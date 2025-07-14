@@ -80,6 +80,7 @@ PS1="\u@\h \W> "
 # Identified from ssh agent forwarding
 if [[ `ssh-add -l` =~ "kolja" ]] ; then
     echo "Hello Kolja"    
+    export GIT_CONFIG_GLOBAL=/sphenix/u/sphnxpro/.gitconfig.kolja
     git config --global user.name "Kolja Kauder"
     git config --global user.email "kkauder@gmail.com"
     #git config --global push.default simple
