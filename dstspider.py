@@ -196,11 +196,6 @@ def main():
     for file in lakefiles:
         lfn=Path(file).name
         dsttype,run,seg,_=parse_lfn(lfn,rule)
-        if run<=66456:
-            WARN(f"Deleting {lfn}")
-            Path(file).unlink()
-            continue
-
         if binary_contains_bisect(rule.runlist_int,run):
             fullpath,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
             if dbid <= 0:
