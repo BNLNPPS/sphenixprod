@@ -35,7 +35,7 @@ def shell_command(command: str) -> List[str]:
     finally:
         pass
 
-    DEBUG(f"[shell_command] Found {len(ret)} matches.")
+    DEBUG(f"[shell_command] Return value length is {len(ret)}.")
     return ret
 
 # ============================================================================================
