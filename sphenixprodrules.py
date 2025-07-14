@@ -330,8 +330,8 @@ class RuleConfig:
         infile_query_constraints += rule_substitutions.get("infile_query_constraints", "")
         status_query_constraints = input_data.get("status_query_constraints", "")
         status_query_constraints += rule_substitutions.get("status_query_constraints", "")
-        DEBUG(f"Input query constraints: {infile_query_constraints}" if infile_query_constraints!= "" else  None)
-        DEBUG(f"Status query constraints: {status_query_constraints}" if status_query_constraints!= "" else  None)
+        DEBUG(f"Input query constraints: {infile_query_constraints}" )
+        DEBUG(f"Status query constraints: {status_query_constraints}" )
         input_config=InputConfig(
             db=input_data["db"],
             table=input_data["table"],
@@ -727,13 +727,31 @@ order by runnumber
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
             # CHATTY(f"First line: \n{candidates[0]}")
 
+            ### Simplest case, 1-to-1:For every segment, there is exactly one output file, and exactly one input file from the previous step
+            # If the output doesn't exist yet, use input files to create the job
+            # TODO: or 'CALOFITTING'
+            if not 'TRKR_CLUSTER' in self.dsttype:
+                for infile in candidates:
+                    outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'                
+                    logbase= f'{outbase}-{infile.runnumber:{pRUNFMT}}-{infile.segment:{pSEGFMT}}'
+                    output = f'{logbase}.root'
+                    if output in existing_output:
+                        CHATTY(f"Output file {output} already exists. Not submitting.")
+                        continue
+                    if output in existing_status:
+                        WARN(f"Output file {output} already has production status {existing_status[output]}. Not submitting.")
+                        continue
+                    in_files_for_seg=[infile]
+                    CHATTY(f"Creating {output} from {in_files_for_seg}")
+                    rule_matches[output] = in_types, outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
+                continue    
+                    
+                    
+            # For every segment, there is exactly one output file, and exactly one input file _from each stream_ OR from the previous step
             ######## Cut up the candidates into streams/daqhosts
             candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
             files_for_run = { k : list(g) for
                               k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
-            # Removing the files we just used _could_ be useful to shorten the search space
-            # for the next iteration. But this is NOT the way to do it, turned out to be the slowest part of the code
-            # in_files = [ f for f in in_files if f.runnumber != runnumber ]
 
             # daq file lists all need GL1 files. Pull them out and add them to the others
             if ( 'gl1daq' in in_types_str ):
@@ -770,8 +788,7 @@ order by runnumber
                     ERROR( "Input is a downstream object but input_stem is a dictionary.")
                     exit(-1)
                 CHATTY(f'\ninput_stem is a list, {self.dsttype} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
-
-                # For every segment, there is exactly one output file, and exactly one input file _from each stream_
+                
                 ### Get available input
                 DEBUG("Getting available daq hosts for run {runnumber}")
                 ## TODO: Split between seb-like and not seb-like for tracking and calo!
