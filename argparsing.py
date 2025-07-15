@@ -18,6 +18,8 @@ def submission_args():
     arg_parser.add_argument( "--force", "--doit", dest="force", action="store_true" ) #TODO: deprecate doit
     arg_parser.add_argument( '--print-query',dest='printquery',help="Print the query after parameter substitution and exit", action="store_true")
     arg_parser.add_argument( '--andgo',dest='andgo',help="Submit condor jobs at the end", action="store_true")
+    arg_parser.add_argument( '--profile',help="Enable profiling", action="store_true")
+
     
     vgroup = arg_parser.add_argument_group('Logging level')
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()

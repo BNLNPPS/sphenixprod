@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime
 import yaml
 import cProfile
+import pstats
 import subprocess
 import sys
 import shutil
@@ -59,9 +60,13 @@ def main():
     if should_I_quit(args=args, myname=sys.argv[0]):
         DEBUG("Stop.")
         exit(0)
-    
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
+    if args.profile:
+        DEBUG(f"Profiling is ENABLED.")
+        profiler = cProfile.Profile()
+        profiler.enable()    
+    
     if test_mode:
         INFO("Running in testbed mode.")
         args.mangle_dirpath = 'production-testbed'
@@ -255,7 +260,8 @@ def main():
                     leaf=leaf_type
                     break
             if leaf is None:
-                ERROR(f"Unknown file name: {lfn}")
+                ERROR(f"Unknown file type: {lfn}")
+                ERROR(f"Full file name: {file}")
                 exit(-1)
 
             ### Fill in templates and save full information
@@ -292,23 +298,15 @@ def main():
                 # end of chunk move loop
             # dryrun?
         pass # End of DST loop 
-                
+
+    if args.profile:
+        profiler.disable()
+        DEBUG("Profiling finished. Printing stats...")
+        stats = pstats.Stats(profiler)
+        stats.strip_dirs().sort_stats('time').print_stats(10)
+
 # ============================================================================================
 
 if __name__ == '__main__':
     main()
     exit(0)
-
-    cProfile.run('main()', '/tmp/sphenixprod.prof')
-    import pstats
-    p = pstats.Stats('/tmp/sphenixprod.prof')
-    p.strip_dirs().sort_stats('time').print_stats(10)
-
-    # Sort the output by the following options:
-    # calls: Sort by the number of calls made.
-    # cumulative: Sort by the cumulative time spent in the function and its callees.
-    # filename: Sort by file name.
-    # nfl: Sort by name/file/line.
-    # pcalls: Sort by the number of primitive calls.
-    # stdname: Sort by standard name (default).
-    # time: Sort by the total time spent in the function itself. 
