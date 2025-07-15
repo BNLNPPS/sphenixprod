@@ -22,11 +22,13 @@ def main():
 
     # Using a defaultdict to easily append to lists of filenames per host
     file_list_by_host = defaultdict(list)
-
+    
+    ### Important change, 07/15/2025: Only care about segment 0!
     sql_query = f"""
     SELECT filename, daqhost 
     FROM datasets 
     WHERE runnumber = {runnumber}
+      AND (segment = 0) 
       AND (daqhost = '{daqhost}' OR daqhost = 'gl1daq') 
     ORDER BY filename
     """
