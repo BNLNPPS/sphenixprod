@@ -579,6 +579,7 @@ class MatchConfig:
         # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
         ## Note: Not all constraints are needed, but they may speed up the query 
         INFO('Checking for already existing output...')
+        INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         exist_query  = f"""select filename from datasets 
         where tag='{self.outtriplet}'
         and dataset='{self.dataset}'
@@ -586,6 +587,7 @@ class MatchConfig:
         if run_condition!="" :
             exist_query += f"\n\tand {run_condition}"
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
+        INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
 
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
@@ -602,7 +604,7 @@ class MatchConfig:
         if run_condition!="" :
             status_query += f"\n\tand {run_condition.replace('runnumber','run')}"
         status_query += self.input_config.status_query_constraints
-        existing_status = { c.dstfile if c.dstfile.endswith('.root') else c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
+        existing_status = { c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
         INFO(f"Already have {len(existing_status)} output files in the production db")
         if len(existing_status) > 0 :
             CHATTY(f"First line: \n{next(iter(existing_status))}")
@@ -732,19 +734,19 @@ order by runnumber
                 for infile in candidates:
                     outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'                
                     logbase= f'{outbase}-{infile.runnumber:{pRUNFMT}}-{infile.segment:{pSEGFMT}}'
-                    output = f'{logbase}.root'
-                    if output in existing_output:
-                        CHATTY(f"Output file {output} already exists. Not submitting.")
+                    dstfile = f'{logbase}.root'
+                    if dstfile in existing_output:
+                        CHATTY(f"Output file {dstfile} already exists. Not submitting.")
                         continue
-                    if output in existing_status:
-                        WARN(f"Output file {output} already has production status {existing_status[output]}. Not submitting.")
+                    if dstfile in existing_status:
+                        WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                         continue
                     in_files_for_seg=[infile]
-                    CHATTY(f"Creating {output} from {in_files_for_seg}")
-                    rule_matches[output] = in_types, outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
+                    CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
+                    rule_matches[dstfile] = in_types, outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
                 continue    
 
-            ####### NOT 1-1 requires more work.
+            ####### NOT 1-1, requires more work:
             # For every segment, there is exactly one output file, and exactly one input file _from each stream_ OR from the previous step
             ######## Cut up the candidates into streams/daqhosts
             candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
@@ -758,13 +760,35 @@ order by runnumber
                     WARN(f"No GL1 files found for run {runnumber}. Skipping this run.")
                     continue
                 CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1_files}')
+                ### Important change, 07/15/2025: Only care about segment 0!
+                ##Original:
+                # for host in files_for_run:
+                #     files_for_run[host] = gl1_files + files_for_run[host]
+                    # any_zero_status = any(file_tuple.status == 0 for file_tuple in files_for_run[host])
+                    # # Now enforce status!=0 for all files from this host
+                    # if any_zero_status :
+                    #     files_for_run[host]=[]
+                gl1file0=None
+                for f in gl1_files:
+                    if f.segment==0 and f.status!=0:
+                        gl1file0=f
+                        break
+
                 for host in files_for_run:
-                    files_for_run[host] = gl1_files + files_for_run[host]
-                    any_zero_status = any(file_tuple.status == 0 for file_tuple in files_for_run[host])
-                    # Now enforce status!=0 for all files from this host
-                    if any_zero_status :
+                    if not gl1file0:
+                        WARN(f"No segment 0 GL1 file found for run {runnumber}. Skipping this run.")
                         files_for_run[host]=[]
-                    
+                        continue
+                    for f in files_for_run[host]:
+                        if f.segment==0 and f.status!=0:
+                            files_for_run[host]=[gl1file0,f]
+                            break
+                    else:  # remember python's for-else executes when the break doesn't!
+                        WARN(f"No segment 0 file found for run {runnumber}, host {host}. Skipping this run.")
+                        files_for_run[host]=[]
+
+                # \if gl1daq in intypes
+
             ## Output, log, etc, live in
             ## [somebase]/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/<log|hist/>filename
             ## where filename = f'{dsttype}_{dataset}-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})[.root, .out, .err]'
@@ -860,19 +884,18 @@ and runnumber={runnumber}"""
                 outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'
                 for seg in segments:
                     logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
-                    output = f'{logbase}.root'
-                    if output in existing_output:
-                        CHATTY(f"Output file {output} already exists. Not submitting.")
+                    dstfile = f'{logbase}.root'
+                    if dstfile in existing_output:
+                        CHATTY(f"Output file {dstfile} already exists. Not submitting.")
                         continue
-                    if output in existing_status:
-                        WARN(f"Output file {output} already has production status {existing_status[output]}. Not submitting.")
+                    if dstfile in existing_status:
+                        WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                         continue
                     in_files_for_seg= []
                     for host in files_for_run:
                         in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
-                    CHATTY(f"Creating {output} from {in_files_for_seg}")
-                    #rule_matches[output] = in_files_for_seg, outbase, logbase, runnumber, seg, daqhost, self.dsttype
-                    rule_matches[output] = in_types, outbase, logbase, runnumber, seg, "dummy", self.dsttype
+                    CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
+                    rule_matches[dstfile] = in_types, outbase, logbase, runnumber, seg, "dummy", self.dsttype
                     
             ####### Medium case. Streaming and (now also) triggered daq
             if 'gl1daq' in in_types_str:
@@ -882,13 +905,13 @@ and runnumber={runnumber}"""
                 CHATTY(f'\ninput_stem is a dictionary, {self.dsttype} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
                 
                 # Every runnumber has exactly "one" output file (albeit with many segments), and a gaggle of input files with matching daqhost
+                ### Important change, 07/15/2025: Only care about segment 0!
+
                 # Sort and group the input files by host
                 for leaf, daqhost in input_stem.items():
                     if daqhost not in files_for_run:
                         CHATTY(f"No inputs from {daqhost} for run {runnumber}.")
                         continue
-                    ### Would be more elegant to del(files_for_run[host]) higher up where we check the status
-                    ### But that changes the dictionary during iteration etc. Easier to just check here for []
                     if files_for_run[host]==[]:
                         continue
                     dsttype  = f'{self.dsttype}_{leaf}'
@@ -896,22 +919,20 @@ and runnumber={runnumber}"""
                     outbase=f'{dsttype}_{self.outtriplet}'
                     seg=0
                     logbase=f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
-                    # check for one existing output file.
-                    # These DO have a segment and a .root extension
-                    first_output=f'{logbase}.root'
-                    if first_output in existing_output:
-                        CHATTY(f"Output file {first_output} already exists. Not submitting.")
+                    # check for an existing output file.
+                    dstfile=f'{logbase}.root'
+                    if dstfile in existing_output:
+                        CHATTY(f"Output file {dstfile} already exists. Not submitting.")
                         continue
                     
-                    dstfile=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
                     if dstfile in existing_status:
                         WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                         continue                    
 
-                    CHATTY(f"Creating {first_output} for run {runnumber} with {len(files_for_run[daqhost])} input files")
+                    CHATTY(f"Creating {dstfile} for run {runnumber} with {len(files_for_run[daqhost])} input files")
                     
                     files_for_run[daqhost].sort(key=lambda x: (x.segment)) # not needed but tidier
-                    rule_matches[first_output] = [file.filename for file in files_for_run[daqhost]], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
+                    rule_matches[dstfile] = [file.filename for file in files_for_run[daqhost]], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
                 # \if gl1daq level
             # \for run level
         INFO(f'[Parsing time ] {time.time() - now:.2g} seconds' )
