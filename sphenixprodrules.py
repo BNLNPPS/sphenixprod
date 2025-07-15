@@ -586,6 +586,7 @@ class MatchConfig:
         if run_condition!="" :
             exist_query += f"\n\tand {run_condition}"
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
+
         INFO(f"Already have {len(existing_output)} output files")
         if len(existing_output) > 0 :
             CHATTY(f"First line: \n{existing_output[0]}")
@@ -651,7 +652,7 @@ order by runnumber
             in_types = list(input_stem.values())
         else :
             in_types = input_stem
-
+            
         # TODO: Support rule.printquery
         # Manipulate the input types to match the database
         if 'raw' in self.input_config.db:
@@ -659,7 +660,6 @@ order by runnumber
             in_types.insert(0,'gl1daq') # all raw daq files need an extra GL1 file
         else:
             descriminator='dsttype'
-            in_types = [ f'{t}' for t in in_types ]
 
         # Transform list to ('<v1>','<v2>', ...) format. (one-liner doesn't work in python 3.9)
         in_types_str = f'( QUOTE{"QUOTE,QUOTE".join(in_types)}QUOTE )'
@@ -682,7 +682,6 @@ order by runnumber
         # Keeping the run condition as a fallback; it should never matter though
         if run_condition!="" :
             infile_query += f"\n\tand {run_condition}"
-
 
         ### Change on July 9 2025: Getting all runs at once is marginally faster
         ### while blowing up resident memory size from 200MB to 10GB or more (unlimited; scales with number of good runs)
@@ -707,7 +706,6 @@ order by runnumber
         # exit()
 
         ### ... and instead, move the query into the run loop
-        
         #### Now build up potential output files from what's available
         now=time.time()
         rule_matches = {}
@@ -721,16 +719,16 @@ order by runnumber
             candidates = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
             DEBUG(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
             if len(candidates) == 0 :
-                # By construction of runlist, every runnumber now should have at least one file
-                ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Skipping run.")
+                # # By construction of runlist, every runnumber now should have at least one file
+                # TODO: No longer true, check 
+                # ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Skipping run.")
                 continue
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
-            # CHATTY(f"First line: \n{candidates[0]}")
 
             ### Simplest case, 1-to-1:For every segment, there is exactly one output file, and exactly one input file from the previous step
             # If the output doesn't exist yet, use input files to create the job
             # TODO: or 'CALOFITTING'
-            if not 'TRKR_CLUSTER' in self.dsttype:
+            if 'TRKR_SEED' in self.dsttype:
                 for infile in candidates:
                     outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'                
                     logbase= f'{outbase}-{infile.runnumber:{pRUNFMT}}-{infile.segment:{pSEGFMT}}'
@@ -745,8 +743,8 @@ order by runnumber
                     CHATTY(f"Creating {output} from {in_files_for_seg}")
                     rule_matches[output] = in_types, outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
                 continue    
-                    
-                    
+
+            ####### NOT 1-1 requires more work.
             # For every segment, there is exactly one output file, and exactly one input file _from each stream_ OR from the previous step
             ######## Cut up the candidates into streams/daqhosts
             candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
@@ -914,6 +912,8 @@ and runnumber={runnumber}"""
                     
                     files_for_run[daqhost].sort(key=lambda x: (x.segment)) # not needed but tidier
                     rule_matches[first_output] = [file.filename for file in files_for_run[daqhost]], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
+                # \if gl1daq level
+            # \for run level
         INFO(f'[Parsing time ] {time.time() - now:.2g} seconds' )
 
         return rule_matches
