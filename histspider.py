@@ -127,10 +127,8 @@ def main():
     
     # # All leafs:
     leafparent=histdir.split('/{leafdir}')[0]
-    INFO(f"Leaf directories: \n{leafparent}")
-
-    leafdirs = shell_command(f"{find} {leafparent} -type d -mindepth 1 -a -maxdepth 1")
-    CHATTY(f"Leaf directories: \n{leafdirs}")
+    leafdirs = shell_command(f"{find} {leafparent} -type d -name {rule.dsttype}\* -mindepth 1 -a -maxdepth 1")
+    DEBUG(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
     
     allhistdirs = []
     for leafdir in leafdirs :
