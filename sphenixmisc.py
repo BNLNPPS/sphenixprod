@@ -56,7 +56,7 @@ def should_I_quit(args, myname) -> bool:
         exit(1)
 
     if count_already_running > 1:
-        DEBUG(f"Looks like there's already {count_already_running} running instance(s) of me. Suggest Stop.")
+        DEBUG(f"Looks like there's already {count_already_running-1} running instance(s) of me. Suggest Stop.")
         return True
         
     return False
