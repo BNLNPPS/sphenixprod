@@ -16,6 +16,7 @@ from sphenixdbutils import cnxn_string_map, dbQuery
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJobConfig
+from sphenixmisc import binary_contains_bisect
 
 from collections import namedtuple
 FileHostRunSegStat = namedtuple('FileHostRunSeg',['filename','daqhost','runnumber','segment','status'])
@@ -576,22 +577,22 @@ class MatchConfig:
         runlist_int=self.runlist_int
         run_condition=list_to_condition(runlist_int)
         
-        # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
-        ## Note: Not all constraints are needed, but they may speed up the query 
-        INFO('Checking for already existing output...')
-        INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
-        exist_query  = f"""select filename from datasets 
-        where tag='{self.outtriplet}'
-        and dataset='{self.dataset}'
-        and dsttype like '{dst_type_template}'"""
-        if run_condition!="" :
-            exist_query += f"\n\tand {run_condition}"
-        existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
-        INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+        # # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
+        # ## Note: Not all constraints are needed, but they may speed up the query 
+        # INFO('Checking for already existing output...')
+        # INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+        # exist_query  = f"""select filename from datasets 
+        # where tag='{self.outtriplet}'
+        # and dataset='{self.dataset}'
+        # and dsttype like '{dst_type_template}'"""
+        # if run_condition!="" :
+        #     exist_query += f"\n\tand {run_condition}"
+        # existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
+        # INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
 
-        INFO(f"Already have {len(existing_output)} output files")
-        if len(existing_output) > 0 :
-            CHATTY(f"First line: \n{existing_output[0]}")
+        # INFO(f"Already have {len(existing_output)} output files")
+        # if len(existing_output) > 0 :
+        #     CHATTY(f"First line: \n{existing_output[0]}")
 
         ### Check production status
         INFO('Checking for output already in production...')
@@ -612,8 +613,8 @@ class MatchConfig:
         ####################################################################################
         ###### Now get all existing input files
         ####################################################################################
-        INFO("Building candidate inputs...")
-        INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+        DEBUG("Building candidate inputs for run {runnumber}")
+        CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         ### Run quality
         # Here is a good spot to check against golden or bad runlists and to enforce quality cuts on the runs
         # RuleConfig and existing output query is too early for that, distclean, spider, earlier productions may want to be less restricted
@@ -715,11 +716,23 @@ order by runnumber
         ### Runnumber is the prime differentiator
         INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         for runnumber in runlist_int:
-            run_query = infile_query + f" and runnumber={runnumber} "
+            # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
+            ## Note: Not all constraints are needed, but they may speed up the query 
+            exist_query  = f"""select filename from datasets 
+            where tag='{self.outtriplet}'
+            and dataset='{self.dataset}'
+            and dsttype like '{dst_type_template}'"""
+            if run_condition!="" :
+                exist_query += f"\n\tand {run_condition}"
+            exist_query +=  f"\n\tand runnumber={runnumber}"
+            existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
+            existing_output.sort()
+            DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")           
+            run_query = infile_query + f"\n\t and runnumber={runnumber} "
             CHATTY(f"run_query:\n{run_query}")
             db_result = dbQuery( cnxn_string_map[ self.input_config.db ], run_query ).fetchall()
             candidates = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
-            DEBUG(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+            CHATTY(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
             if len(candidates) == 0 :
                 # # By construction of runlist, every runnumber now should have at least one file
                 # TODO: No longer true, check 
@@ -735,7 +748,8 @@ order by runnumber
                     outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'                
                     logbase= f'{outbase}-{infile.runnumber:{pRUNFMT}}-{infile.segment:{pSEGFMT}}'
                     dstfile = f'{logbase}.root'
-                    if dstfile in existing_output:
+                    #if dstfile in existing_output:
+                    if binary_contains_bisect(existing_output,dstfile):
                         CHATTY(f"Output file {dstfile} already exists. Not submitting.")
                         continue
                     if dstfile in existing_status:
@@ -929,7 +943,7 @@ and runnumber={runnumber}"""
                         WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                         continue                    
 
-                    CHATTY(f"Creating {dstfile} for run {runnumber} with {len(files_for_run[daqhost])} input files")
+                    DEBUG(f"Creating {dstfile} for run {runnumber} with {len(files_for_run[daqhost])} input files")
                     
                     files_for_run[daqhost].sort(key=lambda x: (x.segment)) # not needed but tidier
                     rule_matches[dstfile] = [file.filename for file in files_for_run[daqhost]], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
