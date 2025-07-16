@@ -273,6 +273,7 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             ntries = ntries + 1
             last_exception = str(E)
             ERROR(f"Attempt {itry} failed: {last_exception}")
+            raise(E) # allow the mother process to just move on
             exit(1)
             delay = (itry + 1 ) * random.random()
             time.sleep(delay)
