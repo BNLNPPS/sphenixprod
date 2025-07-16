@@ -910,8 +910,8 @@ and runnumber={runnumber}"""
                         in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
                     CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
                     rule_matches[dstfile] = in_types, outbase, logbase, runnumber, seg, "dummy", self.dsttype
-                    
-            ####### Medium case. Streaming and (now also) triggered daq
+
+            ######## Medium case. Streaming and triggered daq combination
             if 'gl1daq' in in_types_str:
                 if not isinstance(input_stem, dict):
                     ERROR( "Input is raw daq but input_stem is not a dictionary.")
