@@ -139,10 +139,12 @@ def main():
     ### Use or create a list file containing all the existing lake files to work on.
     ### This reduces memory footprint and repeated slow `find` commands for large amounts of files
     # Use the name of the lake directory
-    lakelistname=lakelocation
+    #lakelistname=lakelocation
+    lakelistname=filesystem['logdir']
+    lakelistname=lakelistname.split("{")[0]
     while lakelistname.endswith("/"):
         lakelistname=lakelistname[0:-1]
-    lakelistname+="_lakelist"
+    lakelistname=f"{lakelistname}/{rule.dsttype}_lakelist"
     lakelistlock=lakelistname+".lock"
     # First, lock. This way multiple spiders can work on a file without stepping on each others' (8) toes
     if Path(lakelistlock).exists():
@@ -249,7 +251,7 @@ def main():
             ## We could try and id the "best" one but that's pricey for a rare occasion. Just delete the file and move on.
             if lfn in seen_lfns:
                 WARN(f"We already have a file with lfn {lfn}. Deleting {file}.")
-                Path(file).unlink()
+                Path(file).unlink(missing_ok=True)
                 continue
             seen_lfns.add(lfn)
 
@@ -284,9 +286,16 @@ def main():
             
         ###### Here be dragons        
         ### Register first, then move. 
-        upsert_filecatalog(fullinfos=fullinfo_chunk,
+        try:
+            upsert_filecatalog(fullinfos=fullinfo_chunk,
                            dryrun=args.dryrun # only prints the query if True
                            )
+        except Exception as e:
+            WARN(f"dstspider is ignoring the database exception and moving on.")
+            ### database errors can happen when there are multiples of a file in the lake.
+            ### Why _that_ happens should be investigated, but here, we can just move on to the next chunk.
+            continue
+            exit(1)
         if not args.dryrun:
             for fullinfo in fullinfo_chunk:
                 try:
