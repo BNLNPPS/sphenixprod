@@ -203,6 +203,8 @@ def main():
         stats = pstats.Stats(profiler)
         stats.strip_dirs().sort_stats('time').print_stats(10)
 
+    INFO(f"{Path(sys.argv[0]).name} DONE.")
+        
 # ============================================================================================
 
 if __name__ == '__main__':
