@@ -39,7 +39,7 @@ def setup_rot_handler(args):
 # ============================================================================================
 def should_I_quit(args, myname) -> bool:
     # Exit without fuss if we are already running 
-    p = subprocess.Popen(["ps","axuww"], stdout=subprocess.PIPE)
+    p = subprocess.Popen("ps axuww | /usr/bin/grep $USER",shell=True,stdout=subprocess.PIPE)
     stdout_bytes, stderr_bytes = p.communicate() # communicate() returns bytes
     stdout_str = stdout_bytes.decode(errors='ignore') # Decode to string
     
