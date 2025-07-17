@@ -86,8 +86,7 @@ def main():
         ### Go from fast to slow processes. They'll overlap anyway, but we may want to add 
         if sdh_tuple.histspider:
             procline=f"histspider.py {ruleargs}"
-            # execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
-            execline=f"{envline}  && {procline}"
+            execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
             DEBUG(f"Executing\n{execline}")
             if not args.dryrun:
                 subprocess.Popen(f"{execline}",shell=True)
@@ -101,6 +100,9 @@ def main():
 
         if sdh_tuple.submit:
             procline=f"create_submission.py {ruleargs}"
+            ### Submission is special. Ideally (one day) we'd split up into creation that registers as "submitting"
+            ### and submission which registers as "submitted". So far, do it in one go.
+            procline+=" --andgo"
             execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
             DEBUG(f"Executing\n{execline}")
             if not args.dryrun:
