@@ -29,13 +29,14 @@ def submission_args():
     exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO',
                                    help="Specific logging level (CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL)" )
     
+    arg_parser.add_argument( '--submitdir', dest='submitdir', default='./tosubmit', help="Directory for condor submission files" )
     arg_parser.add_argument( '--sublogdir', dest='sublogdir', default=None, help="Directory for submission script logging (defaults under /tmp)" )
     arg_parser.add_argument( "--dbinput", default=True, action="store_true",help="Passes input filelist through the production status db rather than the argument list of the production script." )
     arg_parser.add_argument( "--no-dbinput", dest="dbinput", action="store_false",help="Unsets dbinput flag." )
 
     # Job description arguments
-    arg_parser.add_argument( '--config', dest='config', help="Name of the YAML file containing production rules.", default="DST_STREAMING_run3auau_new_2024p012.yaml")
-    arg_parser.add_argument( '--rulename',   dest='rulename',   help="Name of submission rule", default="DST_EVENT" )
+    arg_parser.add_argument( '--config', dest='config', required=True, help="Name of the YAML file containing production rules.", default="DST_STREAMING_run3auau_new_2024p012.yaml")
+    arg_parser.add_argument( '--rulename', dest='rulename', required=True, help="Name of submission rule", default="DST_EVENT" )
 
     rgroup = arg_parser.add_argument_group('Run selection')
     exclusive_rgroup = rgroup.add_mutually_exclusive_group()
