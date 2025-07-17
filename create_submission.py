@@ -170,9 +170,9 @@ def main():
         WARN("Exiting early.")
         exit(0)
     
-    submission_dir = Path('./tosubmit').resolve()
+    submitdir = Path(f'{args.submitdir}').resolve()
     if not args.dryrun:
-        Path( submission_dir).mkdir( parents=True, exist_ok=True )
+        Path( submitdir).mkdir( parents=True, exist_ok=True )
     subbase = f'{rule.dsttype}_{rule.dataset}_{rule.outtriplet}'
     INFO(f'Submission files based on {subbase}')
 
@@ -182,8 +182,8 @@ def main():
     # print(f"Short ID: {short_id}")
 
     # Check for and remove existing submission files for this subbase
-    existing_sub_files =  list(Path(submission_dir).glob(f'{subbase}*.in'))
-    existing_sub_files += list(Path(submission_dir).glob(f'{subbase}*.sub'))
+    existing_sub_files =  list(Path(submitdir).glob(f'{subbase}*.in'))
+    existing_sub_files += list(Path(submitdir).glob(f'{subbase}*.sub'))
     if existing_sub_files:
         WARN(f"Removing {int(len(existing_sub_files)/2)} existing submission file pairs for base: {subbase}")
         for f_to_delete in existing_sub_files: 
@@ -200,11 +200,8 @@ def main():
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
-        # len(chunked_jobs) doesn't work, it's a generator
-        print(base_job)
-        exit()
         if not args.dryrun:
-            with open(f'{submission_dir}/{subbase}_{i}.sub', "w") as condor_subfile:
+            with open(f'{submitdir}/{subbase}_{i}.sub', "w") as condor_subfile:
                 condor_subfile.write(str(base_job))
                 condor_subfile.write(
 f"""
@@ -212,7 +209,7 @@ log = $(log)
 output = $(output)
 error = $(error)
 arguments = $(arguments)
-queue log,output,error,arguments from {submission_dir}/{subbase}_{i}.in
+queue log,output,error,arguments from {submitdir}/{subbase}_{i}.in
 """)
         prod_state_rows=[]
         condor_rows=[]
@@ -283,13 +280,13 @@ returning id
             condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
  
         if not args.dryrun:
-            with open(f'{submission_dir}/{subbase}_{i}.in', "w") as condor_infile:
+            with open(f'{submitdir}/{subbase}_{i}.in', "w") as condor_infile:
                 condor_infile.writelines(row+'\n' for row in condor_rows)
                 
     if len(rule_matches) ==0 :
         INFO("No jobs to submit.")
     else:
-        INFO(f"Created {i+1} submission chunk(s) in {submission_dir} for {len(rule_matches)} jobs.")
+        INFO(f"Created {i+1} submission chunk(s) in {submitdir} for {len(rule_matches)} jobs.")
     
     prettyfs=pprint.pformat(rule.job_config.filesystem)
     input_stem=inputs_from_output[rule.dsttype]
@@ -297,12 +294,15 @@ returning id
         prettyfs=prettyfs.replace('{leafdir}',rule.dsttype)
     INFO(f"Other location templates:\n{prettyfs}")
 
-    if args.andgo and not args.dryrun:
-        sub_files = list(Path(submission_dir).glob(f'{subbase}*.sub'))
-        for sub_file in sub_files:
-            INFO(f"Submitting {sub_file}")
-            subprocess.run(f"condor_submit {sub_file}",shell=True)
-    
+    if args.andgo: 
+        if args.dryrun:
+            WARN('Dryrun: Ignoring "--andgo"')
+        else:
+            sub_files = list(Path(submitdir).glob(f'{subbase}*.sub'))
+            for sub_file in sub_files:
+                INFO(f"Submitting {sub_file}")
+                subprocess.run(f"condor_submit {sub_file}",shell=True)
+
     if args.profile:
         profiler.disable()
         DEBUG("Profiling finished. Printing stats...")
