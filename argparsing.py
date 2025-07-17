@@ -30,7 +30,6 @@ def submission_args():
                                    help="Specific logging level (CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL)" )
     
     arg_parser.add_argument( '--sublogdir', dest='sublogdir', default=None, help="Directory for submission script logging (defaults under /tmp)" )
-    ## TODO dbinput is now the default, different forms should be deprecated
     arg_parser.add_argument( "--dbinput", default=True, action="store_true",help="Passes input filelist through the production status db rather than the argument list of the production script." )
     arg_parser.add_argument( "--no-dbinput", dest="dbinput", action="store_false",help="Unsets dbinput flag." )
 
@@ -54,16 +53,11 @@ def submission_args():
     arg_parser.add_argument( '--append-to-rsync', dest='append2rsync', default=None,help="Appends the argument to the list of rsync files to copy to the worker node" )
 
     # Queue-related constraints
-    arg_parser.add_argument( '--mem',dest="mem",help="Memory allocated for a job", default=None )
+    arg_parser.add_argument( '--mem',help="Override memory allocated for a job", default=None )
+    arg_parser.add_argument( '--priority',help="Override condor priority for this job (more is higher)", default=None )
     arg_parser.add_argument( '--maxjobs',dest="maxjobs",help="Maximum number of jobs to pass to condor", default=None )
-    arg_parser.add_argument( '--limit', help="Limit for input db queries", default=0, type=int )
-    # arg_parser.add_argument( '-u', '--unblock-state', nargs='*', dest='unblock',  choices=["submitting","submitted","started","running","evicted","failed","finished"] )
     arg_parser.add_argument( '-r', '--resubmit', dest='resubmit', default=False, action='store_true', help='Existing filecatalog entry does not block a job')
     arg_parser.add_argument( '--docstring',default=None,help="Appends a documentation string to the log entry")
-    # batch_name should be set in JobConfig <-- TODO: allow override?
-    # arg_parser.add_argument( "--batch-name", dest="batch_name", default=None ) #default="$(name)_$(build)_$(tag)_$(version)"
-    
-    # args, userargs = arg_parser.parse_known_args()
 
     args = arg_parser.parse_args()
     if args.verbose==1 :

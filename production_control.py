@@ -4,6 +4,8 @@ import argparse
 import subprocess
 import yaml
 import platform
+import cProfile
+import pstats
 import pprint # noqa F401
 import sys
 from typing import Dict, Any, Tuple
@@ -35,6 +37,11 @@ def main():
     hostname=hostname.split('.')[0]
     INFO(f"{sys.argv[0]} invoked on {hostname}")
 
+    if args.profile:
+        DEBUG(f"Profiling is ENABLED.")
+        profiler = cProfile.Profile()
+        profiler.enable()    
+
     ### Parse yaml
     try:
         INFO("Reading rules from {args.steerfile}")
@@ -63,8 +70,7 @@ def main():
     prettyfs = pprint.pformat(defaultlocations)
     DEBUG(f"Default file locations:\n{prettyfs}")
     INFO(f"Successfully loaded {len(host_data)-1} rules for {hostname}")
-    prettyyaml = pprint.pformat(host_data)
-    CHATTY(f"YAML dict for {hostname} is:\n{prettyyaml}")
+    CHATTY(f"YAML dict for {hostname} is:\n{pprint.pformat(host_data)}")
 
     ### Walk through the rules.
     for rule in host_data:        
@@ -72,12 +78,27 @@ def main():
         thisprod,ruleargs,sdh_tuple=collect_yaml_data(host_data[rule],defaultlocations)
         if args.dryrun:
             ruleargs+=" --dryrun"
-        print(thisprod)
-        print(ruleargs)
-        print(sdh_tuple)
-
+            
+        ### environment
+        # Originally, cron would execute
+        # cd /sphenix/u/sphnxpro/mainkolja; source sphenixprod/this_sphenixprod.sh; create_submission.py ...
+        # The working directory isn't important though (unless something malfunctions),
+        # The only relevant thing happening in it by default is the creation of the tosubmit directory
+        # 
+        
+        envline='cd {prodbase}; source sphenixprod/'
+        # Submission
+        if sdh_tuple.submit:
+        
+    
+            
     # subprocess.Popen(f"./popenscript.sh > popenresult",shell=True)
 
+    if args.profile:
+        profiler.disable()
+        DEBUG("Profiling finished. Printing stats...")
+        stats = pstats.Stats(profiler)
+        stats.strip_dirs().sort_stats('time').print_stats(8)
 
 # ============================================================================================
 def collect_yaml_data( rule_data: [str, Any], defaultlocations: str ) -> Tuple[str,str,SubmitDstHist]:
@@ -171,10 +192,12 @@ def steering_args():
                              help='Location of steering instructions per host' )
 
     arg_parser.add_argument( '--dryrun', '-n',
-                             help="Take no action. Just print things", dest="dryrun", action="store_true")
+                             help="flag is passed through to the scripts", dest="dryrun", action="store_true")
 
     arg_parser.add_argument( '--hostname', dest='hostname', default=None,
                              help='Act as if running on [hostname]' )
+
+    arg_parser.add_argument( '--profile',help="Enable profiling", action="store_true")
 
     vgroup = arg_parser.add_argument_group('Logging level')
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()

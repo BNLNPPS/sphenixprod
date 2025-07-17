@@ -445,10 +445,10 @@ class RuleConfig:
                 )
             job_data[field] = subsval
             CHATTY(f"After substitution, {field} is {subsval}")
-            request_memory=rule_substitutions.get("mem")
-            if request_memory is None:
-                request_memory=job_data["mem"]
 
+            request_memory=rule_substitutions.get("mem",job_data["mem"])
+            priority=rule_substitutions.get("priority",job_data["mem"])
+                
             # catch different production branches - prepend by branch if not main            
             branch_name="main"
             try:
@@ -474,7 +474,7 @@ class RuleConfig:
                 request_cpus=job_data.get("request_cpus", "1"),
                 comment=comment,
                 neventsper=neventsper,
-                priority=job_data["priority"],
+                priority=priority,
                 batch_name=batch_name,
                 arguments_tmpl=job_data["arguments"],
                 log_tmpl=job_data["log"],

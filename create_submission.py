@@ -113,10 +113,6 @@ def main():
     DEBUG(f"Addtional resources to be copied to the worker: {payload_list}")
     rule_substitutions["payload_list"] = payload_list
 
-    # Limit the number of results from the query?
-    if args.limit:
-        ERROR("A general limit constraint doesn't make sense. Deprecated and ignored." )
-
     # Rest of the input substitutions
     if args.physicsmode is not None:
         rule_substitutions["physicsmode"] = args.physicsmode # e.g. physics
@@ -128,6 +124,10 @@ def main():
     if args.mem:
         DEBUG(f"Setting memory to {args.mem}")
         rule_substitutions['mem']=args.mem
+
+    if args.mem:
+        DEBUG(f"Setting priority to {args.priority}")
+        rule_substitutions['priority']=args.priority
 
     # rule.filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
@@ -152,22 +152,6 @@ def main():
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
     
-    # Assign shared class variables for CondorJob
-    # Note: If these need to differ per instance, they shouldn't be ClassVar
-    # CondorJob.script                = rule.job_config.script
-    # CondorJob.neventsper            = rule.job_config.neventsper
-    # 04/25/2025: accounting_group and accounting_group_user should no longer be set,
-    # submit host will do this automatically.
-    # CondorJob.accounting_group      = rule.job_config.accounting_group
-    # CondorJob.accounting_group_user = rule.job_config.accounting_group_user
-
-    # if args.printquery:
-    #     # prettyquery = pprint.pformat(rule.inputConfig.query)
-    #     # 100 is the highest log level, it should always print
-    #     slogger.log(100, "[Print constructed query]")
-    #     slogger.log(100, rule.inputConfig.query)
-    #     slogger.log(100, "[End of query]")
-    #     exit(0)
 
     #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
     INFO("Rule construction complete. Now constructing corresponding match configuration.")
@@ -181,13 +165,6 @@ def main():
     rule_matches=match_config.matches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
         
-    # for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in rule_matches.items():
-    #     CHATTY(f"Run:     {run}, Seg:  {seg}")
-    #     CHATTY(f"daqhost:    {daqhost}, Leaf:    {leaf}")
-    #     CHATTY(f"Outbase: {outbase}  Output: {out_file}")
-    #     CHATTY(f"Logbase: {logbase}")
-    #     CHATTY(f"nInput:  {len(in_files)}\n")
-
     if os.uname().sysname=='Darwin' :
         WARN("Running on native Mac, cannot use condor.")
         WARN("Exiting early.")
@@ -224,6 +201,8 @@ def main():
     for i, chunk in enumerate(chunked_jobs):
         DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
         # len(chunked_jobs) doesn't work, it's a generator
+        print(base_job)
+        exit()
         if not args.dryrun:
             with open(f'{submission_dir}/{subbase}_{i}.sub', "w") as condor_subfile:
                 condor_subfile.write(str(base_job))
