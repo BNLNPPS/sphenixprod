@@ -31,11 +31,12 @@ def main():
     setup_my_rot_handler(args)    
     slogger.setLevel(args.loglevel)
     
-    hostname=args.hostname
+    hostname=args.hostname.split('.')[0]
     if not hostname:
-        hostname=platform.node()
-    hostname=hostname.split('.')[0]
-    INFO(f"{sys.argv[0]} invoked on {hostname}")
+        hostname=platform.node().split('.')[0]
+        INFO(f"{sys.argv[0]} invoked on {hostname}")
+    else:
+        WARN(f"{sys.argv[0]} invoked for {hostname} but from {platform.node().split('.')[0]}")
 
     if args.profile:
         DEBUG(f"Profiling is ENABLED.")
@@ -44,20 +45,19 @@ def main():
 
     ### Parse yaml
     try:
-        INFO("Reading rules from {args.steerfile}")
+        INFO(f"Reading rules from {args.steerfile}")
         with open(args.steerfile, "r") as yamlstream:
             yaml_data = yaml.safe_load(yamlstream)
     except yaml.YAMLError as exc:
         raise ValueError(f"Error parsing YAML file: {exc}")
     except FileNotFoundError:
         raise FileNotFoundError(f"YAML file not found: {args.steerfile}")
-    # prettydict = pprint.pformat(yaml_data)
-    # CHATTY(f"YAML dict is:\n{prettydict}")
+
     try:
         host_data = yaml_data[hostname]
     except KeyError:
-        WARN(f"Host '{hostname}' not found in YAML data.")
-        exit(0)
+        WARN(f"Host '{hostname}' not found in {args.steerfile}")
+        exit(1)
     
     ### defaultlocations is special
     # pop removes it so the remainder are rules
@@ -65,34 +65,46 @@ def main():
     defaultlocations=host_data.pop("defaultlocations",None)
     if not defaultlocations:
         ERROR(f'Could not find field "defaultlocations" in the yaml for {hostname}')
-        exit(1)
-    
+        exit(1)    
     prettyfs = pprint.pformat(defaultlocations)
     DEBUG(f"Default file locations:\n{prettyfs}")
     INFO(f"Successfully loaded {len(host_data)-1} rules for {hostname}")
     CHATTY(f"YAML dict for {hostname} is:\n{pprint.pformat(host_data)}")
-
+    
     ### Walk through the rules.
     for rule in host_data:        
         INFO(f"Working on {rule}")
-        thisprod,ruleargs,sdh_tuple=collect_yaml_data(host_data[rule],defaultlocations)
+        thisprod,ruleargs,sdh_tuple=collect_yaml_data(host_data=host_data,rule=rule,defaultlocations=defaultlocations,dryrun=args.dryrun)
+
+        ### environment; pass-through arguments
+        envline=f"source {thisprod}"
+        ruleargs+=f" --loglevel {args.loglevel}"
         if args.dryrun:
             ruleargs+=" --dryrun"
-            
-        ### environment
-        # Originally, cron would execute
-        # cd /sphenix/u/sphnxpro/mainkolja; source sphenixprod/this_sphenixprod.sh; create_submission.py ...
-        # The working directory isn't important though (unless something malfunctions),
-        # The only relevant thing happening in it by default is the creation of the tosubmit directory
-        # 
         
-        envline='cd {prodbase}; source sphenixprod/'
-        # Submission
+        ### Loop through process types
+        ### Go from fast to slow processes. They'll overlap anyway, but we may want to add 
+        if sdh_tuple.histspider:
+            procline=f"histspider.py {ruleargs}"
+            # execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
+            execline=f"{envline}  && {procline}"
+            DEBUG(f"Executing\n{execline}")
+            if not args.dryrun:
+                subprocess.Popen(f"{execline}",shell=True)
+
+        if sdh_tuple.dstspider:
+            procline=f"dstspider.py {ruleargs}"
+            execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
+            DEBUG(f"Executing\n{execline}")
+            if not args.dryrun:
+                subprocess.Popen(f"{execline}",shell=True)
+
         if sdh_tuple.submit:
-        
-    
-            
-    # subprocess.Popen(f"./popenscript.sh > popenresult",shell=True)
+            procline=f"create_submission.py {ruleargs}"
+            execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
+            DEBUG(f"Executing\n{execline}")
+            if not args.dryrun:
+                subprocess.Popen(f"{execline}",shell=True)
 
     if args.profile:
         profiler.disable()
@@ -100,8 +112,13 @@ def main():
         stats = pstats.Stats(profiler)
         stats.strip_dirs().sort_stats('time').print_stats(8)
 
+    INFO("All done.")
+    exit(0)
+
+
 # ============================================================================================
-def collect_yaml_data( rule_data: [str, Any], defaultlocations: str ) -> Tuple[str,str,SubmitDstHist]:
+def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: str, dryrun: bool ) -> Tuple[str,str,SubmitDstHist]:
+    rule_data=host_data[rule]
     check_params(  rule_data
                  , required=["config"]
                  , optional=["runs", "runlist",
@@ -112,15 +129,17 @@ def collect_yaml_data( rule_data: [str, Any], defaultlocations: str ) -> Tuple[s
     ### Local file location changes?
     prodbase=rule_data.get("prodbase",defaultlocations["prodbase"])
     configbase=rule_data.get("configbase",defaultlocations["configbase"])
+    submitdir=rule_data.get("submitdir",defaultlocations["submitdir"])
+    submitdir=submitdir.format(rule=rule)
 
     ### location of the this_sphenixprod script    
     thisprod=f"{prodbase}/this_sphenixprod.sh"
     if not Path(thisprod).is_file():
         ERROR(f'Init script {thisprod} does not exist.')
         exit(1)
-    
+
     ### construct arguments    
-    ruleargs=""
+    ruleargs=f"--rule {rule}"
     config=rule_data.get("config", None)
     if not config.startswith("/"):
         config=f"{configbase}/{config}"
@@ -129,6 +148,10 @@ def collect_yaml_data( rule_data: [str, Any], defaultlocations: str ) -> Tuple[s
         exit(1)
     ruleargs += f" --config {config}"
 
+    if not dryrun:
+        Path(submitdir).mkdir( parents=True, exist_ok=True )
+    ruleargs += f" --submitdir {submitdir}"
+    
     runs=rule_data.get("runs", None)
     if runs:
         runs = map(str,runs)
@@ -159,6 +182,10 @@ def collect_yaml_data( rule_data: [str, Any], defaultlocations: str ) -> Tuple[s
         if not isinstance(v,bool):
             ERROR(f'Value of "{k}" must be (yaml-)boolean, got "{v}"')
             exit(1)
+
+    ## cleanup
+    while ruleargs.startswith(" "):
+        ruleargs=ruleargs[1:-1]
         
     return thisprod,ruleargs,sdh_tuple
 
