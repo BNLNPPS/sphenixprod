@@ -447,7 +447,7 @@ class RuleConfig:
             CHATTY(f"After substitution, {field} is {subsval}")
 
             request_memory=rule_substitutions.get("mem",job_data["mem"])
-            priority=rule_substitutions.get("priority",job_data["mem"])
+            priority=rule_substitutions.get("priority",job_data["priority"])
                 
             # catch different production branches - prepend by branch if not main            
             branch_name="main"
@@ -607,8 +607,6 @@ class MatchConfig:
         status_query += self.input_config.status_query_constraints
         existing_status = { c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
         INFO(f"Already have {len(existing_status)} output files in the production db")
-        if len(existing_status) > 0 :
-            CHATTY(f"First line: \n{next(iter(existing_status))}")
             
         ####################################################################################
         ###### Now get all existing input files
@@ -650,7 +648,7 @@ order by runnumber
 
         ### Assemble leafs, where needed
         input_stem = inputs_from_output[self.dsttype]
-        DEBUG( f'Input files are of the form:\n{pprint.pformat(input_stem)}')        
+        CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')        
         if isinstance(input_stem, dict):
             in_types = list(input_stem.values())
         else :
@@ -737,9 +735,9 @@ order by runnumber
                 # # By construction of runlist, every runnumber now should have at least one file
                 # TODO: No longer true, check 
                 # ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Skipping run.")
+                DEBUG(f"No input files found for run {runnumber}. Skipping run.")
                 continue
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
-
             ### Simplest case, 1-to-1:For every segment, there is exactly one output file, and exactly one input file from the previous step
             # If the output doesn't exist yet, use input files to create the job
             # TODO: or 'CALOFITTING'
