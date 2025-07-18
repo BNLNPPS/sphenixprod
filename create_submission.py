@@ -196,6 +196,8 @@ def main():
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
 
     # Individual submission file pairs are created to handle chunks of jobs
+    print(rule_matches.items()[0])
+    exit()
     chunk_size = 500
     chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
     for i, chunk in enumerate(chunked_jobs):
