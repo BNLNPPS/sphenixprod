@@ -72,6 +72,7 @@ fi
 alias cqb='condor_q -batch'
 alias cs='condor_submit'
 alias gristory='history | grep -v istory| grep $@'
+alias rehash='hash -r'
 
 # PS1="\u@\h $(parse_git_branch) \W> "
 PS1="\u@\h \W> "
