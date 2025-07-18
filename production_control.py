@@ -31,7 +31,7 @@ def main():
     setup_my_rot_handler(args)    
     slogger.setLevel(args.loglevel)
     
-    hostname=args.hostname.split('.')[0]
+    hostname=args.hostname.split('.')[0] if isinstance(args.hostname,str) else None
     if not hostname:
         hostname=platform.node().split('.')[0]
         INFO(f"{sys.argv[0]} invoked on {hostname}")
@@ -48,10 +48,11 @@ def main():
         INFO(f"Reading rules from {args.steerfile}")
         with open(args.steerfile, "r") as yamlstream:
             yaml_data = yaml.safe_load(yamlstream)
-    except yaml.YAMLError as exc:
-        raise ValueError(f"Error parsing YAML file: {exc}")
+    except yaml.YAMLError as yerr:
+        raise ValueError(f"Error parsing YAML file: {yerr}")
     except FileNotFoundError:
-        raise FileNotFoundError(f"YAML file not found: {args.steerfile}")
+        ERROR(f"YAML file not found: {args.steerfile}")
+        exit(1)
 
     try:
         host_data = yaml_data[hostname]
@@ -68,7 +69,7 @@ def main():
         exit(1)    
     prettyfs = pprint.pformat(defaultlocations)
     DEBUG(f"Default file locations:\n{prettyfs}")
-    INFO(f"Successfully loaded {len(host_data)-1} rules for {hostname}")
+    INFO(f"Successfully loaded {len(host_data)} rules for {hostname}")
     CHATTY(f"YAML dict for {hostname} is:\n{pprint.pformat(host_data)}")
     
     ### Walk through the rules.
@@ -104,7 +105,7 @@ def main():
             ### and submission which registers as "submitted". So far, do it in one go.
             procline+=" --andgo"
             execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
-            DEBUG(f"Executing\n{execline}")
+            INFO(f"Executing\n{execline}")
             if not args.dryrun:
                 subprocess.Popen(f"{execline}",shell=True)
 
@@ -175,7 +176,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
         ruleargs += f" --priority {jobprio}"
         
     ### Booleans for what to run
-    sdh_tuple=SubmitDstHist(submit=rule_data.get("submit", True),
+    sdh_tuple=SubmitDstHist(submit=rule_data.get("submit", False),
                             dstspider=rule_data.get("dstspider", True),
                             histspider=rule_data.get("histspider", True),
                             )
@@ -216,8 +217,7 @@ def steering_args():
     arg_parser = argparse.ArgumentParser( prog='production_control.py',
                                           description='"Production manager to dispatch jobs depending on submit node."',
                                          )
-    arg_parser.add_argument( '--steerfile', '-f', dest='steerfile',
-                             default='/sphenix/u/sphnxpro/devkolja/ProdFlow/short/run3auau/run3auau_production.yaml',
+    arg_parser.add_argument( '--steerfile', '-f', dest='steerfile', required=True,
                              help='Location of steering instructions per host' )
 
     arg_parser.add_argument( '--dryrun', '-n',
