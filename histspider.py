@@ -125,11 +125,10 @@ def main():
     histdir=filesystem['histdir']
     INFO(f"Histogram directory template: {histdir}")
     
-    # # All leafs:
+    # All leafs:
     leafparent=histdir.split('/{leafdir}')[0]
     leafdirs = shell_command(f"{find} {leafparent} -type d -name {rule.dsttype}\* -mindepth 1 -a -maxdepth 1")
     DEBUG(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
-    
     allhistdirs = []
     for leafdir in leafdirs :
         allhistdirs += shell_command(f"{find} {leafdir} -name hist -type d")
