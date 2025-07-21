@@ -788,7 +788,7 @@ order by runnumber
 
                 for host in files_for_run:
                     if not gl1file0:
-                        WARN(f"No segment 0 GL1 file found for run {runnumber}. Skipping this run.")
+                        CHATTY(f"No segment 0 GL1 file found for run {runnumber}. Skipping this run.")
                         files_for_run[host]=[]
                         continue
                     for f in files_for_run[host]:
@@ -796,7 +796,7 @@ order by runnumber
                             files_for_run[host]=[gl1file0,f]
                             break
                     else:  # remember python's for-else executes when the break doesn't!
-                        WARN(f"No segment 0 file found for run {runnumber}, host {host}. Skipping this run.")
+                        CHATTY(f"No segment 0 file found for run {runnumber}, host {host}. Skipping this run.")
                         files_for_run[host]=[]
 
                 # \if gl1daq in intypes
