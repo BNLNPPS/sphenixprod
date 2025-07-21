@@ -8,6 +8,7 @@ import pstats
 import subprocess
 import os
 import sys
+import itertools
 
 import pprint # noqa F401
 if os.uname().sysname!='Darwin' :
@@ -181,41 +182,50 @@ def main():
     # short_id = nanoid.generate(size=6)
     # print(f"Short ID: {short_id}")
 
-    # Check for and remove existing submission files for this subbase
-    existing_sub_files =  list(Path(submitdir).glob(f'{subbase}*.in'))
-    existing_sub_files += list(Path(submitdir).glob(f'{subbase}*.sub'))
-    if existing_sub_files:
-        WARN(f"Removing {int(len(existing_sub_files)/2)} existing submission file pairs for base: {subbase}")
-        for f_to_delete in existing_sub_files: 
-            CHATTY(f"Deleting: {f_to_delete}")
-            if not args.dryrun:
-                Path(f_to_delete).unlink() # could unlink the entire directory instead
+    # # Check for and remove existing submission files for this subbase
+    # existing_sub_files =  list(Path(submitdir).glob(f'{subbase}*.in'))
+    # existing_sub_files += list(Path(submitdir).glob(f'{subbase}*.sub'))
+    # if existing_sub_files:
+    #     WARN(f"Removing {int(len(existing_sub_files)/2)} existing submission file pairs for base: {subbase}")
+    #     for f_to_delete in existing_sub_files: 
+    #         CHATTY(f"Deleting: {f_to_delete}")
+    #         if not args.dryrun:
+    #             Path(f_to_delete).unlink() # could unlink the entire directory instead
 
     # Header for all submission files
     CondorJob.job_config = rule.job_config
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
 
-    # Individual submission file pairs are created to handle chunks of jobs
-    print(rule_matches.items()[0])
-    exit()
-    chunk_size = 500
-    chunked_jobs = make_chunks(list(rule_matches.items()), chunk_size)
-    for i, chunk in enumerate(chunked_jobs):
-        DEBUG(f"Creating submission files for chunk {i+1} of {len(rule_matches)//chunk_size + 1}")
-        if not args.dryrun:
-            with open(f'{submitdir}/{subbase}_{i}.sub', "w") as condor_subfile:
-                condor_subfile.write(str(base_job))
-                condor_subfile.write(
+    ## Instead of same-size chunks, group submission files by runnumber
+    matchlist=list(rule_matches.items())
+    ## Brittle! Assumes value[key][3] == runnumber
+    keyfunc = lambda item: item[1][3]  # x[0] is outfilename, x[1] is tuple, 4th field is runnumber
+    matchlist=sorted(matchlist, key=keyfunc)
+    matches_by_run = {k : list(g) for k, g in itertools.groupby(matchlist,key=keyfunc)}
+    submittable_runs=list(matches_by_run.keys())
+    INFO(f"Creating submission for {len(submittable_runs)} runs")
+    for submit_run in submittable_runs:
+        matches=matches_by_run[submit_run]
+        INFO(f"Creating submission files for run {submit_run}.")
+        condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
+        condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
+        if not args.dryrun and not Path(condor_subfile).is_file():
+            with open(condor_subfile, "w") as f: # Create only if it doesn't exist yet
+                f.write(str(base_job))
+                f.write(
 f"""
 log = $(log)
 output = $(output)
 error = $(error)
 arguments = $(arguments)
-queue log,output,error,arguments from {submitdir}/{subbase}_{i}.in
+queue log,output,error,arguments from {condor_infile}
 """)
+            # indent level of header creation
+
+        # individual lines per job
         prod_state_rows=[]
         condor_rows=[]
-        for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in chunk:
+        for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in matches:
             # Create .in file row
             condor_job = CondorJob.make_job( output_file=out_file, 
                                              inputs=in_files,
@@ -257,7 +267,7 @@ queue log,output,error,arguments from {submitdir}/{subbase}_{i}.in
                 timestamp=str(datetime.now().replace(microsecond=0)),
                 host=os.uname().nodename.split('.')[0]
             ))
-            # # end of chunk loop
+            # end of collecting job lines for this run
 
         comma_prod_state_rows=',\n'.join(prod_state_rows)
         insert_prod_state = f"""
@@ -266,29 +276,26 @@ insert into production_status
 values 
 {comma_prod_state_rows}
 returning id
-"""        
-        #print(insert_prod_state)
-        # important note: dstfile is not UNIQUE, so we can't detect conflict here and need to rely
-        # on catching already submitted files earlier. could doublecheck with a query here
+""" 
+        # Commit "submitting" to db
         if not args.dryrun:
             # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
             prod_curs = dbQuery( cnxn_string_map['statw'], insert_prod_state )
             prod_curs.commit()
             ids=[str(id) for (id,) in prod_curs.fetchall()]
             CHATTY(f"Inserted {len(ids)} rows into production_status, IDs: {ids}")
-            # condor_rows=list(zip(condor_rows,ids)) # zip the ids to the condor rows, so that we can use them in the arguments
-            # condor_rows=','.join( pair for pair in zip(condor_rows, ids) )
-            # print(a)
             condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
  
+        # Write or update job line file
         if not args.dryrun:
-            with open(f'{submitdir}/{subbase}_{i}.in', "w") as condor_infile:
-                condor_infile.writelines(row+'\n' for row in condor_rows)
-                
-    if len(rule_matches) ==0 :
-        INFO("No jobs to submit.")
-    else:
-        INFO(f"Created {i+1} submission chunk(s) in {submitdir} for {len(rule_matches)} jobs.")
+            with open(condor_infile, "w") as f:
+                f.writelines(row+'\n' for row in condor_rows)
+
+    print(f"Submission directory is {submitdir}")
+    # if len(rule_matches) ==0 :
+    #     INFO("No jobs to submit.")
+    # else:
+    #     INFO(f"Created {i+1} submission chunk(s) in {submitdir} for {len(rule_matches)} jobs.")
     
     prettyfs=pprint.pformat(rule.job_config.filesystem)
     input_stem=inputs_from_output[rule.dsttype]
@@ -302,8 +309,9 @@ returning id
         else:
             sub_files = list(Path(submitdir).glob(f'{subbase}*.sub'))
             for sub_file in sub_files:
-                INFO(f"Submitting {sub_file}")
-                subprocess.run(f"condor_submit {sub_file}",shell=True)
+                in_file=sub_file.replace(".sub",".in")
+                INFO(f"Submitting {sub_file}\n\t\t Semoving {infile}")
+                #subprocess.run(f"condor_submit {sub_file} && rm {sub_file}",shell=True)
 
     if args.profile:
         profiler.disable()
