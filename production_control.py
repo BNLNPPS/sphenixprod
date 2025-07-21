@@ -84,7 +84,8 @@ def main():
             ruleargs+=" --dryrun"
         
         ### Loop through process types
-        ### Go from fast to slow processes. They'll overlap anyway, but we may want to add 
+        ### Go from fast to slow processes. They'll overlap anyway, but we may want to add
+        INFO(f"sdh_tuple is {pprint.pformat(sdh_tuple)}")
         if sdh_tuple.histspider:
             procline=f"histspider.py {ruleargs}"
             execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
@@ -105,7 +106,7 @@ def main():
             ### and submission which registers as "submitted". So far, do it in one go.
             procline+=" --andgo"
             execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
-            INFO(f"Executing\n{execline}")
+            DEBUG(f"Executing\n{execline}")
             if not args.dryrun:
                 subprocess.Popen(f"{execline}",shell=True)
 
