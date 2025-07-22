@@ -6,9 +6,9 @@ from collections import defaultdict
 from sphenixdbutils import cnxn_string_map, dbQuery # type: ignore
 
 def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 4:
         script_name = sys.argv[0]
-        print(f"usage: {script_name} <runnumber> <daqhost>")
+        print(f"usage: {script_name} <runnumber> <daqhost> <segswitch>")
         sys.exit(0)
 
     runnumber_str = sys.argv[1]
@@ -23,13 +23,22 @@ def main():
     # Using a defaultdict to easily append to lists of filenames per host
     file_list_by_host = defaultdict(list)
     
-    ### Important change, 07/15/2025: Only care about segment 0!
+    ### Important change, 07/15/2025: Usually only care about segment 0!
+    segswitch=sys.argv[3]
     sql_query = f"""
     SELECT filename, daqhost 
     FROM datasets 
     WHERE runnumber = {runnumber}
-      AND (segment = 0) 
-      AND (daqhost = '{daqhost}' OR daqhost = 'gl1daq') 
+    """
+    if segswitch == "seg0fromdb":
+        sql_query += f"\n\t AND (segment = 0)"
+    elif segswitch == "allsegsfromdb":
+        pass
+    else:
+        print("segswitch = {seg0fromdb|allsegsfromdb} must be explicitly provided")
+        exit(1)        
+    sql_query += f"""
+    AND (daqhost = '{daqhost}' OR daqhost = 'gl1daq') 
     ORDER BY filename
     """
     rows = dbQuery( cnxn_string_map['rawr'], sql_query).fetchall()
