@@ -1,4 +1,4 @@
-#!/bin/env python
+#!/usr/bin/env python
 
 from pathlib import Path
 from datetime import datetime
@@ -27,7 +27,7 @@ from sphenixmisc import binary_contains_bisect
 # ============================================================================================
 def shell_command(command: str) -> List[str]:
     """Minimal wrapper to hide away subbprocess tedium"""
-    CHATTY(f"[shell_command] Command: {command}")
+    DEBUG(f"[shell_command] Command: {command}")
     ret=[]
     try:
         ret = subprocess.run(command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()
@@ -36,7 +36,7 @@ def shell_command(command: str) -> List[str]:
     finally:
         pass
 
-    CHATTY(f"[shell_command] Return value length is {len(ret)}.")
+    DEBUG(f"[shell_command] Return value length is {len(ret)}.")
     return ret
 
 # ============================================================================================
@@ -120,43 +120,37 @@ def main():
     ### Which find command to use for lustre?
     # Lustre's robin hood, rbh-find, doesn't offer advantages for our usecase, and it is more cumbersome to use.
     # But "lfs find" is preferrable to the regular kind.
-    find=shutil.which('find')
-    lfind = shutil.which('lfs')    
+    lfind = shutil.which('lfs')
     if lfind is None:
         WARN("'lfs find' not found")
         lfind = shutil.which('find')
     else:
         lfind = f'{lfind} find'
-    INFO(f'Using find={find} and lfind="{lfind}.')
+    INFO(f'Using "{lfind}.')
 
     ##################### DSTs, from lustre to lustre
     # Original output directory, the final destination, and the file name trunk
     dstbase = f'{rule.dsttype}\*{rule.dataset}_{rule.outtriplet}\*'
     # dstbase = f'{rule.dsttype}\*{rule.outtriplet}_{rule.dataset}\*' ## WRONG
     INFO(f'DST files filtered as {dstbase}')
+    lakelocation=filesystem['outdir']
+    INFO(f"Original output directory: {lakelocation}")
 
-    outlocation=filesystem['outdir']
-    INFO(f"Directory tree: {outlocation}")
-    # Further down, we will simplify by assuming finaldir == outdir, otherwise this script shouldn't be used.
-    if filesystem['finaldir'] != outlocation:
-         ERROR("Found finaldir != outdir. Use/adapt dstlakespider instead." )
-         print(f"finaldir = {finaldir}")
-         print(f"outdir = {outlocation}")
-         exit(1)
-
-    ### Use or create a list file containing all the existing files to work on.
+    ### Use or create a list file containing all the existing lake files to work on.
     ### This reduces memory footprint and repeated slow `find` commands for large amounts of files
-    dstlistname=filesystem['logdir']
-    dstlistname=dstlistname.split("{")[0]
-    while dstlistname.endswith("/"):
-        dstlistname=dstlistname[0:-1]
-    dstlistname=f"{dstlistname}/{rule.dsttype}_dstlist"
-    dstlistlock=dstlistname+".lock"
+    # Use the name of the lake directory
+    #lakelistname=lakelocation
+    lakelistname=filesystem['logdir']
+    lakelistname=lakelistname.split("{")[0]
+    while lakelistname.endswith("/"):
+        lakelistname=lakelistname[0:-1]
+    lakelistname=f"{lakelistname}/{rule.dsttype}_lakelist"
+    lakelistlock=lakelistname+".lock"
     # First, lock. This way multiple spiders can work on a file without stepping on each others' (8) toes
-    if Path(dstlistlock).exists():
-        WARN(f"Lock file {dstlistlock} already exists, indicating another spider is running over the same rule.")
+    if Path(lakelistlock).exists():
+        WARN(f"Lock file {lakelistlock} already exists, indicating another spider is running over the same rule.")
         # Safety valve. If it's old, we assume some job didn't end gracefully and proceed anyway.
-        mod_timestamp = Path(dstlistlock).stat().st_mtime 
+        mod_timestamp = Path(lakelistlock).stat().st_mtime 
         mod_datetime = datetime.fromtimestamp(mod_timestamp) 
         time_difference = datetime.now() - mod_datetime
         threshold = 8 * 60 * 60
@@ -165,76 +159,52 @@ def main():
         else:
             exit(0)
     if not args.dryrun:
-        Path(dstlistlock).parent.mkdir(parents=True,exist_ok=True)
-        Path(dstlistlock).touch()
-    INFO(f"Looking for existing filelist {dstlistname}")
-    if Path(dstlistname).exists():
-        wccommand=f"wc -l {dstlistname}"
+        Path(lakelistlock).parent.mkdir(parents=True,exist_ok=True)
+        Path(lakelistlock).touch()
+    INFO(f"Looking for existing filelist {lakelistname}")
+    if not Path(lakelistname).exists():
+        INFO(" ... not found. Creating a new one.")
+        findcommand=f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\* > {lakelistname}; wc -l {lakelistname}"
+        DEBUG(f"Using:\n{findcommand}")
+        ret = shell_command(findcommand)
+        INFO(f"Found {ret[0]} matching dsts without cuts in the lake, piped into {ret[1]}")
+    else:
+        wccommand=f"wc -l {lakelistname}"
         ret = shell_command(wccommand)
         INFO(f" ... found. List contains {ret[0]} files.")
-    else:
-        INFO(" ... not found. Creating a new one.")
-        Path(dstlistname).parent.mkdir( parents=True, exist_ok=True )
-        Path(dstlistname).unlink(missing_ok=True) ### should never be necessary
-        
-        # All leafs:
-        tstart = datetime.now()
-        leafparent=outlocation.split('/{leafdir}')[0]
-        leafdirs = shell_command(f"{find} {leafparent} -type d -name {rule.dsttype}\* -mindepth 1 -a -maxdepth 1")
-        CHATTY(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
-
-        # Run groups that we're interested in
-        desirable_rungroups = { rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100)) for run in rule.runlist_int }
-    
-        ### Walk through leafs - assume rungroups may change between run groups
-        for leafdir in leafdirs :
-            available_rungroups = shell_command(f"{find} {leafdir} -name run_\* -type d -mindepth 1 -a -maxdepth 1")
-            # Very pythonic list comprehension here...
-            # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
-            rungroups = {rg for rg in available_rungroups if any( drg in rg for drg in desirable_rungroups) }
-            CHATTY(f"For {leafdir}, we have {len(rungroups)} run groups to work on")
-            
-            for rungroup in rungroups:
-                shell_command(f"{lfind} {rungroup} -type f -name \*root:\* >> {dstlistname}")
-
-        wccommand=f"wc -l {dstlistname}"
-        ret = shell_command(wccommand)
-        INFO(f"Found {ret[0]} DSTs to process.")
-        INFO(f"List creation took {(datetime.now() - tstart).total_seconds():.2f} seconds.")
 
     ### Grab the first N files and work on those.
     nfiles_to_process=500000
     exhausted=False
-    dstfiles=[]
-    tmpname=f"{dstlistname}.tmp"
-    with open(dstlistname,"r") as infile, open(f"{dstlistname}.tmp", "w") as smallerdstlist:
+    lakefiles=[]
+    tmpname=f"{lakelistname}.tmp"
+    with open(lakelistname,"r") as infile, open(f"{lakelistname}.tmp", "w") as smallerlakefile:
         for _ in range(nfiles_to_process):
             line=infile.readline()
             if line:
-                dstfiles.append(line.strip())
+                lakefiles.append(line.strip())
             else:
                 exhausted=True
                 break
         for line in infile:
-            smallerdstlist.write(line)
+            smallerlakefile.write(line)
     if not args.dryrun:
-        shutil.move(tmpname,dstlistname)
+        shutil.move(tmpname,lakelistname)
         if exhausted: # Used up the existing list.
-            INFO("Used up all previously found dst files. Next call will create a new list")
-            Path(dstlistname).unlink(missing_ok=True)
+            INFO("Used up all previously found lake files. Next call will create a new list")
+            Path(lakelistname).unlink(missing_ok=True)
     else:
         Path(tmpname).unlink(missing_ok=True)
-
     # Done with selecting or creating our chunk, release the lock
     if not args.dryrun:
-        Path(dstlistlock).unlink()
-    
+        Path(lakelistlock).unlink()
+
     ### Collect root files that satisfy run and dbid requirements
     mvfiles_info=[]
-    for file in dstfiles:
+    for file in lakefiles:
         lfn=Path(file).name
         dsttype,run,seg,_=parse_lfn(lfn,rule)
-        if binary_contains_bisect(rule.runlist_int,run):  # Safety net to move only specified runs
+        if binary_contains_bisect(rule.runlist_int,run):
             fullpath,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
@@ -242,7 +212,23 @@ def main():
             info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
             mvfiles_info.append( (file,info) )
             
-    INFO(f"{len(mvfiles_info)} total root files to be processed.")    
+    INFO(f"{len(mvfiles_info)} total root files to be processed.")
+    
+    finaldir_tmpl=filesystem['finaldir']
+    INFO(f"Final destination template: {finaldir_tmpl}")
+
+    input_stubs = inputs_from_output[rule.dsttype]
+    DEBUG(f"Input stub(s): {input_stubs}")
+    dataset = rule.dataset
+    INFO(f"Dataset identifier: {dataset}")
+    leaf_template = f'{rule.dsttype}'
+    if 'raw' in rule.input_config.db:
+        leaf_template += '_{host}'
+        leaf_types = { f'{leaf_template}'.format(host=host) for host in input_stubs.keys() }
+    else:
+        leaf_types=[rule.dsttype]
+    INFO(f"Destination type template: {leaf_template}")
+    DEBUG(f"Destination types: {leaf_types}")
     
     ####################################### Start moving and registering DSTs
     tstart = datetime.now()
@@ -264,17 +250,31 @@ def main():
             dsttype,run,seg,lfn,nevents,first,last,md5,size,time=info
             ## lfn duplication can happen for unclean productions. Detect here.
             ## We could try and id the "best" one but that's pricey for a rare occasion. Just delete the file and move on.
-            #### It happens when productions get interrupted. Delete the existing one.
             if lfn in seen_lfns:
-                existing = str(Path(file).parent)+'/'+lfn
-                WARN(f"We already have a file with lfn {lfn}. Deleting {existing}.")
-                if not args.dryrun:
-                    Path(existing).unlink(missing_ok=True)
+                WARN(f"We already have a file with lfn {lfn}. Deleting {file}.")
+                Path(file).unlink(missing_ok=True)
                 continue
             seen_lfns.add(lfn)
 
-            fileparent=Path(file).parent
-            full_file_path = f'{fileparent}/{lfn}'
+            # Check if we recognize the file name
+            leaf=None
+            for leaf_type in leaf_types:
+                if lfn.startswith(leaf_type):
+                    leaf=leaf_type
+                    break
+            if leaf is None:
+                ERROR(f"Unknown file type: {lfn}")
+                ERROR(f"Full file name: {file}")
+                exit(-1)
+
+            ### Fill in templates and save full information
+            rungroup= rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
+            finaldir = finaldir_tmpl.format( leafdir=leaf, rungroup=rungroup )
+            # Create destination dir if it doesn't exit. Can't be done elsewhere/earlier, we need the full relevant runnumber range
+            if not args.dryrun:
+                Path(finaldir).mkdir( parents=True, exist_ok=True )
+
+            full_file_path = f'{finaldir}/{lfn}'
             fullinfo_chunk.append(full_db_info(
                 origfile=file,
                 info=info,
@@ -293,7 +293,7 @@ def main():
                            )
         except Exception as e:
             WARN(f"dstspider is ignoring the database exception and moving on.")
-            ### database errors can happen when there are multiples of a file in the dst.
+            ### database errors can happen when there are multiples of a file in the lake.
             ### Why _that_ happens should be investigated, but here, we can just move on to the next chunk.
             continue
             exit(1)
