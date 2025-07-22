@@ -15,7 +15,7 @@ def submission_args():
     arg_parser.add_argument( '--dryrun', '--no-submit', '-n',
                              help="Job will not be submitted, DBs not updated. Just print things", dest="dryrun", action="store_true")
     arg_parser.add_argument( '--test-mode',dest="test_mode",default=False,help="Sets testing mode, which will mangle DST names and directory paths.",action="store_true")
-    arg_parser.add_argument( "--force", "--doit", dest="force", action="store_true" ) #TODO: deprecate doit
+    arg_parser.add_argument( "--force", "-f", dest="force", help="Override existing output in file and prod db. Delete those files.", action="store_true")
     arg_parser.add_argument( '--print-query',dest='printquery',help="Print the query after parameter substitution and exit", action="store_true")
     arg_parser.add_argument( '--andgo',dest='andgo',help="Submit condor jobs at the end", action="store_true")
     arg_parser.add_argument( '--profile',help="Enable profiling", action="store_true")
@@ -38,13 +38,15 @@ def submission_args():
     arg_parser.add_argument( '--config', dest='config', required=True, help="Name of the YAML file containing production rules.", default="DST_STREAMING_run3auau_new_2024p012.yaml")
     arg_parser.add_argument( '--rulename', dest='rulename', required=True, help="Name of submission rule", default="DST_EVENT" )
 
+    # Input-specific
     rgroup = arg_parser.add_argument_group('Run selection')
     exclusive_rgroup = rgroup.add_mutually_exclusive_group()
     exclusive_rgroup.add_argument( '--runs', nargs='*', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=None )
     exclusive_rgroup.add_argument( '--runlist', help="Flat text file containing list of runs to process, separated by whitespace / newlines.", default=None )
     # arg_parser.add_argument( '--segments', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=[] )
     arg_parser.add_argument( '--physics-mode','--experiment-mode',dest="physicsmode",help="Specifies the experiment mode (cosmics, commissioning, physics) for direct lookup of input files.",default=None)
-
+    arg_parser.add_argument( '--onlyseg0', help='Combine only segment 0 files.', action=argparse.BooleanOptionalAction)
+    
     arg_parser.add_argument( '-N', '--nevents', default=0, dest='nevents', help='Number of events to process.  0=all.', type=int)
     ## sPHENIX files have specific names and locations. Overridde for testing or special purposes.
     arg_parser.add_argument( '--mangle-dstname',dest='mangle_dstname',help="Replaces 'DST' with the specified name.", default=None )
