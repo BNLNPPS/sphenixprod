@@ -6,6 +6,7 @@ import yaml
 import cProfile
 import pstats
 import subprocess
+import re
 import os
 import sys
 import itertools
@@ -14,6 +15,7 @@ import pprint # noqa F401
 if os.uname().sysname!='Darwin' :
     import htcondor # type: ignore
 
+import argparse
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
@@ -24,6 +26,7 @@ from sphenixcondorjobs import CondorJob
 from sphenixdbutils import test_mode as dbutils_test_mode
 import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
 from sphenixdbutils import cnxn_string_map, dbQuery
+from execute_condorsubmission import execute_submission
 
 # ============================================================================================
 
@@ -42,9 +45,20 @@ def main():
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
-    
+
+    if args.force:
+        ERROR('Got "--force": That doesn\'t work yet. Sorry.')
+        exit(1)
+        WARN('Got "--force": Override existing output in files, datasets, and production_status DBs. Delete those files.')
+        WARN('               Note that it\'s YOUR job to ensure there\'s no job in the queue or file in the DST lake which will overwrite this later!')
+        answer = input("Do you want to continue? (yes/no): ")
+        if answer.lower() != "yes":
+            print("Exiting. Smart.")
+            exit(0)
+        WARN("Here we go then.")
+
     # Exit without fuss if we are already running 
-    if should_I_quit(args=args, myname=sys.argv[0]):
+    if should_I_quit(args=args, myname=sys.argv[0]) and not args.force:
         DEBUG("Stop.")
         exit(0)
     
@@ -73,6 +87,7 @@ def main():
     rule_substitutions["runs"]=args.runs
     rule_substitutions["runlist"]=args.runlist
     rule_substitutions["nevents"] = args.nevents
+    rule_substitutions["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case
     
     payload_list=[]
     ### Copy our own files to the worker:
@@ -142,6 +157,16 @@ def main():
     CHATTY(f"Rule substitutions: {rule_substitutions}")
     INFO("Now loading and building rule configuration.")
 
+    #### For --force, we could do the file and database deletion in RuleConfig.
+    # Would be kinda nice because only then we'll know what's _really_ affected, and we could use the logic there.
+    # Instead, ensure that the rule logic needs no special cases, set everything up here.
+    # if args.force:
+    #     ### Output files. Delete all existing DSTs from this run.
+    #     dstlocation=
+        
+    #     # not args.dryrun:
+    #     ### Database: 
+
     #################### Load specific rule from the given yaml file.
     try:
         rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, rule_substitutions=rule_substitutions )
@@ -182,16 +207,6 @@ def main():
     # short_id = nanoid.generate(size=6)
     # print(f"Short ID: {short_id}")
 
-    # # Check for and remove existing submission files for this subbase
-    # existing_sub_files =  list(Path(submitdir).glob(f'{subbase}*.in'))
-    # existing_sub_files += list(Path(submitdir).glob(f'{subbase}*.sub'))
-    # if existing_sub_files:
-    #     WARN(f"Removing {int(len(existing_sub_files)/2)} existing submission file pairs for base: {subbase}")
-    #     for f_to_delete in existing_sub_files: 
-    #         CHATTY(f"Deleting: {f_to_delete}")
-    #         if not args.dryrun:
-    #             Path(f_to_delete).unlink() # could unlink the entire directory instead
-
     # Header for all submission files
     CondorJob.job_config = rule.job_config
     base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
@@ -203,16 +218,24 @@ def main():
     matchlist=sorted(matchlist, key=keyfunc)
     matches_by_run = {k : list(g) for k, g in itertools.groupby(matchlist,key=keyfunc)}
     submittable_runs=list(matches_by_run.keys())
+    # Newest first
+    submittable_runs=sorted(submittable_runs, reverse=True)
+
     INFO(f"Creating submission for {len(submittable_runs)} runs")
+    total_jobs=0
+    max_jobs=10000 # FIXME
+    
     for submit_run in submittable_runs:
         matches=matches_by_run[submit_run]
-        INFO(f"Creating submission files for run {submit_run}.")
+        total_jobs+=len(matches)
+        INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
         condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
         condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
-        if not args.dryrun and not Path(condor_subfile).is_file():
-            with open(condor_subfile, "w") as f: # Create only if it doesn't exist yet
-                f.write(str(base_job))
-                f.write(
+        if not args.dryrun:
+            if not Path(condor_subfile).is_file() : # Create only if it doesn't exist yet
+                with open(condor_subfile, "w") as f:
+                    f.write(str(base_job))
+                    f.write(
 f"""
 log = $(log)
 output = $(output)
@@ -220,7 +243,7 @@ error = $(error)
 arguments = $(arguments)
 queue log,output,error,arguments from {condor_infile}
 """)
-            # indent level of header creation
+        #\if not dryrun: create header
 
         # individual lines per job
         prod_state_rows=[]
@@ -249,10 +272,10 @@ queue log,output,error,arguments from {condor_infile}
                     
             # Add to production database
             dsttype=logbase.split(f'_{rule.dataset}')[0]
-            if 'TRIGGERED_EVENT' in dsttype or 'STREAMING_EVENT' in dsttype: # TODO: FIXME for those as well
-                dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}' # Does NOT have ".root" extension
-            else:
-                dstfile=out_file # this is much more robust and correct
+            # if 'TRIGGERED_EVENT' in dsttype or 'STREAMING_EVENT' in dsttype: # TODO: FIXME for those as well
+            #     dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}'
+            # else:
+            dstfile=out_file # this is much more robust and correct
             # Following is fragile, don't add spaces
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
@@ -267,6 +290,7 @@ queue log,output,error,arguments from {condor_infile}
                 timestamp=str(datetime.now().replace(microsecond=0)),
                 host=os.uname().nodename.split('.')[0]
             ))
+            if total_jobs>=max_jobs: break
             # end of collecting job lines for this run
 
         comma_prod_state_rows=',\n'.join(prod_state_rows)
@@ -288,36 +312,27 @@ returning id
  
         # Write or update job line file
         if not args.dryrun:
-            with open(condor_infile, "w") as f:
+            with open(condor_infile, "a") as f:
                 f.writelines(row+'\n' for row in condor_rows)
 
-    print(f"Submission directory is {submitdir}")
-    # if len(rule_matches) ==0 :
-    #     INFO("No jobs to submit.")
-    # else:
-    #     INFO(f"Created {i+1} submission chunk(s) in {submitdir} for {len(rule_matches)} jobs.")
-    
+    ### And submit, if so desired
+    if args.andgo: 
+        execute_submission(rule, args)
+
+        
+    if args.profile:
+        profiler.disable()
+        DEBUG("Profiling finished. Printing stats...")
+        stats = pstats.Stats(profiler)
+        stats.strip_dirs().sort_stats('time').print_stats(10)
+
+    print(f"Submission directory is {submitdir}")    
     prettyfs=pprint.pformat(rule.job_config.filesystem)
     input_stem=inputs_from_output[rule.dsttype]
     if isinstance(input_stem, list):
         prettyfs=prettyfs.replace('{leafdir}',rule.dsttype)
     INFO(f"Other location templates:\n{prettyfs}")
 
-    if args.andgo: 
-        if args.dryrun:
-            WARN('Dryrun: Ignoring "--andgo"')
-        else:
-            sub_files = list(Path(submitdir).glob(f'{subbase}*.sub'))
-            for sub_file in sub_files:
-                in_file=sub_file.replace(".sub",".in")
-                INFO(f"Submitting {sub_file}\n\t\t Semoving {infile}")
-                #subprocess.run(f"condor_submit {sub_file} && rm {sub_file}",shell=True)
-
-    if args.profile:
-        profiler.disable()
-        DEBUG("Profiling finished. Printing stats...")
-        stats = pstats.Stats(profiler)
-        stats.strip_dirs().sort_stats('time').print_stats(10)
 
     INFO( "KTHXBYE!" )
 
