@@ -164,6 +164,7 @@ class InputConfig:
     min_run_time:     Optional[int] = None
     prod_identifier:  Optional[str] = None # run3auau, run3cosmics
 
+    combine_seg0_only:          Optional[bool] = True  # For combination jobs, use only segment 0. Default is yes. No effect for downstream jobs.    
     infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
     direct_path: Optional[str]                = None  # Make direct_path optional
@@ -210,7 +211,8 @@ class RuleConfig:
                   yaml_file: str, #  Used for paths
                   yaml_data: Dict[str, Any],
                   rule_name: str,
-                  rule_substitutions=None) -> "RuleConfig":
+                  rule_substitutions=None,
+                  ) -> "RuleConfig":
         """
         Constructs a RuleConfig object from a YAML data dictionary.
 
@@ -313,12 +315,20 @@ class RuleConfig:
                     , optional=["intriplet",
                                 "min_run_events","min_run_time",
                                 "direct_path", "prod_identifier",
+                                "combine_seg0_only",
                                 "infile_query_constraints",
                                 "status_query_constraints","physicsmode"] )
-
+        
         intriplet=input_data.get("intriplet")
         min_run_events=input_data.get("min_run_events",100000)
         min_run_time=input_data.get("min_run_time",300)
+
+        combine_seg0_only=input_data.get("combine_seg0_only",True) # Default is true
+        # If explicitly specified, argv overrides
+        argv_combine_seg0_only=rule_substitutions.get("combine_seg0_only")
+        if argv_combine_seg0_only is not None:            
+            combine_seg0_only=argv_combine_seg0_only
+        
         # Substitutions in direct input path, if given
         input_direct_path = input_data.get("direct_path")
         if input_direct_path is not None:
@@ -334,15 +344,16 @@ class RuleConfig:
         DEBUG(f"Input query constraints: {infile_query_constraints}" )
         DEBUG(f"Status query constraints: {status_query_constraints}" )
         input_config=InputConfig(
-            db=input_data["db"],
-            table=input_data["table"],
-            intriplet=intriplet,
-            min_run_events=min_run_events,
-            min_run_time=min_run_time,
-            direct_path=input_direct_path,
-            prod_identifier= prod_identifier,
-            infile_query_constraints=infile_query_constraints,
-            status_query_constraints=status_query_constraints
+          db=input_data["db"],
+          table=input_data["table"],
+          intriplet=intriplet,
+          min_run_events=min_run_events,
+          min_run_time=min_run_time,
+          combine_seg0_only=combine_seg0_only,
+          direct_path=input_direct_path,
+          prod_identifier= prod_identifier,
+          infile_query_constraints=infile_query_constraints,
+          status_query_constraints=status_query_constraints
         )
 
         # Extract and validate job_config
@@ -500,7 +511,7 @@ class RuleConfig:
 
     # ------------------------------------------------
     @classmethod
-    def from_yaml_file(cls, yaml_file: str, rule_name: str, rule_substitutions=None) -> "RuleConfig":
+    def from_yaml_file(cls, yaml_file: str, rule_name: str, rule_substitutions=None ) -> "RuleConfig":
         """
         Constructs a dictionary of RuleConfig objects from a YAML file.
 
@@ -521,7 +532,8 @@ class RuleConfig:
         return cls.from_yaml(yaml_file=yaml_file,
                              yaml_data=yaml_data,
                              rule_name=rule_name,
-                             rule_substitutions=rule_substitutions)
+                             rule_substitutions=rule_substitutions,
+                            )
 
 # ============================================================================
 
@@ -683,30 +695,8 @@ order by runnumber
         # Keeping the run condition as a fallback; it should never matter though
         if run_condition!="" :
             infile_query += f"\n\tand {run_condition}"
-
-        ### Change on July 9 2025: Getting all runs at once is marginally faster
-        ### while blowing up resident memory size from 200MB to 10GB or more (unlimited; scales with number of good runs)
-        ### So stop doing it that way... 
-        # if run_condition!="" :
-        #     infile_query += f"\n\tand {run_condition}"
-        # infile_query += self.input_config.infile_query_constraints
-        # DEBUG(f"infile_query:\n{infile_query}")
-        # INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
-        # db_result = dbQuery( cnxn_string_map[ self.input_config.db ], infile_query ).fetchall()
-        # in_files = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
-        # DEBUG(in_files)
-        # print(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
-        # INFO(f"Total number of available input files: {len(in_files)}")
-        # in_files.sort(key=lambda x: (x.runnumber)) # itertools.groupby depends on data being sorted
-        # files_by_run = {k : list(g) for k, g in itertools.groupby(in_files, operator.attrgetter('runnumber'))}
-        # runlist = list(files_by_run.keys())
-        # DEBUG(f'All available runnumbers:{runlist}')
-        # for runnumber in files_by_run:
-        #     candidates = files_by_run[runnumber]
-        #     ...
-        # exit()
-
-        ### ... and instead, move the query into the run loop
+            
+        #### Do existence queries in the run loop. More db reads but much smaller RAM usage
         #### Now build up potential output files from what's available
         now=time.time()
         rule_matches = {}
@@ -725,7 +715,9 @@ order by runnumber
             exist_query +=  f"\n\tand runnumber={runnumber}"
             existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
             existing_output.sort()
-            DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")           
+            DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")
+
+            # Potential input files for this run
             run_query = infile_query + f"\n\t and runnumber={runnumber} "
             CHATTY(f"run_query:\n{run_query}")
             db_result = dbQuery( cnxn_string_map[ self.input_config.db ], run_query ).fetchall()
@@ -738,20 +730,20 @@ order by runnumber
                 DEBUG(f"No input files found for run {runnumber}. Skipping run.")
                 continue
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
+
             ### Simplest case, 1-to-1:For every segment, there is exactly one output file, and exactly one input file from the previous step
             # If the output doesn't exist yet, use input files to create the job
-            # TODO: or 'CALOFITTING'
+            # TODO: or 'CALOFITTING' or mmany other job types
             if 'TRKR_SEED' in self.dsttype:
                 for infile in candidates:
                     outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'                
                     logbase= f'{outbase}-{infile.runnumber:{pRUNFMT}}-{infile.segment:{pSEGFMT}}'
                     dstfile = f'{logbase}.root'
-                    #if dstfile in existing_output:
                     if binary_contains_bisect(existing_output,dstfile):
                         CHATTY(f"Output file {dstfile} already exists. Not submitting.")
                         continue
                     if dstfile in existing_status:
-                        WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
+                        WARN(f"Production status of {dstfile} is {existing_status[dstfile]}. Not submitting.")
                         continue
                     in_files_for_seg=[infile]
                     CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
@@ -760,7 +752,7 @@ order by runnumber
 
             ####### NOT 1-1, requires more work:
             # For every segment, there is exactly one output file, and exactly one input file _from each stream_ OR from the previous step
-            ######## Cut up the candidates into streams/daqhosts
+            ######## Cut up the candidates into streams/daqhost≈ƒs
             candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
             files_for_run = { k : list(g) for
                               k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
@@ -772,50 +764,49 @@ order by runnumber
                     WARN(f"No GL1 files found for run {runnumber}. Skipping this run.")
                     continue
                 CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1_files}')
-                ### Important change, 07/15/2025: Only care about segment 0!
-                ##Original:
-                # for host in files_for_run:
-                #     files_for_run[host] = gl1_files + files_for_run[host]
-                    # any_zero_status = any(file_tuple.status == 0 for file_tuple in files_for_run[host])
-                    # # Now enforce status!=0 for all files from this host
-                    # if any_zero_status :
-                    #     files_for_run[host]=[]
-                gl1file0=None
-                for f in gl1_files:
-                    if f.segment==0 and f.status!=0:
-                        gl1file0=f
-                        break
-
-                for host in files_for_run:
+                
+                ### Important change, 07/15/2025: By default, only care about segment 0!
+                segswitch="seg0fromdb"
+                if not self.input_config.combine_seg0_only:
+                    DEBUG("Using, and requiring, all input segments")
+                    segswitch="allsegsfromdb"
+                    for host in files_for_run:
+                        files_for_run[host] = gl1_files + files_for_run[host]
+                        any_zero_status = any(file_tuple.status == 0 for file_tuple in files_for_run[host])
+                        # Now enforce status!=0 for all files from this host
+                        if any_zero_status :
+                            files_for_run[host]=[]
+                    # Done with the non-default. 
+                else: ### Use only segment 0; this is actually a bit harder
+                    DEBUG("Using only input segment 0")
+                    # GL1 file?
+                    gl1file0=None
+                    for f in gl1_files:
+                        if f.segment==0 and f.status!=0:
+                            gl1file0=f
+                            break
                     if not gl1file0:
                         CHATTY(f"No segment 0 GL1 file found for run {runnumber}. Skipping this run.")
-                        files_for_run[host]=[]
+                        for host in files_for_run:
+                            files_for_run[host]=[]
                         continue
-                    for f in files_for_run[host]:
-                        if f.segment==0 and f.status!=0:
-                            files_for_run[host]=[gl1file0,f]
-                            break
-                    else:  # remember python's for-else executes when the break doesn't!
-                        CHATTY(f"No segment 0 file found for run {runnumber}, host {host}. Skipping this run.")
-                        files_for_run[host]=[]
 
-                # \if gl1daq in intypes
+                    # With a segment0 gl1 file, we can now go over the other hosts
+                    for host in files_for_run:
+                        for f in files_for_run[host]:
+                            if f.segment==0 and f.status!=0:
+                                files_for_run[host]=[gl1file0,f]
+                                break
+                        else:  # remember python's for-else executes when the break doesn't!
+                            CHATTY(f"No segment 0 file found for run {runnumber}, host {host}. Skipping this run.")
+                            files_for_run[host]=[]
+                # \combine_seg0_only
+            # \if gl1daq in intypes
 
-            ## Output, log, etc, live in
-            ## [somebase]/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/<log|hist/>filename
-            ## where filename = f'{dsttype}_{dataset}-$INT(run,{RUNFMT})-$INT(seg,{SEGFMT})[.root, .out, .err]'
-            ## root files on gpfs can also start with HIST_ or CALIB_
-            ######### Two possibilities:
-            # - Easy-ish: If the input has a segment number, then the output will have the same segment number
-            #     - These are downstream objects (input is already a DST)
-            #     - This can be 1-1 or many-to-1 (usually 2-1 for SEED + CLUSTER --> TRACKS)
-            #     - UPDATE: not _that_ easy. How to decide that all needed inputs are there? --> needs extra db query
-            # - Medium: The input has no segment number; each output is produced from all sequences in one input stream
-            #     - This is currently the case for the streaming daq (tracking)
-            #     - As of 04/29, this is the new scheme for the calo daq as well
-            #     - In this case, provide ALL input files for the run, and the output will produce its own segment numbers
-            
             ####### "Easy" case. One way to identify this case is to see if gl1 is not needed 
+            #  If the input has a segment number, then the output will have the same segment number
+            #  - These are downstream objects (input is already a DST)
+            #  - This can be 1-1 or many-to-1 (usually 2-1 for SEED + CLUSTER --> TRACKS)
             if 'gl1daq' not in in_types_str:
                 # In this case, the inputs should be a plain list
                 if isinstance(input_stem, dict):
@@ -902,23 +893,24 @@ and runnumber={runnumber}"""
                         continue
                     if dstfile in existing_status:
                         WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
-                        continue
+                        continue                      
                     in_files_for_seg= []
                     for host in files_for_run:
                         in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
                     CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
                     rule_matches[dstfile] = in_types, outbase, logbase, runnumber, seg, "dummy", self.dsttype
 
-            ######## Medium case. Streaming and triggered daq combination
+            ######## Streaming and triggered daq combination
+            # In this case, provide ALL input files for the run, and the output will produce its own segment numbers
+            # Output and input segment number have no correlation. Not possible to check for all possible existing outfiles
+            # so we have to assume if one exists for segment0, it exists for all. This is then the file we key on in prod db as well.
             if 'gl1daq' in in_types_str:
                 if not isinstance(input_stem, dict):
                     ERROR( "Input is raw daq but input_stem is not a dictionary.")
                     exit(-1)
                 CHATTY(f'\ninput_stem is a dictionary, {self.dsttype} is the output base, and {descriminator} selected/enumerates \n{in_types_str}\nas input')
                 
-                # Every runnumber has exactly "one" output file (albeit with many segments), and a gaggle of input files with matching daqhost
-                ### Important change, 07/15/2025: Only care about segment 0!
-
+                ### Important change, 07/15/2025: By default, only care about segment 0!
                 # Sort and group the input files by host
                 for leaf, daqhost in input_stem.items():
                     if daqhost not in files_for_run:
@@ -929,9 +921,8 @@ and runnumber={runnumber}"""
                     dsttype  = f'{self.dsttype}_{leaf}'
                     dsttype += f'_{self.dataset}' # DST_STREAMING_EVENT_%_run3auau
                     outbase=f'{dsttype}_{self.outtriplet}'
-                    seg=0
-                    logbase=f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
-                    # check for an existing output file.
+                    # Use segment 0 as key for logs and for existing output
+                    logbase=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}'
                     dstfile=f'{logbase}.root'
                     if dstfile in existing_output:
                         CHATTY(f"Output file {dstfile} already exists. Not submitting.")
@@ -944,9 +935,9 @@ and runnumber={runnumber}"""
                     DEBUG(f"Creating {dstfile} for run {runnumber} with {len(files_for_run[daqhost])} input files")
                     
                     files_for_run[daqhost].sort(key=lambda x: (x.segment)) # not needed but tidier
-                    rule_matches[dstfile] = [file.filename for file in files_for_run[daqhost]], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
-                # \if gl1daq level
-            # \for run level
+                    rule_matches[dstfile] = [segswitch], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
+                # \if gl1daq, i.e. combining or not
+            # \for run 
         INFO(f'[Parsing time ] {time.time() - now:.2g} seconds' )
 
         return rule_matches
