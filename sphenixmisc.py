@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Set
+from typing import Set,List
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 import subprocess
@@ -9,7 +9,21 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 from sphenixdbutils import test_mode as dbutils_test_mode
 
 # ============================================================================================
+def shell_command(command: str) -> List[str]:
+    """Minimal wrapper to hide away subbprocess tedium"""
+    CHATTY(f"[shell_command] Command: {command}")
+    ret=[]
+    try:
+        ret = subprocess.run(command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()
+    except subprocess.CalledProcessError as e:
+        WARN("[shell_command] Command failed with exit code:", e.returncode)
+    finally:
+        pass
 
+    CHATTY(f"[shell_command] Return value length is {len(ret)}.")
+    return ret
+
+# ============================================================================================
 def setup_rot_handler(args):
     #################### Test mode?
     test_mode = (
