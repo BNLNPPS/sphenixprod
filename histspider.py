@@ -90,10 +90,6 @@ def main():
     if args.physicsmode is not None:
         rule_substitutions["physicsmode"] = args.physicsmode # e.g. physics
 
-    if args.mangle_dstname:
-        DEBUG("Mangling DST name")
-        rule_substitutions['DST']=args.mangle_dstname
-
     # filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
     rule_substitutions["prodmode"] = "production"

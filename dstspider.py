@@ -73,10 +73,6 @@ def main():
     if args.physicsmode is not None:
         rule_substitutions["physicsmode"] = args.physicsmode # e.g. physics
 
-    if args.mangle_dstname:
-        DEBUG("Mangling DST name")
-        rule_substitutions['DST']=args.mangle_dstname
-
     # filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
     rule_substitutions["prodmode"] = "production"
@@ -245,12 +241,11 @@ def main():
         for file_and_info in chunk:
             file,info=file_and_info
             dsttype,run,seg,lfn,nevents,first,last,md5,size,time=info
-            ## lfn duplication can happen for unclean productions. Detect here.
-            ## We could try and id the "best" one but that's pricey for a rare occasion. Just delete the file and move on.
-            #### It happens when productions get interrupted. Delete the existing one.
+            ## lfn duplication can happen for reproductions where only the db was updated without deleting existing output.
+            ## The "best" one isn't always clear, so assume the latest one is better than what's old.
             if lfn in seen_lfns:
                 existing = str(Path(file).parent)+'/'+lfn
-                WARN(f"We already have a file with lfn {lfn}. Deleting {existing}.")
+                INFO(f"We already have a file with lfn {lfn}. Deleting {existing}.")
                 if not args.dryrun:
                     Path(existing).unlink(missing_ok=True)
                 continue
@@ -276,7 +271,7 @@ def main():
                            )
         except Exception as e:
             WARN(f"dstspider is ignoring the database exception and moving on.")
-            ### database errors can happen when there are multiples of a file in the dst.
+            ### database errors can happen when there are multiples of a file in the prod db.
             ### Why _that_ happens should be investigated, but here, we can just move on to the next chunk.
             continue
             exit(1)
