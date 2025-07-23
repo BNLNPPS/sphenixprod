@@ -136,9 +136,9 @@ def main():
     if args.physicsmode is not None:
         rule_substitutions["physicsmode"] = args.physicsmode # e.g. physics
 
-    if args.mangle_dstname:
-        DEBUG("Mangling DST name")
-        rule_substitutions['DST']=args.mangle_dstname
+    # if args.mangle_dstname:
+    #     DEBUG("Mangling DST name")
+    #     rule_substitutions['DST']=args.mangle_dstname
 
     if args.mem:
         DEBUG(f"Setting memory to {args.mem}")

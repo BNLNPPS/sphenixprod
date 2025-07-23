@@ -49,7 +49,7 @@ def submission_args():
     
     arg_parser.add_argument( '-N', '--nevents', default=0, dest='nevents', help='Number of events to process.  0=all.', type=int)
     ## sPHENIX files have specific names and locations. Overridde for testing or special purposes.
-    arg_parser.add_argument( '--mangle-dstname',dest='mangle_dstname',help="Replaces 'DST' with the specified name.", default=None )
+#    arg_parser.add_argument( '--mangle-dstname',dest='mangle_dstname',help="Replaces 'DST' with the specified name.", default=None )
     arg_parser.add_argument( '--mangle-dirpath',dest='mangle_dirpath',help="Inserts string after sphnxpro/ (or tmp/) in the directory structure", default=None, type=int )
 
     # copy additional file to the job work directory
