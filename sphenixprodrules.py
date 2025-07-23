@@ -778,7 +778,7 @@ order by runnumber
                             files_for_run[host]=[]
                     # Done with the non-default. 
                 else: ### Use only segment 0; this is actually a bit harder
-                    DEBUG("Using only input segment 0")
+                    CHATTY("Using only input segment 0")
                     # GL1 file?
                     gl1file0=None
                     for f in gl1_files:
