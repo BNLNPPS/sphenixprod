@@ -25,40 +25,40 @@ if [[ $OS =~ "Alma" ]]; then
    alias pip=/opt/sphenix/core/bin/pip3.9
 fi
 
-#export PYTHONPATH=${PYTHONPATH}:${SCRIPT_DIR}/slurp
-#export PATH=${PATH}:${SCRIPT_DIR}/bin
 export PYTHONPATH=${PYTHONPATH}:${SCRIPT_DIR}
 export PATH=${PATH}:${SCRIPT_DIR}
 
 echo Using $(python --version)
 
-parse_git_branch() {
-   branch=$( git -C ${SCRIPT_DIR} rev-parse --abbrev-ref HEAD  2> /dev/null )
-   local branch_color_status="\e[31m" # red is bad
-   if [ -z "$(git -C ${SCRIPT_DIR} status --porcelain -uno)" ]; then
-      branch_color_status="\e[32m" # green is good
-   fi
-   pbranch=""
-   pstatus=""
-   if [ -e ProdFlow ]; then
-      pbranch=$( git -C ./ProdFlow rev-parse --abbrev-ref HEAD  2> /dev/null )
-      pstatus="\e[31m"
-      if [ -z "$(git -C ./ProdFlow status --porcelain -uno)" ]; then
-         pstatus="\e[32m"
-      fi
-   else
-      pbranch=""
-      pstatus="\e[31m"
-  fi
+# parse_git_branch() {
+#    branch=$( git -C ${SCRIPT_DIR} rev-parse --abbrev-ref HEAD  2> /dev/null )
+#    local branch_color_status="\e[31m" # red is bad
+#    if [ -z "$(git -C ${SCRIPT_DIR} status --porcelain -uno)" ]; then
+#       branch_color_status="\e[32m" # green is good
+#    fi
+#    pbranch=""
+#    pstatus=""
+#    if [ -e ProdFlow ]; then
+#       pbranch=$( git -C ./ProdFlow rev-parse --abbrev-ref HEAD  2> /dev/null )
+#       pstatus="\e[31m"
+#       if [ -z "$(git -C ./ProdFlow status --porcelain -uno)" ]; then
+#          pstatus="\e[32m"
+#       fi
+#    else
+#       pbranch=""
+#       pstatus="\e[31m"
+#   fi
   
-   gitstatus="${branch_color_status} prod:${branch}\e[0m"
-   if [ -n "$pbranch" ]; then
-      #status="${status} \e[0;33mprodflow:${pbranch}\e[0m"
-      gitstatus="${gitstatus} ${pstatus} prodflow:${pbranch}"
-   fi
-   echo -e "${gitstatus}\e[0m"
-   #echo -e "\[${branch_color_status}\]prod:${branch}\[\e[0m\] \[${pstatus}\]prodflow:${pbranch}\[\e[0m\]"
-}
+#    gitstatus="${branch_color_status} prod:${branch}\e[0m"
+#    if [ -n "$pbranch" ]; then
+#       #status="${status} \e[0;33mprodflow:${pbranch}\e[0m"
+#       gitstatus="${gitstatus} ${pstatus} prodflow:${pbranch}"
+#    fi
+#    echo -e "${gitstatus}\e[0m"
+#    #echo -e "\[${branch_color_status}\]prod:${branch}\[\e[0m\] \[${pstatus}\]prodflow:${pbranch}\[\e[0m\]"
+# }
+# PS1="\u@\h $(parse_git_branch) \W> "
+PS1="\u@\h \W> "
 
 if [[ "$-" == *i* ]]; then
    # echo "Interactive shell"
@@ -74,12 +74,9 @@ alias cs='condor_submit'
 alias gristory='history | grep -v istory| grep $@'
 alias rehash='hash -r'
 
-# PS1="\u@\h $(parse_git_branch) \W> "
-PS1="\u@\h \W> "
-
-# Specialized settings for individual users of sphnxbuild
+# Specialized settings for individual users of sphnxpro
 # Identified from ssh agent forwarding
-if [[ `ssh-add -l` =~ "kolja" ]] ; then
+if [[ `ssh-add -l` =~ "eickolja" ]] ; then
     echo "Hello Kolja"    
     export GIT_CONFIG_GLOBAL=/sphenix/u/sphnxpro/.gitconfig.kolja
     git config --global user.name "Kolja Kauder"
