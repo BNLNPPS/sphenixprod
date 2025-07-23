@@ -475,8 +475,8 @@ class RuleConfig:
             except Exception as e:
                 print(f"An error occurred: {e}")
             batch_name=job_data.get("batch_name")
-            if branch_name!="main":
-                batch_name=f"{branch_name}.{batch_name}"
+            # if branch_name!="main":
+            batch_name=f"{branch_name}.{batch_name}"
                 
             job_config=CondorJobConfig(
                 executable=script,
