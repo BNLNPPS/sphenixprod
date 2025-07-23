@@ -12,26 +12,34 @@ import pprint # noqa F401
 
 import argparse
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit
+from sphenixmisc import setup_rot_handler, should_I_quit, shell_command
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import cnxn_string_map, dbQuery
 
-# ============================================================================================
-def shell_command(command: str) -> List[str]:
-    """Minimal wrapper to hide away subbprocess tedium"""
-    CHATTY(f"[shell_command] Command: {command}")
-    ret=[]
-    try:
-        ret = subprocess.run(command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()
-    except subprocess.CalledProcessError as e:
-        WARN("[shell_command] Command failed with exit code:", e.returncode)
-    finally:
-        pass
 
-    CHATTY(f"[shell_command] Return value length is {len(ret)}.")
-    return ret
+# ============================================================================================
+def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace):
+    ### Outsourced because this function is independently useful
+    submitdir = Path(f'{args.submitdir}').resolve()
+    subbase = f'{rule.dsttype}_{rule.dataset}_{rule.outtriplet}'
+    INFO(f'Submission files located in {submitdir}')
+    INFO(f'Submission files based on {subbase}')
+
+    sub_files = list(Path(submitdir).glob(f'{subbase}*.sub'))
+    sub_files = list(map(str,sub_files))
+    DEBUG(f"Submission files before run constraint:\n{pprint.pformat(sub_files)}")
+    runlist=list(map(str,rule.runlist_int))
+
+    # Only use those who match the run condition - the pythonic way
+    sub_files = {file for file in sub_files if any( f'_{runnumber}' in file for runnumber in runlist) }
+    sub_files = sorted(sub_files,reverse=True) # latest runs first
+    DEBUG(f"Submission files after run constraint:\n{pprint.pformat(sub_files)}")
+    if sub_files == []:
+        INFO("No submission files found.")
+    return sub_files
+        
 
 # ============================================================================================
 
@@ -41,25 +49,28 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
     Locking and deleting is used to avoid double-submission.
     """
 
-    ### Locate files.
-    submitdir = Path(f'{args.submitdir}').resolve()
-    subbase = f'{rule.dsttype}_{rule.dataset}_{rule.outtriplet}'
-    INFO(f'Submission files located in {submitdir}')
-    INFO(f'Submission files based on {subbase}')
-
-    sub_files = list(Path(submitdir).glob(f'{subbase}*.sub'))
-    sub_files = map(str,sub_files)
-    CHATTY(f"Submission files before run constraint:\n{pprint.pformat(sub_files)}")
-    runlist=list(map(str,rule.runlist_int))
-
-    # Only use those who match the run condition - the pythonic way
-    sub_files = {file for file in sub_files if any( f'_{runnumber}' in file for runnumber in runlist) }
-    sub_files = sorted(sub_files,reverse=True) # latest runs first
-    DEBUG(f"Submission files after run constraint:\n{pprint.pformat(sub_files)}")
+    sub_files=locate_submitfiles(rule, args)
     if sub_files == []:
         INFO("No submission files found.")
         
+    submitted_jobs=0
+    # Determine what's already in "idle"
+    # Note: For this, we cannot use runnumber cuts, too difficult (and expensive) to get from condor.
+    # Bit of a clunky method. But it works and doesn't get called all that often.
+    cq_query  =  'condor_q'
+    cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
+    cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
+    idle_procs = shell_command(cq_query + ' -idle' ) # Select what to count (idle, held must be asked separately)
+    held_procs = shell_command(cq_query + ' -held' ) 
+    submitted=len(idle_procs)+len(held_procs)
+    if submitted>0:
+        INFO(f"We already have {submitted} jobs in the queue waiting for execution.")
+    
+    max_submitted=10000 
     for sub_file in sub_files:
+        if submitted>max_submitted:
+            break
+
         in_file=re.sub(r".sub$",".in",str(sub_file))
         ### Update production database
         # Extract dbids
@@ -71,6 +82,7 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
         except Exception as e:
             ERROR(f"Error while parsing {in_file}:\n{e}")
             exit(1)
+        submitted+=len(dbids)
         dbids_str=", ".join(dbids)
         update_prod_state = f"""
 UPDATE production_status
