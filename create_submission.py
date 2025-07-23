@@ -26,7 +26,7 @@ from sphenixcondorjobs import CondorJob
 from sphenixdbutils import test_mode as dbutils_test_mode
 import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
 from sphenixdbutils import cnxn_string_map, dbQuery
-from execute_condorsubmission import execute_submission
+from execute_condorsubmission import locate_submitfiles,execute_submission
 
 # ============================================================================================
 
@@ -49,6 +49,9 @@ def main():
     if args.force:
         ERROR('Got "--force": That doesn\'t work yet. Sorry.')
         exit(1)
+        #### For --force, we could do the file and database deletion in RuleConfig.
+        # Would be kinda nice because only then we'll know what's _really_ affected, and we could use the logic there.
+        # Instead, ensure that the rule logic needs no special cases, set everything up here.
         WARN('Got "--force": Override existing output in files, datasets, and production_status DBs. Delete those files.')
         WARN('               Note that it\'s YOUR job to ensure there\'s no job in the queue or file in the DST lake which will overwrite this later!')
         answer = input("Do you want to continue? (yes/no): ")
@@ -151,21 +154,8 @@ def main():
     if args.mangle_dirpath:
         rule_substitutions["prodmode"] = args.mangle_dirpath
 
-    #WARN("Don't forget other override_args")
-    ## TODO? dbinput, mem, docstring, unblock, batch_name
-
     CHATTY(f"Rule substitutions: {rule_substitutions}")
     INFO("Now loading and building rule configuration.")
-
-    #### For --force, we could do the file and database deletion in RuleConfig.
-    # Would be kinda nice because only then we'll know what's _really_ affected, and we could use the logic there.
-    # Instead, ensure that the rule logic needs no special cases, set everything up here.
-    # if args.force:
-    #     ### Output files. Delete all existing DSTs from this run.
-    #     dstlocation=
-        
-    #     # not args.dryrun:
-    #     ### Database: 
 
     #################### Load specific rule from the given yaml file.
     try:
@@ -222,17 +212,29 @@ def main():
     submittable_runs=sorted(submittable_runs, reverse=True)
 
     INFO(f"Creating submission for {len(submittable_runs)} runs")
-    total_jobs=0
-    max_jobs=10000 # FIXME
-    
+    ### Limit number of job files lying around
+    max_jobs=20000 
+    # Count up what we already have
+    existing_jobs=0
+    sub_files=locate_submitfiles(rule,args)
+    for sub_file in sub_files:
+        in_file=re.sub(r".sub$",".in",str(sub_file))
+        with open(in_file,'r') as f:
+            existing_jobs += len(f.readlines())
+    if existing_jobs>0:
+        INFO(f"We already have {existing_jobs} jobs waiting for submission.")
+
+    # Update existing or produce more submission files up to the given limit
     for submit_run in submittable_runs:
+        if existing_jobs>max_jobs:
+            break
         matches=matches_by_run[submit_run]
-        total_jobs+=len(matches)
+        existing_jobs+=len(matches)
         INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
         condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
         condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
         if not args.dryrun:
-            if not Path(condor_subfile).is_file() : # Create only if it doesn't exist yet
+            if not Path(condor_subfile).is_file() : # Create header (.sub file) for this run if it doesn't exist yet
                 with open(condor_subfile, "w") as f:
                     f.write(str(base_job))
                     f.write(
@@ -243,7 +245,6 @@ error = $(error)
 arguments = $(arguments)
 queue log,output,error,arguments from {condor_infile}
 """)
-        #\if not dryrun: create header
 
         # individual lines per job
         prod_state_rows=[]
@@ -290,7 +291,6 @@ queue log,output,error,arguments from {condor_infile}
                 timestamp=str(datetime.now().replace(microsecond=0)),
                 host=os.uname().nodename.split('.')[0]
             ))
-            if total_jobs>=max_jobs: break
             # end of collecting job lines for this run
 
         comma_prod_state_rows=',\n'.join(prod_state_rows)
@@ -318,7 +318,6 @@ returning id
     ### And submit, if so desired
     if args.andgo: 
         execute_submission(rule, args)
-
         
     if args.profile:
         profiler.disable()
@@ -326,14 +325,13 @@ returning id
         stats = pstats.Stats(profiler)
         stats.strip_dirs().sort_stats('time').print_stats(10)
 
-    print(f"Submission directory is {submitdir}")    
     prettyfs=pprint.pformat(rule.job_config.filesystem)
     input_stem=inputs_from_output[rule.dsttype]
     if isinstance(input_stem, list):
         prettyfs=prettyfs.replace('{leafdir}',rule.dsttype)
+
+    INFO(f"Submission directory is {submitdir}")    
     INFO(f"Other location templates:\n{prettyfs}")
-
-
     INFO( "KTHXBYE!" )
 
 # ============================================================================================
