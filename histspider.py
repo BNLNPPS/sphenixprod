@@ -137,18 +137,11 @@ def main():
         tmpfound = shell_command(f"{find} {hdir} -type f -name HIST\* -o -name CALIB\*")
         # Remove files that already end in ".root" - they're already registered
         foundhists += [ file for file in tmpfound if not file.endswith(".root") ]
-    INFO(f"Found {len(foundhists)} histograms to register.")
     
-    tstart = datetime.now()
-    tlast = tstart
-    when2blurb=2000
-    fmax=len(foundhists)
-    for f, file in enumerate(foundhists):
-        if f%when2blurb == 0:
-            now = datetime.now()
-            print( f'HIST #{f}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
-            print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
-            tlast = now
+    # Final cuts
+    INFO(f"Found a total of {len(foundhists)} histograms to register. Checking against run constraint")
+    act_on_hists=[]
+    for file in foundhists:
         try:
             lfn,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
         except Exception as e:
@@ -176,8 +169,20 @@ def main():
                 dataset=rule.dataset,
                 tag=rule.outtriplet,
                 )
-
-        ###### Here be dragons
+        act_on_hists.append((full_file_path,fullinfo))
+    fmax=len(act_on_hists)        
+    INFO(f"Found {fmax} in the specified run range")
+    
+    ###### Here be dragons
+    tstart = datetime.now()
+    tlast = tstart
+    when2blurb=2000
+    for f, (full_file_path,fullinfo) in enumerate(act_on_hists):
+        if f%when2blurb == 0:
+            now = datetime.now()
+            print( f'HIST #{f}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
+            print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
+            tlast = now
         ### Register first, then move. 
         upsert_filecatalog(fullinfos=fullinfo,
                            dryrun=args.dryrun # only prints the query if True
@@ -187,10 +192,9 @@ def main():
         try:
             os.rename( file, full_file_path )
         except Exception as e:
+            print(f" {file}\n{full_file_path}" )
             WARN(e)
-            # exit(-1)
-
-        pass # End of HIST loop
+            exit(1)
     
     if args.profile:
         profiler.disable()
