@@ -4,7 +4,6 @@
 inputs_from_output={
     'DST_STREAMING_EVENT' : { f'intt{n}'       : f'intt{n}'      for n in range(0,8) }
                         |   { f'mvtx{n}'       : f'mvtx{n}'      for n in range(0,6) }
-#                        |   { f'ebdc{n:02}'     : f'ebdc{n:02}'   for n in range(0,24) }
                         |   { f'ebdc{n:02}_0'  : f'ebdc{n:02}'   for n in range(0,24) }
                         |   { f'ebdc{n:02}_1'  : f'ebdc{n:02}:1' for n in range(0,24) }
                         |   {  'ebdc39'        :  'ebdc39' }
