@@ -82,7 +82,16 @@ if [[ `ssh-add -l` =~ "eickolja" ]] ; then
     git config --global user.name "Kolja Kauder"
     git config --global user.email "kkauder@gmail.com"
     #git config --global push.default simple
+    git config --global push.autoSetupRemote true
 
+    if [[ -n "$_CONDOR_SCRATCH_DIR" ]]; then
+	echo "_CONDOR_SCRATCH_DIR = $_CONDOR_SCRATCH_DIR"
+    else
+	echo "_CONDOR_SCRATCH_DIR is not defined."
+	export _CONDOR_SCRATCH_DIR=~/devkolja/condorscratch
+	echo "Set to $_CONDOR_SCRATCH_DIR"
+    fi
+    
     # zsh-style history search
     bind '"\e[A": history-search-backward'
     bind '"\e[B": history-search-forward'
