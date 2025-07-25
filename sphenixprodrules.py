@@ -950,13 +950,17 @@ def parse_lfn(lfn: str, rule: RuleConfig) -> Tuple[str,...] :
         name=Path(name).name # could throw an error instead if we're handed a full path.
         #  split at, and remove, run3auau_new_nocbdtag_v001, remainder is 'DST_...', '-00066582-00000.root' (or .finished)
         # dsttype,runsegend=name.split(f'_{rule.outtriplet}_{rule.dataset}')
-        dsttype,runsegend=name.split(f'_{rule.dataset}_{rule.outtriplet}')
+        dsttype,runsegend=name.split(f'_{rule.dataset}_{rule.outtriplet}')        
+        if runsegend=='.root':
+            raise ValueError("killkillkill")    
         _,run,segend=runsegend.split('-')
         seg,end=segend.split('.')
     except ValueError as e:
         print(f"[parse_lfn] Caught error {e}")
         print(f"lfn = {lfn}")
-        exit(-1)        
+        raise
+        # else:
+        #     exit(-1)        
     return dsttype,int(run),int(seg),end
 
 

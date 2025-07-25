@@ -134,22 +134,36 @@ def main():
     # They too have dbinfo and need to be registered and renamed
     foundhists=[]
     for hdir in allhistdirs:        
-        tmpfound = shell_command(f"{find} {hdir} -type f -name HIST\* -o -name CALIB\*")
+        tmpfound = shell_command(f"{find} {hdir} -type f -name HIST\*root:\* -o -name CALIB\*")
+            
         # Remove files that already end in ".root" - they're already registered
         foundhists += [ file for file in tmpfound if not file.endswith(".root") ]
     
     # Final cuts
     INFO(f"Found a total of {len(foundhists)} histograms to register. Checking against run constraint")
     act_on_hists=[]
-    for file in foundhists:
+    for loopfile in foundhists:
         try:
-            lfn,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
+            lfn,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(loopfile)
         except Exception as e:
             WARN(f"Error: {e}")
             continue
-        fullpath=str(Path(file).parent)+'/'+lfn
-        dsttype,run,seg,_=parse_lfn(lfn,rule)
-        
+        try:
+            dsttype,run,seg,_=parse_lfn(lfn,rule)
+        except Exception as e:
+            if e.args[0]=="killkillkill":
+                WARN(f"{lfn} does not contain run and segment information. Delete.")
+                ## DOUBLE-check to not delete already registered files.
+                if not loopfile.endswith(".root"):
+                    #Path(loopfile).unlink()
+                    print(loopfile)
+                    continue
+                else:
+                    WARN(f"{loopfile} looks like one we shouldn't have caught here anyway. Keep.")
+            WARN(f"Error parsing lfn {lfn}: {e}. Skipped.")
+            continue
+
+        fullpath=str(Path(loopfile).parent)+'/'+lfn        
         if binary_contains_bisect(rule.runlist_int,run):
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
@@ -162,7 +176,7 @@ def main():
         full_file_path = fullpath
 
         fullinfo=full_db_info(
-                origfile=file,
+                origfile=loopfile,
                 info=info,
                 lfn=lfn,
                 full_file_path=full_file_path,
@@ -170,6 +184,7 @@ def main():
                 tag=rule.outtriplet,
                 )
         act_on_hists.append((full_file_path,fullinfo))
+        
     fmax=len(act_on_hists)        
     INFO(f"Found {fmax} in the specified run range")
     
@@ -183,19 +198,23 @@ def main():
             print( f'HIST #{f}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({when2blurb/(now - tlast).total_seconds():.2f} Hz). ' )
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
             tlast = now
+
+        origfile=fullinfo.origfile
         ### Register first, then move. 
         upsert_filecatalog(fullinfos=fullinfo,
                            dryrun=args.dryrun # only prints the query if True
                            )
         if args.dryrun:
-            continue
+            if not Path(origfile).is_file():
+                error(f"Can't see {origfile}")
+                exit(1)
         try:
-            os.rename( file, full_file_path )
+            os.rename( origfile, full_file_path )
         except Exception as e:
-            print(f" {file}\n{full_file_path}" )
-            WARN(e)
+            print(f" {origfile}\n{full_file_path}" )
+            ERROR(e)
             exit(1)
-    
+            
     if args.profile:
         profiler.disable()
         DEBUG("Profiling finished. Printing stats...")
