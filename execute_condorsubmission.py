@@ -62,9 +62,10 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
     cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
     idle_procs = shell_command(cq_query + ' -idle' ) # Select what to count (idle, held must be asked separately)
     held_procs = shell_command(cq_query + ' -held' ) 
-    submitted=len(idle_procs)+len(held_procs)
-    if submitted>0:
-        INFO(f"We already have {submitted} jobs in the queue waiting for execution.")
+    if len(idle_procs) > 0:
+        INFO(f"We already have {len(idle_procs)} jobs in the queue waiting for execution.")
+    if len(held_procs) > 0:
+        WARN(f"There are {len(held_procs)} held jobs what should be removed and resubmitted.")
     
     max_submitted=10000 
     for sub_file in sub_files:
