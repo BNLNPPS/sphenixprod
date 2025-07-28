@@ -1,6 +1,7 @@
 #!/bin/env python
 
 from pathlib import Path
+from datetime import datetime
 import cProfile
 import pstats
 import subprocess
@@ -69,7 +70,7 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
     
     max_submitted=10000 
     for sub_file in sub_files:
-        if submitted>max_submitted:
+        if submitted_jobs>max_submitted:
             break
 
         in_file=re.sub(r".sub$",".in",str(sub_file))
@@ -83,11 +84,12 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
         except Exception as e:
             ERROR(f"Error while parsing {in_file}:\n{e}")
             exit(1)
-        submitted+=len(dbids)
+        submitted_jobs+=len(dbids)
         dbids_str=", ".join(dbids)
+        now_str=timestamp=str(datetime.now().replace(microsecond=0))
         update_prod_state = f"""
 UPDATE production_status
-   SET status='submitted'
+   SET status='submitted',submitted='{now_str}'
 WHERE id in
 ( {dbids_str} )
 ;
