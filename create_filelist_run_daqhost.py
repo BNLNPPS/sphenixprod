@@ -41,6 +41,7 @@ def main():
     AND (daqhost = '{daqhost}' OR daqhost = 'gl1daq') 
     ORDER BY filename
     """
+    print(sql_query)
     rows = dbQuery( cnxn_string_map['rawr'], sql_query).fetchall()
     for row in rows:
         filename, host = row
