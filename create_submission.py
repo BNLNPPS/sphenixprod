@@ -81,21 +81,8 @@ def main():
     #################### Rule has steering parameters and two subclasses for input and job specifics
     # Rule is instantiated via the yaml reader.
 
-    ### Parse command line arguments into a substitution dictionary
-    # This dictionary is passed to the ctor to override/customize yaml file parameters
-    # Note: The following could all be hidden away in the RuleConfig ctor
-    # but this way, CLI arguments are used by the function that received them and
-    # constraint constructions are visibly handled away from the RuleConfig class
-    rule_substitutions = {}
-    rule_substitutions["runs"]=args.runs
-    rule_substitutions["runlist"]=args.runlist
-    rule_substitutions["nevents"] = args.nevents
-    rule_substitutions["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case
-    
+    # Files to copy to the worker - can be added to later by yaml and args
     payload_list=[]
-    ### Copy our own files to the worker:
-    # For database access - from _production script_ directory
-    script_path = Path(__file__).parent.resolve()
 
     # Safely add module origins
     sphenixdbutils_spec = importlib.util.find_spec('sphenixdbutils')
@@ -112,54 +99,57 @@ def main():
         ERROR("simpleLogger module not found.")
         exit(1)
 
+    script_path = Path(__file__).parent.resolve()
     payload_list += [ f"{script_path}/stageout.sh" ]
     payload_list += [ f"{script_path}/GetNumbers.C" ]
+    payload_list += [ f"{script_path}/common_runscript_prep.sh" ]
     payload_list += [ f"{script_path}/create_filelist_run_daqhost.py" ]
     payload_list += [ f"{script_path}/create_filelist_run_seg.py" ]
     payload_list += [ f"{script_path}/create_full_filelist_run_seg.py" ]
     
-    # .testbed, .slurp (deprecated): indicate test mode -- Search in the _submission_ directory
+    # .testbed: indicate test mode -- Search in the _submission_ directory
     if Path(".testbed").exists():
         payload_list += [str(Path('.testbed').resolve())]
-    if Path(".slurp").exists():
-        WARN('Using a ".slurp" file or directory is deprecated')
-        payload_list += [str(Path('.slurp').resolve())]
 
     # from command line - the order means these can overwrite the default files from above
     if args.append2rsync:
         payload_list.insert(args.append2rsync)
-        
     DEBUG(f"Addtional resources to be copied to the worker: {payload_list}")
-    rule_substitutions["payload_list"] = payload_list
+
+    ### Parse command line arguments into a substitution dictionary
+    # This dictionary is passed to the ctor to override/customize yaml file parameters
+    param_overrides = {}
+    param_overrides["script_path"]       = script_path
+    param_overrides["payload_list"]      = payload_list
+    param_overrides["runs"]              = args.runs
+    param_overrides["runlist"]           = args.runlist
+    param_overrides["nevents"]           = args.nevents
+    param_overrides["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case    
+    param_overrides["prodmode"]          = "production"
+    # For testing, "production" (close to the root of all paths) in the default filesystem) can be replaced
+    if args.mangle_dirpath:
+        param_overrides["prodmode"] = args.mangle_dirpath
 
     # Rest of the input substitutions
     if args.physicsmode is not None:
-        rule_substitutions["physicsmode"] = args.physicsmode # e.g. physics
-
-    # if args.mangle_dstname:
-    #     DEBUG("Mangling DST name")
-    #     rule_substitutions['DST']=args.mangle_dstname
+        param_overrides["physicsmode"] = args.physicsmode # e.g. physics
 
     if args.mem:
         DEBUG(f"Setting memory to {args.mem}")
-        rule_substitutions['mem']=args.mem
+        param_overrides['request_memory']=args.mem
 
-    if args.mem:
+    if args.priority:
         DEBUG(f"Setting priority to {args.priority}")
-        rule_substitutions['priority']=args.priority
+        param_overrides['priority']=args.priority
 
-    # rule.filesystem is the base for all output, allow for mangling here
-    # "production" (in the default filesystem) is replaced
-    rule_substitutions["prodmode"] = "production"
-    if args.mangle_dirpath:
-        rule_substitutions["prodmode"] = args.mangle_dirpath
-
-    CHATTY(f"Rule substitutions: {rule_substitutions}")
+    CHATTY(f"Rule substitutions: {param_overrides}")
     INFO("Now loading and building rule configuration.")
 
     #################### Load specific rule from the given yaml file.
     try:
-        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, rule_substitutions=rule_substitutions )
+        rule =  RuleConfig.from_yaml_file( yaml_file=args.config,
+                                           rule_name=args.rulename,
+                                           param_overrides=param_overrides )
         INFO(f"Successfully loaded rule configuration: {args.rulename}")
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
@@ -180,7 +170,7 @@ def main():
     # Note: matches() is keyed by output file names, but the run scripts use the output base name and separately the run number    
     rule_matches=match_config.matches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
-        
+
     if os.uname().sysname=='Darwin' :
         WARN("Running on native Mac, cannot use condor.")
         WARN("Exiting early.")
@@ -219,8 +209,11 @@ def main():
     sub_files=locate_submitfiles(rule,args)
     for sub_file in sub_files:
         in_file=re.sub(r".sub$",".in",str(sub_file))
+        if not Path(in_file).is_file():
+            continue
         with open(in_file,'r') as f:
             existing_jobs += len(f.readlines())
+            
     if existing_jobs>0:
         INFO(f"We already have {existing_jobs} jobs waiting for submission.")
 
@@ -229,15 +222,16 @@ def main():
         if existing_jobs>max_jobs:
             break
         matches=matches_by_run[submit_run]
-        existing_jobs+=len(matches)
         INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
+        existing_jobs+=len(matches)
         condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
         condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
         if not args.dryrun:
-            if not Path(condor_subfile).is_file() : # Create header (.sub file) for this run if it doesn't exist yet
-                with open(condor_subfile, "w") as f:
-                    f.write(str(base_job))
-                    f.write(
+            # (Re-) create the "header" - common job parameters
+            Path(condor_subfile).unlink(missing_ok=True) 
+            with open(condor_subfile, "w") as f:
+                f.write(str(base_job))
+                f.write(
 f"""
 log = $(log)
 output = $(output)
@@ -249,13 +243,13 @@ queue log,output,error,arguments from {condor_infile}
         # individual lines per job
         prod_state_rows=[]
         condor_rows=[]
-        for out_file,(in_files, outbase, logbase, run, seg, daqhost, leaf) in matches:
+        for out_file,(in_files, outbase, logbase, run, seg, daqhost, dsttype) in matches:            
             # Create .in file row
             condor_job = CondorJob.make_job( output_file=out_file, 
                                              inputs=in_files,
                                              outbase=outbase,
                                              logbase=logbase,
-                                             leafdir=leaf,
+                                             leafdir=dsttype,
                                              run=run,
                                              seg=seg,
                                              daqhost=daqhost,
