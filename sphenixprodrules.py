@@ -15,7 +15,7 @@ import psutil
 from sphenixdbutils import cnxn_string_map, dbQuery
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import inputs_from_output
-from sphenixcondorjobs import CondorJobConfig
+from sphenixcondorjobs import CondorJobConfig,CondorJobConfig_fieldnames,glob_arguments_tmpl
 from sphenixmisc import binary_contains_bisect
 
 from collections import namedtuple
@@ -61,15 +61,6 @@ _default_filesystem = {
     'condor'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
 }
 
-# if 'minicondor' in os.uname().nodename or 'local' in os.uname().nodename: # Mac 
-#     _default_filesystem = {
-#         'outdir'  : "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/dstlake/{period}/{physicsmode}/{dsttype}",
-#         'finaldir': "/Users/eickolja/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}",
-#         'logdir'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
-#         'histdir' :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/hist",
-#         'condor'  :   "/Users/eickolja/sphenix/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
-#     }
-
 # ============================================================================
 def is_executable(file_path):
   """
@@ -102,12 +93,14 @@ def check_params(params_data: Dict[str, Any], required: List[str], optional: Lis
             check_clean = False
             raise ValueError(f"Missing required field '{f}'.")
     # Have to iterate over a copy since we are deleting fields
-    for f in params_data.copy():
-        if f not in optional + required:
-            WARN( f"Unexpected field '{f}' in params. Removing, but you should clean up the yaml")
-            # raise ValueError(f"Unexpected field '{f}'.")
-            check_clean = False
-            del params_data[f]
+    if optional:
+        for f in params_data.copy():
+            if f not in optional + required:
+                WARN( f"Unexpected field '{f}' in params. Removing, but you should clean up the yaml")
+                # raise ValueError(f"Unexpected field '{f}'.")
+                check_clean = False
+                del params_data[f]
+
     return check_clean
 
 # ============================================================================================
@@ -159,16 +152,17 @@ class InputConfig:
     """Represents the input configuration block in the YAML."""
     db: str
     table: str
-    intriplet:        Optional[str] = "" # ==tag, i.e. new_nocdbtag_v001; optional only because it's not needed for event combiners
+    # Input descriptors. Optional because not needed for event combining
+    intriplet:        str = None # ==tag, i.e. new_nocdbtag_v001
+    indsttype:        List[str] = None # ['DST_STREAMING_EVENT_epcd01_0','DST_STREAMING_EVENT_epcd01_1'];
+    indsttype_str:    str = None        # " ".join(indsttype) for SQL query
+    # Run Quality
     min_run_events:   Optional[int] = None
     min_run_time:     Optional[int] = None
-    prod_identifier:  Optional[str] = None # run3auau, run3cosmics
-
     combine_seg0_only:          Optional[bool] = True  # For combination jobs, use only segment 0. Default is yes. No effect for downstream jobs.    
     infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
     direct_path: Optional[str]                = None  # Make direct_path optional
-
     
 # ============================================================================
 @dataclass( frozen = True )
@@ -211,7 +205,7 @@ class RuleConfig:
                   yaml_file: str, #  Used for paths
                   yaml_data: Dict[str, Any],
                   rule_name: str,
-                  rule_substitutions=None,
+                  param_overrides=None,
                   ) -> "RuleConfig":
         """
         Constructs a RuleConfig object from a YAML data dictionary.
@@ -219,7 +213,7 @@ class RuleConfig:
         Args:
             yaml_data: The dictionary loaded from the YAML file.
             rule_name: The name of the rule to extract from the YAML.
-            rule_substitutions: A dictionary (usually originating from argparse) to override the YAML data and fill in placeholders.
+            param_overrides: A dictionary (usually originating from argparse) to override the YAML data and fill in placeholders.
 
         Returns:
             A RuleConfig object.
@@ -229,9 +223,9 @@ class RuleConfig:
         except KeyError:
             raise ValueError(f"Rule '{rule_name}' not found in YAML data.")
 
-        if rule_substitutions is None:
-            WARN("No rule substitutions provided. Using empty dictionary bnut this may fail.")
-            rule_substitutions = {}
+        if param_overrides is None:
+            WARN("No rule substitutions provided. This may fail.")
+            param_overrides = {}
 
         ### Extract and validate top level rule parameters
         params_data = rule_data.get("params", {})
@@ -246,8 +240,8 @@ class RuleConfig:
         outtriplet = f'{build_string}_{params_data["dbtag"]}_{version_string}'
         
         ### Which runs to process?
-        runs=rule_substitutions["runs"]
-        runlist=rule_substitutions["runlist"]
+        runs=param_overrides["runs"]
+        runlist=param_overrides["runlist"]
         INFO(f"runs = {runs}")
         INFO(f"runlist = {runlist}")
         runlist_int=None
@@ -297,14 +291,9 @@ class RuleConfig:
         CHATTY(f"Runlist: {runlist_int}")
         CHATTY(f"Run Condition: {list_to_condition(runlist_int)}")
 
-        ### Turning off name mangling; directory mangling is sufficient
-        # if 'DST' in rule_substitutions:
-        #     outbase=outbase.replace('DST',rule_substitutions['DST'])
-        #     DEBUG(f"outbase is mangled to {outbase}")
-
         ### Optionals
         physicsmode = params_data.get("physicsmode", "physics")
-        physicsmode = rule_substitutions.get("physicsmode", physicsmode)
+        physicsmode = param_overrides.get("physicsmode", physicsmode)
         comment = params_data.get("comment", None)
 
         ###### Now create InputConfig and CondorJobConfig
@@ -314,18 +303,31 @@ class RuleConfig:
                     , required=["db", "table"]
                     , optional=["intriplet",
                                 "min_run_events","min_run_time",
-                                "direct_path", "prod_identifier",
+                                "direct_path", "dataset",
                                 "combine_seg0_only",
                                 "infile_query_constraints",
                                 "status_query_constraints","physicsmode"] )
         
         intriplet=input_data.get("intriplet")
+        dsttype=params_data["dsttype"]
+        input_stem = inputs_from_output[dsttype]
+        CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
+        if isinstance(input_stem, dict):
+            indsttype = list(input_stem.values())
+        elif isinstance(input_stem, list):            
+            indsttype = input_stem
+        else:
+            ERROR("Unrecognized type of input file descriptor {type(input_stem)}")
+            exit(1)
+        indsttype_str=",".join(indsttype)
+        # indsttype_str=f"('{indsttype_str}')" ## Commented out. Adding parens here doesn't play well with handover to condor
+
         min_run_events=input_data.get("min_run_events",100000)
         min_run_time=input_data.get("min_run_time",300)
 
         combine_seg0_only=input_data.get("combine_seg0_only",True) # Default is true
         # If explicitly specified, argv overrides
-        argv_combine_seg0_only=rule_substitutions.get("combine_seg0_only")
+        argv_combine_seg0_only=param_overrides.get("combine_seg0_only")
         if argv_combine_seg0_only is not None:            
             combine_seg0_only=argv_combine_seg0_only
         
@@ -334,88 +336,100 @@ class RuleConfig:
         if input_direct_path is not None:
             input_direct_path = input_direct_path.format(mode=physicsmode)
             DEBUG (f"Using direct path {input_direct_path}")
-        prod_identifier = input_data.get("prod_identifier",outstub)
+        dataset = input_data.get("dataset",outstub)
         
         # Allow arbitrary query constraints to be added
         infile_query_constraints  = input_data.get("infile_query_constraints", "")
-        infile_query_constraints += rule_substitutions.get("infile_query_constraints", "")
+        infile_query_constraints += param_overrides.get("infile_query_constraints", "")
         status_query_constraints = input_data.get("status_query_constraints", "")
-        status_query_constraints += rule_substitutions.get("status_query_constraints", "")
+        status_query_constraints += param_overrides.get("status_query_constraints", "")
         DEBUG(f"Input query constraints: {infile_query_constraints}" )
         DEBUG(f"Status query constraints: {status_query_constraints}" )
+
         input_config=InputConfig(
-          db=input_data["db"],
-          table=input_data["table"],
-          intriplet=intriplet,
-          min_run_events=min_run_events,
-          min_run_time=min_run_time,
-          combine_seg0_only=combine_seg0_only,
-          direct_path=input_direct_path,
-          prod_identifier= prod_identifier,
-          infile_query_constraints=infile_query_constraints,
-          status_query_constraints=status_query_constraints
+            db=input_data["db"],
+            table=input_data["table"],            
+            intriplet=intriplet,
+            indsttype=indsttype,
+            indsttype_str=indsttype_str,
+            min_run_events=min_run_events,
+            min_run_time=min_run_time,
+            combine_seg0_only=combine_seg0_only,
+            infile_query_constraints=infile_query_constraints,
+            status_query_constraints=status_query_constraints,
+            direct_path=input_direct_path,
         )
 
         # Extract and validate job_config
         job_data = rule_data.get("job", {})
         check_params(job_data
                     , required=[
-                    "script", "payload", "neventsper", "payload", "mem",
-                    "arguments", "log","priority",
-                    ]
-                    , optional=["batch_name", "comment","filesystem",
-                                "request_cpus",
-                        # "accounting_group","accounting_group_user",
-                    ]
-                 )
+                        "script", "payload", "neventsper","log","priority",
+                        # "request_memory",  ## request_memory should be required; but we'll check on it later because "mem" is a deprecated synonym
+                    ],
+                     optional=None
+                    )
 
-        # Payload code etc. Prepend by the yaml file's path unless they are direct
+        ### Some yaml parameters don't directly correspond to condor ones. Treat those first.
+        # These are just named differently to reflect their template character
+        job_data["log_tmpl"]=job_data.pop("log")
+        arguments_tmpl=job_data.pop("arguments",None)
+        if arguments_tmpl:
+            # WARN("Using 'arguments' from the yaml file.")
+            ERROR("Yaml rule contains 'arguments' field. That almost certainly means the file is outdated.")
+            exit(1)
+        else:
+            arguments_tmpl=glob_arguments_tmpl
+        job_data["arguments_tmpl"]=arguments_tmpl
+                 
+        # Payload code etc. 
+        payload_list  = job_data.pop("payload")
+        payload_list += param_overrides.get("payload_list",[])
+        # Prepend by the yaml file's path unless they are direct
         yaml_path = Path(yaml_file).parent.resolve()            
-        payload_list = job_data["payload"] + rule_substitutions.get("payload_list",[])
         for i,loc in enumerate(payload_list):
             if not loc.startswith("/"):
                 payload_list[i]= f'{yaml_path}/{loc}'
         DEBUG(f'List of payload items is {payload_list}')
-
-        # # Filesystem paths contain placeholders for substitution
-        filesystem = job_data.get("filesystem")
-        if filesystem is None:
+                        
+        # Filesystem paths
+        filesystem = job_data.get("filesystem",None)
+        if filesystem:
+            WARN("Using custom filesystem paths from YAML file")
+        else:
             INFO("Using default filesystem paths")
             filesystem = _default_filesystem
-        else:
-            WARN("Using custom filesystem paths from YAML file")
 
-        # Partial substitutions are possible, but not easier to read
-        # from functools import partial; s = partial("{foo} {bar}".format, foo="FOO"); print(s(bar ="BAR"))
+        # Partially substitute placeholders.
         for key in filesystem:
-            filesystem[key]=filesystem[key].format( prodmode=rule_substitutions["prodmode"],
+            filesystem[key]=filesystem[key].format( prodmode=param_overrides["prodmode"],
                                                     period=params_data["period"],
                                                     physicsmode=physicsmode,
                                                     outtriplet=outtriplet,
-                                                    dsttype=params_data["dsttype"],
                                                     leafdir='{leafdir}',
                                                     rungroup='{rungroup}',
                                                     )
-            DEBUG(f"Filesystem: {key} is {filesystem[key]}")
-
-        # Note: If you use globs in the payload list,
-        # the executable will (almost certainly) copy those sub-files and subdirectories individually to the working directory
-        # But we must have a fully qualified working path to the executable at submission time
-        # because that script will execute the actual payload copy on the node.
-        # Bit of an annoying walk with python tools, so use unix find instead
-        script = job_data["script"]
-        errfiles = []
+            DEBUG(f"{key}:\t {filesystem[key]}")
+        job_data["filesystem"]=filesystem 
+        
+        # The executable
+        script = job_data.pop("script")
+        # Adjust the executable's path
         if not script.startswith("/"): # Search in the payload unless script has an absolute path
             p = subprocess.Popen(f'/usr/bin/find {" ".join(payload_list)} -type f',
                                  shell=True, # needed to expand "*"
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = p.communicate()
-            allfiles = stdout.decode(errors='ignore').split()
             errfiles = stderr.decode(errors='ignore').splitlines()
+            if errfiles:
+                WARN("The following errors occurred while searching the payload:")
+                for errf in errfiles:
+                    WARN(errf)
+            allfiles = stdout.decode(errors='ignore').split()
             for f in allfiles:
                 if script == Path(f).name:
                     script = f
-                    break
+                    break        
         INFO(f'Full path to script is {script}')
         if not Path(script).exists() :
             ERROR(f"Executable {script} does not exist")
@@ -423,78 +437,103 @@ class RuleConfig:
         if not is_executable(Path(script)):
             ERROR(f"{script} is not executable")
             exit(1)
-        if errfiles:
-            WARN("The following errors occurred while searching the payload:")
-            for errf in errfiles:
-                WARN(errf)
+        job_data["executable"]=script
 
-        neventsper   = job_data["neventsper"]
-        comment      = job_data.get("comment", None)
+        # Some tedium to deal with a now deprecated field.
+        mem            = job_data.pop("mem",None)
+        request_memory = job_data.get("request_memory",None)
+        if mem:
+            WARN("'mem' is deprecated, use 'request_memory' instead.")
+            if not request_memory:
+                job_data["request_memory"]=mem
+            elif request_memory != mem:
+                ERROR("Conflicting 'mem' (deprecated) and  'request_memory' fields.")
+                exit(1)
 
-        # Partially fill rule_substitutions into the job data
-        for field in 'batch_name', 'arguments','log':
+        # for k,v in job_data.items():
+        #     print(f"{k}:\t {v}")
+
+        # Partially fill param_overrides into the job data
+        ## This isn't particularly elegant since it's self-referential.
+        ## And you can't pass **job_data, which would be ideal, because of name clashes
+        for field in 'batch_name', 'arguments_tmpl','log_tmpl':
             subsval = job_data.get(field)
-            if isinstance(subsval, str): # don't try changing None or dictionaries
-                subsval = subsval.format(
-                          **rule_substitutions
-                        , **filesystem
-                        , **params_data
-                        , payload=",".join(payload_list)
-                        , comment=comment
-                        , neventsper=neventsper
-                        , buildarg=build_string
-                        , tag=params_data["dbtag"]
-                        , outtriplet=outtriplet
-                        # pass remaining per-job parameters forward to be replaced later
-                        , outbase='{outbase}'
-                        , logbase='{logbase}'
-                        , inbase='{inbase}'
-                        , run='{run}'
-                        , seg='{seg}'
-                        , daqhost='{daqhost}'
-                        , inputs='{inputs}'
-                )
-            job_data[field] = subsval
-            CHATTY(f"After substitution, {field} is {subsval}")
-
-            request_memory=rule_substitutions.get("mem",job_data["mem"])
-            priority=rule_substitutions.get("priority",job_data["priority"])
-                
-            # catch different production branches - prepend by branch if not main            
-            branch_name="main"
-            try:
-                result = subprocess.run(
-                    [f"git -C {Path(__file__).parent} rev-parse --abbrev-ref HEAD"],
-                    shell=True,
-                    capture_output=True, 
-                    text=True, 
-                    check=True
-                )
-                branch_name = result.stdout.strip()
-                CHATTY(f"Current Git branch: {branch_name}")
-            except Exception as e:
-                print(f"An error occurred: {e}")
-            batch_name=job_data.get("batch_name")
-            # if branch_name!="main":
-            batch_name=f"{branch_name}.{batch_name}"
-                
-            job_config=CondorJobConfig(
-                executable=script,
-                request_memory=request_memory,
-                request_disk=job_data.get("request_disk", "10GB"),
-                request_cpus=job_data.get("request_cpus", "1"),
-                comment=comment,
-                neventsper=neventsper,
-                priority=priority,
-                batch_name=batch_name,
-                arguments_tmpl=job_data["arguments"],
-                log_tmpl=job_data["log"],
-                filesystem=filesystem,
+            if not isinstance(subsval, str): # don't try changing None or dictionaries
+                continue
+            subsval = subsval.format(
+                nevents=param_overrides["nevents"],
+                **params_data,
+                **filesystem,
+                **asdict(input_config),
+                payload=",".join(payload_list),
+                comment=job_data.get("comment",None),
+                neventsper=job_data.get("neventsper"),
+                buildarg=build_string,
+                tag=params_data["dbtag"],
+                outtriplet=outtriplet,
+                # pass remaining per-job parameters forward to be replaced later
+                outbase='{outbase}',
+                logbase='{logbase}',
+                inbase='{inbase}',
+                run='{run}',
+                seg='{seg}',
+                daqhost='{daqhost}',
+                inputs='{inputs}',
             )
+            job_data[field] = subsval
+            DEBUG(f"After substitution, {field} is {subsval}")
+        environment=f'SPHENIXPROD_SCRIPT_PATH={param_overrides.get("script_path","None")}'
+        job_data["environment"]=environment
 
+        # catch different production branches - prepend by branch if not main            
+        branch_name="main"
+        try:
+            result = subprocess.run(
+                [f"git -C {Path(__file__).parent} rev-parse --abbrev-ref HEAD"],
+                shell=True,
+                capture_output=True, 
+                text=True, 
+                check=True
+            )
+            branch_name = result.stdout.strip()
+            CHATTY(f"Current Git branch: {branch_name}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+        batch_name=job_data.pop("batch_name")
+        job_data["batch_name"]=f"{branch_name}.{batch_name}"
+
+        # Fill in all class fields.
+        condor_job_dict={}
+        for param in job_data:
+            if not param in CondorJobConfig_fieldnames:
+                WARN( f"Unexpected field '{param}' in params. Removing, but you should clean up the yaml")
+                # raise ValueError(f"Unexpected field '{param}'.")
+                continue
+            condor_job_dict[param] = job_data[param]
+        del job_data         # Kill job_data - it's stale now and easily used accidentally
+            
+        ## Any remaining overrides
+        priority=param_overrides.get("priority",None)
+        if priority:
+            condor_job_dict["priority"]=priority
+
+        if param_overrides.get("request_memory",None):
+            condor_job_dict["request_memory"]=param_overrides["request_memory"]
+
+        request_memory=condor_job_dict.get("request_memory",None)         # Ensure sanity after the mem juggling act
+        if not request_memory:
+            raise ValueError(f"Missing required field 'request_memory'.")
+
+        #####  Now instantiate the main condor config object for all jobs
+        job_config=CondorJobConfig(**condor_job_dict) # Do NOT forget the ** for Dictionary Unpacking
+        DebugString="CondorJobConfig:\n"
+        for k,v in asdict(job_config).items():
+            DebugString += f"{k}:\t {v} \n"
+        DEBUG(DebugString)        
+        
         ### With all preparations done, construct the constant RuleConfig object
         return cls(
-            dsttype=params_data["dsttype"],
+            dsttype=dsttype,
             period=params_data["period"],
             physicsmode=physicsmode,
             dataset=params_data.get("dataset"), 
@@ -511,7 +550,7 @@ class RuleConfig:
 
     # ------------------------------------------------
     @classmethod
-    def from_yaml_file(cls, yaml_file: str, rule_name: str, rule_substitutions=None ) -> "RuleConfig":
+    def from_yaml_file(cls, yaml_file: str, rule_name: str, param_overrides=None ) -> "RuleConfig":
         """
         Constructs a dictionary of RuleConfig objects from a YAML file.
 
@@ -532,7 +571,7 @@ class RuleConfig:
         return cls.from_yaml(yaml_file=yaml_file,
                              yaml_data=yaml_data,
                              rule_name=rule_name,
-                             rule_substitutions=rule_substitutions,
+                             param_overrides=param_overrides,
                             )
 
 # ============================================================================
@@ -733,7 +772,7 @@ order by runnumber
 
             ### Simplest case, 1-to-1:For every segment, there is exactly one output file, and exactly one input file from the previous step
             # If the output doesn't exist yet, use input files to create the job
-            # TODO: or 'CALOFITTING' or mmany other job types
+            # TODO: or 'CALOFITTING' or many other job types
             if 'TRKR_SEED' in self.dsttype:
                 for infile in candidates:
                     outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'                
@@ -747,7 +786,8 @@ order by runnumber
                         continue
                     in_files_for_seg=[infile]
                     CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
-                    rule_matches[dstfile] = in_types, outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
+                    #rule_matches[dstfile] = in_types_str, outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
+                    rule_matches[dstfile] = ["dbinput"], outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
                 continue    
 
             ####### NOT 1-1, requires more work:
@@ -797,7 +837,7 @@ order by runnumber
                             if f.segment==0 and f.status!=0:
                                 files_for_run[host]=[gl1file0,f]
                                 break
-                        else:  # remember python's for-else executes when the break doesn't!
+                        else:  # remember that python's for-else executes when the break doesn't
                             CHATTY(f"No segment 0 file found for run {runnumber}, host {host}. Skipping this run.")
                             files_for_run[host]=[]
                 # \combine_seg0_only
@@ -822,12 +862,11 @@ select hostname from hostinfo
 where hostname not like 'seb%' and hostname not like 'gl1%'
 and runnumber={runnumber}"""
                 available_hosts=set([ c.hostname for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ])
-                ## TODO: Split between seb-like and not seb-like for tracking and calo!
                 ### Here we could enforce both mandatory and masked hosts
                 DEBUG(f"available_hosts = {available_hosts}")
+
                 # Note: "hostname" means different things for different circumstances. Sometimes it's the full leaf
                 # This is very pedestrian, there's probably a more pythonic way:
-
                 # FIXME: More TPC hardcoding
                 # 1. require at least N=30 out of the 48 ebdc_[0-24]_[01] to be turned on in the run
                 #    This is an early breakpoint to see if the run can be used for tracking
@@ -894,11 +933,13 @@ and runnumber={runnumber}"""
                     if dstfile in existing_status:
                         WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                         continue                      
-                    in_files_for_seg= []
-                    for host in files_for_run:
-                        in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
-                    CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
-                    rule_matches[dstfile] = in_types, outbase, logbase, runnumber, seg, "dummy", self.dsttype
+                    # in_files_for_seg= []
+                    # for host in files_for_run:
+                    #     in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
+                    # in_files_for_seg=[ "foo", "bar", "baz" ]
+                    # CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
+                    ## in_types as first return?                    
+                    rule_matches[dstfile] = ["dbinput"], outbase, logbase, runnumber, seg, "dummy", self.dsttype
 
             ######## Streaming and triggered daq combination
             # In this case, provide ALL input files for the run, and the output will produce its own segment numbers
