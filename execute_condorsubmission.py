@@ -146,18 +146,18 @@ def main():
     # Note: The following could all be hidden away in the RuleConfig ctor
     # but this way, CLI arguments are used by the function that received them and
     # constraint constructions are visibly handled away from the RuleConfig class
-    rule_substitutions = {}
-    rule_substitutions["runs"]=args.runs
-    rule_substitutions["runlist"]=args.runlist
-    rule_substitutions["prodmode"] = None  # Not relevant, but needed for the RuleConfig ctor
-    rule_substitutions["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
+    param_overrides = {}
+    param_overrides["runs"]=args.runs
+    param_overrides["runlist"]=args.runlist
+    param_overrides["prodmode"] = None  # Not relevant, but needed for the RuleConfig ctor
+    param_overrides["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
     
-    CHATTY(f"Rule substitutions: {rule_substitutions}")
+    CHATTY(f"Rule substitutions: {param_overrides}")
     INFO("Now loading and building rule configuration.")
 
     #################### Load specific rule from the given yaml file.
     try:
-        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, rule_substitutions=rule_substitutions )
+        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, param_overrides=param_overrides )
         INFO(f"Successfully loaded rule configuration: {args.rulename}")
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
