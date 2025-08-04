@@ -825,8 +825,6 @@ and runnumber={runnumber}"""
                 ## TODO: Split between seb-like and not seb-like for tracking and calo!
                 ### Here we could enforce both mandatory and masked hosts
                 DEBUG(f"available_hosts = {available_hosts}")
-                # Note: "hostname" means different things for different circumstances. Sometimes it's the full leaf
-                # This is very pedestrian, there's probably a more pythonic way:
 
                 # FIXME: More TPC hardcoding
                 # 1. require at least N=30 out of the 48 ebdc_[0-24]_[01] to be turned on in the run
@@ -837,7 +835,7 @@ and runnumber={runnumber}"""
                 DEBUG(f"available TPC hosts: {available_tpc_hosts}")
                 DEBUG(f"  len(available_tpc_hosts) = {len(available_tpc_hosts)}")
                 minNTPC=30 / 2
-                if len(available_tpc_hosts) < minNTPC:
+                if len(available_tpc_hosts) < minNTPC and not self.physicsmode=='cosmics':
                     INFO(f"Skip run. Only {2*len(available_tpc_hosts)} TPC detectors turned on in the run.")
                     continue
                 
@@ -850,7 +848,7 @@ and runnumber={runnumber}"""
                         if available in host:
                             present_tpc_files.add(host)
                             continue
-                if len(present_tpc_files) < minNTPC:
+                if len(present_tpc_files) < minNTPC and not self.physicsmode=='cosmics':
                     WARN(f"Skip run {runnumber}. Only {len(present_tpc_files)} TPC detectors actually in the run.")
                     continue
 
@@ -860,7 +858,7 @@ and runnumber={runnumber}"""
                 CHATTY(f"Available non-TPC hosts in the daq db: {available_other_hosts}")
                 CHATTY(f"Present non-TPC leafs: {present_other_files}")
                 ### TODO: Only checking length here. Probably okay forever though.
-                if len(present_other_files) != len(available_other_hosts) :
+                if len(present_other_files) != len(available_other_hosts) and not self.physicsmode=='cosmics': 
                     WARN(f"Skip run. Only {len(present_other_files)} non-TPC detectors actually in the run. {len(available_other_hosts)} possible.")
                     WARN(f"Available non-TPC hosts in the daq db: {available_other_hosts}")
                     WARN(f"Present non-TPC leafs: {present_other_files}")
@@ -878,7 +876,7 @@ and runnumber={runnumber}"""
                         rejected.update( set(segments).symmetric_difference(set(new_segments)) )
                         segments = list( set(segments).intersection(new_segments))
                         
-                if len(rejected) > 0:
+                if len(rejected) > 0  and not self.physicsmode=='cosmics' :
                     DEBUG(f"Run {runnumber}: Removed {len(rejected)} segments not present in all streams.")
                     CHATTY(f"Rejected segments: {rejected}")
 
