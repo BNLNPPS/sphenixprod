@@ -75,31 +75,31 @@ def main():
     # Note: The following could all be hidden away in the RuleConfig ctor
     # but this way, CLI arguments are used by the function that received them and
     # constraint constructions are visibly handled away from the RuleConfig class
-    rule_substitutions = {}
-    rule_substitutions["runs"]=args.runs
-    rule_substitutions["runlist"]=args.runlist
-    rule_substitutions["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
+    param_overrides = {}
+    param_overrides["runs"]=args.runs
+    param_overrides["runlist"]=args.runlist
+    param_overrides["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
         
     # Rest of the input substitutions
     if args.physicsmode is not None:
-        rule_substitutions["physicsmode"] = args.physicsmode # e.g. physics
+        param_overrides["physicsmode"] = args.physicsmode # e.g. physics
 
     if args.mangle_dstname:
         DEBUG("Mangling DST name")
-        rule_substitutions['DST']=args.mangle_dstname
+        param_overrides['DST']=args.mangle_dstname
 
     # filesystem is the base for all output, allow for mangling here
     # "production" (in the default filesystem) is replaced
-    rule_substitutions["prodmode"] = "production"
+    param_overrides["prodmode"] = "production"
     if args.mangle_dirpath:
-        rule_substitutions["prodmode"] = args.mangle_dirpath
+        param_overrides["prodmode"] = args.mangle_dirpath
 
-    CHATTY(f"Rule substitutions: {rule_substitutions}")
+    CHATTY(f"Rule substitutions: {param_overrides}")
     INFO("Now loading and building rule configuration.")
 
     #################### Load specific rule from the given yaml file.
     try:
-        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, rule_substitutions=rule_substitutions )
+        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, param_overrides=param_overrides )
         INFO(f"Successfully loaded rule configuration: {args.rulename}")
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
