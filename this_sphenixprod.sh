@@ -89,7 +89,7 @@ if [[ `ssh-add -l` =~ "eickolja" ]] ; then
     else
 	echo "_CONDOR_SCRATCH_DIR is not defined."
 	export _CONDOR_SCRATCH_DIR=~/devkolja/condorscratch
-	echo "Set to $_CONDOR_SCRATCH_DIR"
+	echo " ... now set to $_CONDOR_SCRATCH_DIR"
     fi
     
     # zsh-style history search
