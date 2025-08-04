@@ -46,3 +46,41 @@ create_submission.py \
 ```
 
 The condor ID will be printed out such that you can monitor the status of the job. Keep in mind that at most 50k jobs can be running on a particular node.
+
+### Steps to Overwrite Full Production Chain
+
+1. Delete from the production db. This is generally pretty safe. The only problem would be a bit of inconsistency if jobs you want to resubmit are currently queued.
+   ```
+   psql -d Production -h sphnxproddbmaster.sdcc.bnl.gov -U argouser -c "delete from production_status where dstname like 'DST_TRKR_CLUSTER%run3cosmics%' and status!='finished' and run in ( ... );"
+   ```
+   You can usually even ignore the run constraint. The prod db is only used to not accidentally submit the same thing multiple times, and once a run is finished (and spidered if you want to keep the result), the entries can be safely deleted.
+2. Remove them from the files table. This needs to come before updating datasets db because it has very little info besides the name so the query needs to be cross linked.  Command is like this, where you'd also fill in a list or range of run numbers:
+   ```
+   delete from files
+   USING datasets
+   WHERE
+       files.lfn=datasets.filename
+   and
+   datasets.dsttype='DST_TRKR_CLUSTER'
+   and
+   datasets.runnumber in ( 68715, 68716, ... )
+   ;
+   ```
+Annoyingly, delete and select have different syntax for two tables. So to check before you delete, you'd replace the first three lines with
+   ```
+   select files.lfn from files, datasets
+   WHERE
+   ```
+3. Finally, you can delete them from datasets. Straightforward
+   ```
+   delete from datasets
+   WHERE
+       dsttype='DST_TRKR_CLUSTER'
+   and
+       runnumber in ( 68715, 68716, ... )
+   ;
+   ```
+   The last two are started with
+   ```
+   psql -d FileCatalog -h sphnxdbmaster.sdcc.bnl.gov
+   ```
