@@ -84,7 +84,8 @@ def main():
             ruleargs+=" --dryrun"
         
         ### Loop through process types
-        ### Go from fast to slow processes. They'll overlap anyway, but we may want to add
+        ### Go from fast to slow processes.
+        ### They'll overlap anyway.
         INFO(f"sdh_tuple is {pprint.pformat(sdh_tuple)}")
         if sdh_tuple.histspider:
             procline=f"histspider.py {ruleargs}"
