@@ -28,8 +28,7 @@ def main():
     sql_query = f"""
     SELECT filename, daqhost 
     FROM datasets 
-    WHERE runnumber = {runnumber}
-    """
+    WHERE runnumber = {runnumber}"""
     if segswitch == "seg0fromdb":
         sql_query += f"\n\t AND (segment = 0)"
     elif segswitch == "allsegsfromdb":
