@@ -11,6 +11,7 @@ inputs_from_output={
 
 # Clusters and seeds: many-to-1
 inputs_from_output['DST_TRKR_CLUSTER'] = list('DST_STREAMING_EVENT_' + LEAF for LEAF in inputs_from_output['DST_STREAMING_EVENT'].keys())
+inputs_from_output['DST_TRKR_MVTXME']  = list('DST_STREAMING_EVENT_' + LEAF for LEAF in inputs_from_output['DST_STREAMING_EVENT'].keys())
 inputs_from_output['DST_TRKR_SEED']    = ['DST_TRKR_CLUSTER']
 
 # Tracks: From clusters and seeds, i.e. 2-1
