@@ -5,6 +5,9 @@ echo Hostname: `hostname`
 echo Working directory: $_CONDOR_SCRATCH_DIR
 echo "Calling script is $0"
 echo "This script is ${BASH_SOURCE[0]}"
+echo "Full argument list:"
+echo $@
+
 
 # Fun4All_SingleStream_Combiner.C        \(${nevents},${runnumber},\"${outdir}\",\"${histdir}\",\"${outbase}\",${neventsper},\"${dbtag}\",\"${gl1file}\",\"${ebdcfile}\",\"${inttfile}\",\"${mvtxfile}\",\"${tpotfile}\"\);
 # Fun4All_Prdf_Combiner.C                \(${nevents},\"${daqhost}\",\"${outbase}\",\"${outdir}\"\)
@@ -52,7 +55,7 @@ echo "Build argument (buildarg):             $buildarg"
 echo "---------------------------------------------"
 echo "Input sources:"
 echo "Dataset:                               $dataset"
-echo "intriplet (db: 'tag'):                 $intriplet"
+echo "intriplet (db lingo: 'tag'):           $intriplet"
 echo "Input type (dsttype):                  $dsttype"
 echo "Run number (run):                      $run"
 echo "Segment number (seg):                  $seg"
