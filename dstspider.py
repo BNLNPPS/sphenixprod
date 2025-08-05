@@ -175,11 +175,15 @@ def main():
             
             for rungroup in rungroups:
                 shell_command(f"{lfind} {rungroup} -type f -name \*root:\* >> {dstlistname}")
-
-        wccommand=f"wc -l {dstlistname}"
-        ret = shell_command(wccommand)
-        INFO(f"Found {ret[0]} DSTs to process.")
-        INFO(f"List creation took {(datetime.now() - tstart).total_seconds():.2f} seconds.")
+            
+        if Path(dstlistname).exists():
+            wccommand=f"wc -l {dstlistname}"
+            ret = shell_command(wccommand)
+            INFO(f"Found {ret[0]} DSTs to process.")
+            INFO(f"List creation took {(datetime.now() - tstart).total_seconds():.2f} seconds.")
+        else:
+            INFO("No files found.")
+            exit(0)
 
     ### Grab the first N files and work on those.
     nfiles_to_process=500000
