@@ -224,6 +224,8 @@ def main():
         matches=matches_by_run[submit_run]
         INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
         existing_jobs+=len(matches)
+        INFO(f"Total jobs waiting for submission: {existing_jobs}")
+
         condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
         condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
         if not args.dryrun:
