@@ -10,6 +10,7 @@ import re
 import os
 import sys
 import itertools
+import random
 
 import pprint # noqa F401
 if os.uname().sysname!='Darwin' :
@@ -125,6 +126,7 @@ def main():
     param_overrides["runlist"]           = args.runlist
     param_overrides["nevents"]           = args.nevents
     param_overrides["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case    
+    param_overrides["choose20"]          = args.choose20  # default is False
     param_overrides["prodmode"]          = "production"
     # For testing, "production" (close to the root of all paths) in the default filesystem) can be replaced
     if args.mangle_dirpath:
@@ -221,6 +223,19 @@ def main():
     for submit_run in submittable_runs:
         if existing_jobs>max_jobs:
             break
+
+        ### Make the decision here whether to skip this run
+        ### This will be recorded in the prod db, so subsequent calls
+        ### will continue to skip the same runs unless and until their rows are deleted.
+        keep_this_run=True
+        random.seed()
+        if rule.input_config.choose20:
+            if random.uniform(0,1) > 0.21: # Nudge a bit above 20. Tests indicated we land significantly lower otherwise
+                DEBUG(f"Run {submit_run} will be skipped.")
+                keep_this_run=False                
+            else:
+                DEBUG("Producing run {submit_run}")
+        
         matches=matches_by_run[submit_run]
         INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
         existing_jobs+=len(matches)
@@ -228,7 +243,7 @@ def main():
 
         condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
         condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
-        if not args.dryrun:
+        if not args.dryrun: # Submission execution will delete this file if the run is skipped
             # (Re-) create the "header" - common job parameters
             Path(condor_subfile).unlink(missing_ok=True) 
             with open(condor_subfile, "w") as f:
@@ -257,9 +272,9 @@ queue log,output,error,arguments from {condor_infile}
                                              daqhost=daqhost,
                                             )
             condor_rows.append(condor_job.condor_row())
-
+            
             # Make sure directories exist
-            if not args.dryrun:
+            if not args.dryrun and keep_this_run:
                 Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
                 Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
                 
@@ -274,6 +289,10 @@ queue log,output,error,arguments from {condor_infile}
             # else:
             dstfile=out_file # this is much more robust and correct
             # Following is fragile, don't add spaces
+            prodstate='submitting'
+            if not keep_this_run:
+                prodstate='skipped'
+                
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
                 dstname=outbase,
@@ -283,7 +302,7 @@ queue log,output,error,arguments from {condor_infile}
                 inputs='dbquery',
                 prod_id=0, # CHECKME
                 cluster=0, process=0,
-                status="submitting",
+                status=prodstate,
                 timestamp=str(datetime.now().replace(microsecond=0)),
                 host=os.uname().nodename.split('.')[0]
             ))
@@ -297,7 +316,7 @@ values
 {comma_prod_state_rows}
 returning id
 """ 
-        # Commit "submitting" to db
+        # Commit "submitting" or "skipped" to db
         if not args.dryrun:
             # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
             prod_curs = dbQuery( cnxn_string_map['statw'], insert_prod_state )
@@ -307,7 +326,7 @@ returning id
             condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
  
         # Write or update job line file
-        if not args.dryrun:
+        if not args.dryrun and keep_this_run:
             with open(condor_infile, "a") as f:
                 f.writelines(row+'\n' for row in condor_rows)
 
