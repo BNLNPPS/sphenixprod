@@ -106,6 +106,7 @@ class InputConfig:
     min_run_events:   Optional[int] = None
     min_run_time:     Optional[int] = None
     combine_seg0_only:          Optional[bool] = True  # For combination jobs, use only segment 0. Default is yes. No effect for downstream jobs.    
+    choose20:         Optional[bool] = False  # Randomly choose 20% of available files
     infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
     direct_path: Optional[str]                = None  # Make direct_path optional
@@ -249,7 +250,7 @@ class RuleConfig:
                     , optional=["intriplet",
                                 "min_run_events","min_run_time",
                                 "direct_path", "dataset",
-                                "combine_seg0_only",
+                                "combine_seg0_only","choose20",
                                 "infile_query_constraints",
                                 "status_query_constraints","physicsmode"] )
         
@@ -275,7 +276,20 @@ class RuleConfig:
         argv_combine_seg0_only=param_overrides.get("combine_seg0_only")
         if argv_combine_seg0_only is not None:            
             combine_seg0_only=argv_combine_seg0_only
-        
+
+        choose20=input_data.get("choose20",False)
+        argv_choose20=param_overrides.get("choose20")
+        if argv_choose20 :
+            choose20=True
+
+        ### Use choose20 only for combination jobs.
+        if choose20 :
+            if 'raw' in input_data["db"]:
+                WARN ("Selecting only 20% of good runs.")
+            else:
+                WARN ("Option 'choose20' ignored for downstream production.")
+                choose20=False
+            
         # Substitutions in direct input path, if given
         input_direct_path = input_data.get("direct_path")
         if input_direct_path is not None:
@@ -300,6 +314,7 @@ class RuleConfig:
             min_run_events=min_run_events,
             min_run_time=min_run_time,
             combine_seg0_only=combine_seg0_only,
+            choose20=choose20,
             infile_query_constraints=infile_query_constraints,
             status_query_constraints=status_query_constraints,
             direct_path=input_direct_path,

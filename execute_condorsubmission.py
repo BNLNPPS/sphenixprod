@@ -74,6 +74,11 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
             break
 
         in_file=re.sub(r".sub$",".in",str(sub_file))
+        ### Catch problems or skipped runs
+        if not Path(in_file).is_file():
+            WARN(f"Deleting {sub_file} as it doesn't have a corresponding .in file")
+            Path(sub_file).unlink()
+            
         ### Update production database
         # Extract dbids
         dbids=[]
