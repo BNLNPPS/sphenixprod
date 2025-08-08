@@ -234,7 +234,7 @@ def main():
                 DEBUG(f"Run {submit_run} will be skipped.")
                 keep_this_run=False                
             else:
-                DEBUG("Producing run {submit_run}")
+                DEBUG(f"Producing run {submit_run}")
         
         matches=matches_by_run[submit_run]
         INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
