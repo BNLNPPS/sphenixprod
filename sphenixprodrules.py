@@ -809,6 +809,7 @@ order by runnumber
             # For every segment, there is exactly one output file, and exactly one input file _from each stream_ OR from the previous step
             ######## Cut up the candidates into streams/daqhost≈ƒs
             candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
+
             files_for_run = { k : list(g) for
                               k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
 
@@ -970,7 +971,7 @@ and runnumber={runnumber}"""
                     if daqhost not in files_for_run:
                         CHATTY(f"No inputs from {daqhost} for run {runnumber}.")
                         continue
-                    if files_for_run[host]==[]:
+                    if files_for_run[daqhost]==[]:
                         continue
                     dsttype  = f'{self.dsttype}_{leaf}'
                     dsttype += f'_{self.dataset}' # DST_STREAMING_EVENT_%_run3auau
