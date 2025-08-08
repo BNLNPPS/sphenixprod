@@ -813,7 +813,7 @@ order by runnumber
                               k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
 
             # daq file lists all need GL1 files. Pull them out and add them to the others
-            if ( 'gl1daq' in in_types_str ):                
+            if ( 'gl1daq' in in_types_str ):
                 gl1_files = files_for_run.pop('gl1daq',None)
                 if gl1_files is None:
                     WARN(f"No GL1 files found for run {runnumber}. Skipping this run.")
