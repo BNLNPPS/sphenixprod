@@ -76,7 +76,7 @@ echo "Log base name (logbase):               $logbase"
 echo "Log directory (logdir):                $logdir"
 echo "---------------------------------------------"
 echo "Files/directories to stage in (condor_rsync):"
-echo "$condor_rsync" 
+echo "$condor_rsync"
 echo "---------------------------------------------"
 echo "Job database id (dbid):                $dbid"
 echo "---------------------------------------------"
@@ -88,9 +88,9 @@ sighandler()
 mv ${logbase}.out ${logdir#file:/}
 mv ${logbase}.err ${logdir#file:/}
 }
-trap sighandler SIGTERM 
-trap sighandler SIGSTOP 
-trap sighandler SIGINT 
+trap sighandler SIGTERM
+trap sighandler SIGSTOP
+trap sighandler SIGINT
 # SIGKILL can't be trapped
 
 # stage in the payload files
@@ -98,7 +98,7 @@ condor_rsync=`echo $condor_rsync|sed 's/,/ /g'` # Change from comma separation
 cd $_CONDOR_SCRATCH_DIR
 echo Copying payload data to `pwd`
 for f in ${condor_rsync}; do
-    cp --verbose -r  $f . 
+    cp --verbose -r  $f .
 done
 echo "---------------------------------------------"
 
@@ -155,7 +155,7 @@ return 0  2>/dev/null
 
 echo "Execution of $0 complete "
 echo "---------------------------------------------"
-exit 
+exit
 
 
 # (return 0 2>/dev/null) && ( echo "Leaving sourced script." ) || (echo Exiting) && exit 0

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-import yaml 
+import yaml
 import cProfile
 import pstats
 import re
@@ -57,17 +57,17 @@ def main():
             exit(0)
         WARN("Here we go then.")
 
-    # Exit without fuss if we are already running 
+    # Exit without fuss if we are already running
     if should_I_quit(args=args, myname=sys.argv[0]) and not args.force:
         DEBUG("Stop.")
         exit(0)
-    
+
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if args.profile:
         DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
-        profiler.enable()    
+        profiler.enable()
 
     if test_mode:
         INFO("Running in testbed mode.")
@@ -103,7 +103,7 @@ def main():
     payload_list += [ f"{script_path}/create_filelist_run_daqhost.py" ]
     payload_list += [ f"{script_path}/create_filelist_run_seg.py" ]
     payload_list += [ f"{script_path}/create_full_filelist_run_seg.py" ]
-    
+
     # .testbed: indicate test mode -- Search in the _submission_ directory
     if Path(".testbed").exists():
         payload_list += [str(Path('.testbed').resolve())]
@@ -121,7 +121,7 @@ def main():
     param_overrides["runs"]              = args.runs
     param_overrides["runlist"]           = args.runlist
     param_overrides["nevents"]           = args.nevents
-    param_overrides["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case    
+    param_overrides["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case
     param_overrides["choose20"]          = args.choose20  # default is False
     param_overrides["prodmode"]          = "production"
     # For testing, "production" (close to the root of all paths) in the default filesystem) can be replaced
@@ -155,11 +155,11 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-    
-    # #################### With the rule constructed, first remove all traces of the given runs 
+
+    # #################### With the rule constructed, first remove all traces of the given runs
     # if args.force:
     #     eradicate_runs(rule)
-    
+
     #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
     INFO("Rule construction complete. Now constructing corresponding match configuration.")
 
@@ -168,7 +168,7 @@ def main():
     CHATTY("Match configuration:")
     CHATTY(yaml.dump(match_config.dict))
 
-    # Note: matches() is keyed by output file names, but the run scripts use the output base name and separately the run number    
+    # Note: matches() is keyed by output file names, but the run scripts use the output base name and separately the run number
     rule_matches=match_config.matches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
 
@@ -176,7 +176,7 @@ def main():
         WARN("Running on native Mac, cannot use condor.")
         WARN("Exiting early.")
         exit(0)
-    
+
     submitdir = Path(f'{args.submitdir}').resolve()
     if not args.dryrun:
         Path( submitdir).mkdir( parents=True, exist_ok=True )
@@ -205,7 +205,7 @@ def main():
 
     INFO(f"Creating submission for {len(submittable_runs)} runs")
     ### Limit number of job files lying around
-    max_jobs=20000 
+    max_jobs=20000
     # Count up what we already have
     existing_jobs=0
     sub_files=locate_submitfiles(rule,args)
@@ -215,7 +215,7 @@ def main():
             continue
         with open(in_file,'r') as f:
             existing_jobs += len(f.readlines())
-            
+
     if existing_jobs>0:
         INFO(f"We already have {existing_jobs} jobs waiting for submission.")
 
@@ -232,10 +232,10 @@ def main():
         if rule.input_config.choose20:
             if random.uniform(0,1) > 0.21: # Nudge a bit above 20. Tests indicated we land significantly lower otherwise
                 DEBUG(f"Run {submit_run} will be skipped.")
-                keep_this_run=False                
+                keep_this_run=False
             else:
                 DEBUG(f"Producing run {submit_run}")
-        
+
         matches=matches_by_run[submit_run]
         INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
         existing_jobs+=len(matches)
@@ -245,7 +245,7 @@ def main():
         condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
         if not args.dryrun: # Note: Deletion of skipped submission files is handled in execute_condorsubmission.py
             # (Re-) create the "header" - common job parameters
-            Path(condor_subfile).unlink(missing_ok=True) 
+            Path(condor_subfile).unlink(missing_ok=True)
             with open(condor_subfile, "w") as f:
                 f.write(str(base_job))
                 f.write(
@@ -260,9 +260,9 @@ queue log,output,error,arguments from {condor_infile}
         # individual lines per job
         prod_state_rows=[]
         condor_rows=[]
-        for out_file,(in_files, outbase, logbase, run, seg, daqhost, dsttype) in matches:            
+        for out_file,(in_files, outbase, logbase, run, seg, daqhost, dsttype) in matches:
             # Create .in file row
-            condor_job = CondorJob.make_job( output_file=out_file, 
+            condor_job = CondorJob.make_job( output_file=out_file,
                                              inputs=in_files,
                                              outbase=outbase,
                                              logbase=logbase,
@@ -277,11 +277,11 @@ queue log,output,error,arguments from {condor_infile}
             if not args.dryrun and keep_this_run:
                 Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
                 Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
-                
+
                 # stdout, stderr, and condorlog locations, usually on sphenix02:
                 for file_in_dir in condor_job.output, condor_job.error, condor_job.log :
                     Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
-                    
+
             # Add to production database
             dsttype=logbase.split(f'_{rule.dataset}')[0]
             # if 'TRIGGERED_EVENT' in dsttype or 'STREAMING_EVENT' in dsttype: # TODO: FIXME for those as well
@@ -292,7 +292,7 @@ queue log,output,error,arguments from {condor_infile}
             prodstate='submitting'
             if not keep_this_run:
                 prodstate='skipped'
-                
+
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
                 dstname=outbase,
@@ -312,10 +312,10 @@ queue log,output,error,arguments from {condor_infile}
         insert_prod_state = f"""
 insert into production_status
 ( dsttype, dstname, dstfile, run, segment, nsegments, inputs, prod_id, cluster, process, status, submitting, submission_host )
-values 
+values
 {comma_prod_state_rows}
 returning id
-""" 
+"""
         # Commit "submitting" or "skipped" to db
         if not args.dryrun:
             # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
@@ -324,16 +324,16 @@ returning id
             ids=[str(id) for (id,) in prod_curs.fetchall()]
             CHATTY(f"Inserted {len(ids)} rows into production_status, IDs: {ids}")
             condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
- 
+
         # Write or update job line file
         if not args.dryrun and keep_this_run:
             with open(condor_infile, "a") as f:
                 f.writelines(row+'\n' for row in condor_rows)
 
     ### And submit, if so desired
-    if args.andgo: 
+    if args.andgo:
         execute_submission(rule, args)
-        
+
     if args.profile:
         profiler.disable()
         DEBUG("Profiling finished. Printing stats...")
@@ -345,7 +345,7 @@ returning id
     if isinstance(input_stem, list):
         prettyfs=prettyfs.replace('{leafdir}',rule.dsttype)
 
-    INFO(f"Submission directory is {submitdir}")    
+    INFO(f"Submission directory is {submitdir}")
     INFO(f"Other location templates:\n{prettyfs}")
     INFO( "KTHXBYE!" )
 

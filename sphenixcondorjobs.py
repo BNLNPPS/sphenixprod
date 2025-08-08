@@ -85,12 +85,12 @@ CondorJobConfig = make_dataclass(
 # ============================================================================
 @dataclass( frozen = True )
 class CondorJob:
-    """ This class is used for individual condor jobs. 
+    """ This class is used for individual condor jobs.
     Configured via JobConfig and RuleConfig.
-    Individual jobs are created with 
+    Individual jobs are created with
     - an output file
     - a list of input files
-    - a list of arguments, customized for each job 
+    - a list of arguments, customized for each job
     Key logic is to create dicts for htcondor and then either dump them to files or submit them directly
     Goal: Create chunks or batches of jobs that can be submitted in one go
     Idea: This package fills directories with job files, condor_submit is run as a separate daemon
@@ -104,7 +104,7 @@ class CondorJob:
     outdir:                 str  # where the DST files are written to
     finaldir:               str  # where the DST files are eventually moved to by a spider - currently unused, the spider should know
     histdir:                str  # where histograms go
-    output:                 str  
+    output:                 str
     error:                  str
     log:                    str
     output_file:            str           # Output file for the job --> not used directly except for bookkeeping
@@ -114,7 +114,7 @@ class CondorJob:
     run:                    int
     seg:                    int
     daqhost:                str
-    
+
     # ------------------------------------------------
     @classmethod
 # glob_arguments_tmpl ="{buildarg} {dataset} {intriplet} {indsttype_str} {run} {seg} {daqhost} {inputs} "
@@ -122,7 +122,7 @@ class CondorJob:
 # glob_arguments_tmpl+="{logbase} {logdir} {payload} "
     def make_job(cls,
                 output_file: str,
-                run: int, 
+                run: int,
                 seg: int,
                 daqhost: str,
                 inputs: List[str],
@@ -145,13 +145,13 @@ class CondorJob:
             rungroup=rungroup,
             neventsper=cls.job_config.neventsper,
             inputs=",".join(inputs),
-        )        
+        )
         outdir    = cls.job_config.filesystem['outdir'] .format(rungroup=rungroup, leafdir=leafdir)
         finaldir  = cls.job_config.filesystem['finaldir'].format(rungroup=rungroup, leafdir=leafdir)
         logdir    = cls.job_config.filesystem['logdir'] .format(rungroup=rungroup, leafdir=leafdir)
         histdir   = cls.job_config.filesystem['histdir'] .format(rungroup=rungroup, leafdir=leafdir)
         log       = cls.job_config.log_tmpl.format(rungroup=rungroup, leafdir=leafdir, logbase=logbase)
-        
+
         output    = f'{logdir}/{logbase}.out'
         error     = f'{logdir}/{logbase}.err'
 
@@ -202,7 +202,7 @@ class CondorJob:
         data = {}
         # Add instance-specific fields
         # arguments _must_ come last because it can contain spaces and errors
-        # and condor's multi-queue from file mechanism only accepts that as the last, catchall, input 
+        # and condor's multi-queue from file mechanism only accepts that as the last, catchall, input
         data.update({
             'log':                   self.log,
             'output':                self.output,

@@ -39,7 +39,7 @@ def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace):
     if sub_files == []:
         INFO("No submission files found.")
     return sub_files
-        
+
 
 # ============================================================================================
 
@@ -52,7 +52,7 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
     sub_files=locate_submitfiles(rule, args)
     if sub_files == []:
         INFO("No submission files found.")
-        
+
     submitted_jobs=0
     # Determine what's already in "idle"
     # Note: For this, we cannot use runnumber cuts, too difficult (and expensive) to get from condor.
@@ -61,13 +61,13 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
     cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
     cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
     idle_procs = shell_command(cq_query + ' -idle' ) # Select what to count (idle, held must be asked separately)
-    held_procs = shell_command(cq_query + ' -held' ) 
+    held_procs = shell_command(cq_query + ' -held' )
     if len(idle_procs) > 0:
         INFO(f"We already have {len(idle_procs)} jobs in the queue waiting for execution.")
     if len(held_procs) > 0:
         WARN(f"There are {len(held_procs)} held jobs what should be removed and resubmitted.")
-    
-    max_submitted=10000 
+
+    max_submitted=10000
     for sub_file in sub_files:
         if submitted_jobs>max_submitted:
             break
@@ -77,11 +77,11 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
         if not Path(in_file).is_file():
             WARN(f"Deleting {sub_file} as it doesn't have a corresponding .in file")
             Path(sub_file).unlink()
-            
+
         ### Update production database
         # Extract dbids
         dbids=[]
-        try: 
+        try:
             with open(in_file,'r') as f:
                 for line in f:
                     dbids.append(str(line.strip().split(" ")[-1]))
@@ -97,7 +97,7 @@ UPDATE production_status
 WHERE id in
 ( {dbids_str} )
 ;
-""" 
+"""
         INFO(f"Updating db for {sub_file}")
         CHATTY(f"{update_prod_state}")
         prod_curs = dbQuery( cnxn_string_map['statw'], update_prod_state )
@@ -107,8 +107,8 @@ WHERE id in
         if not args.dryrun:
             subprocess.run(f"condor_submit {sub_file} && rm {sub_file} {in_file}",shell=True)
             # subprocess.run(f"echo condor_submit {sub_file} && echo rm {sub_file} {in_file}",shell=True)
-    
-    
+
+
 # ============================================================================================
 def main():
     ### digest arguments
@@ -124,8 +124,8 @@ def main():
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
-    
-    # Exit without fuss if we are already running 
+
+    # Exit without fuss if we are already running
     if should_I_quit(args=args, myname=sys.argv[0]):
         DEBUG("Stop.")
         exit(0)
@@ -134,8 +134,8 @@ def main():
     if args.profile:
         DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
-        profiler.enable()    
-    
+        profiler.enable()
+
     if test_mode:
         INFO("Running in testbed mode.")
         args.mangle_dirpath = 'production-testbed'
@@ -155,7 +155,7 @@ def main():
     param_overrides["runlist"]=args.runlist
     param_overrides["prodmode"] = None  # Not relevant, but needed for the RuleConfig ctor
     param_overrides["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
-    
+
     CHATTY(f"Rule substitutions: {param_overrides}")
     INFO("Now loading and building rule configuration.")
 
@@ -169,13 +169,13 @@ def main():
 
     # CHATTY("Rule configuration:")
     # CHATTY(yaml.dump(rule.dict))
-    
+
     filesystem = rule.job_config.filesystem
-    DEBUG(f"Filesystem: {filesystem}")    
+    DEBUG(f"Filesystem: {filesystem}")
 
     ### And go
     execute_submission(rule, args)
-    
+
     if args.profile:
         profiler.disable()
         DEBUG("Profiling finished. Printing stats...")
@@ -183,7 +183,7 @@ def main():
         stats.strip_dirs().sort_stats('time').print_stats(10)
 
     INFO(f"{Path(sys.argv[0]).name} DONE.")
-        
+
 # ============================================================================================
 
 if __name__ == '__main__':

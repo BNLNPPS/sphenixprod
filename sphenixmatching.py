@@ -41,7 +41,7 @@ class MatchConfig:
 
     # Internal, derived variables
     dst_type_template: str
-    in_types:          Any # Fixme, should always be List[str]  
+    in_types:          Any # Fixme, should always be List[str]
     input_stem:        Any
     # ------------------------------------------------
     @classmethod
@@ -72,7 +72,7 @@ class MatchConfig:
 
         ### Assemble leafs, where needed
         input_stem = inputs_from_output[dsttype]
-        CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')        
+        CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
         if isinstance(input_stem, dict):
             in_types = list(input_stem.values())
         else :
@@ -101,12 +101,12 @@ class MatchConfig:
         CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         # Here would be a  good spot to check against golden or bad runlists and to enforce quality cuts on the runs
 
-        INFO("Checking runlist against run quality cuts.")        
+        INFO("Checking runlist against run quality cuts.")
         run_quality_tmpl="""
-select distinct(runnumber) from run 
- where 
+select distinct(runnumber) from run
+ where
 runnumber>={runmin} and runnumber <= {runmax}
- and 
+ and
 runtype='{physicsmode}'
  and
 eventsinrun >= {min_run_events}
@@ -130,34 +130,34 @@ order by runnumber
         INFO(f"{len(runlist_int)} runs pass run quality cuts.")
         DEBUG(f"Runlist: {runlist_int}")
         return runlist_int
-    
+
 
     # ------------------------------------------------
     def get_existing_files(self, runnumbers: Any) :
-        
+
         exist_query  = f"""select filename from datasets
         where tag='{self.outtriplet}'
         and dataset='{self.dataset}'
         and dsttype like '{self.dst_type_template}'"""
-        
+
         run_condition=list_to_condition(runnumbers)
         if run_condition!="" :
             exist_query += f"\n\tand {run_condition}"
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         existing_output.sort()
         return existing_output
- 
+
     # ------------------------------------------------
     def get_prod_status(self, runnumbers):
         ### Check production status
         INFO('Checking for output already in production...')
-        status_query  = f"""select dstfile,status from production_status 
-        where dstname like '{self.dst_type_template}' 
+        status_query  = f"""select dstfile,status from production_status
+        where dstname like '{self.dst_type_template}'
         and dstname like '%{self.outtriplet}%'"""
         run_condition=list_to_condition(runnumbers)
         if run_condition!="" :
             status_query += f"\n\tand {run_condition.replace('runnumber','run')}"
-                
+
         status_query += self.input_config.status_query_constraints
         existing_status = { c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
         return existing_status
@@ -170,15 +170,15 @@ order by runnumber
         # can be added if the need arises.
         # Note: If the file database is not up to date, we can use a filesystem search in the output directory
         # Note: The db field in the yaml is for input queries only, all output queries go to the FileCatalog
-        
+
         goodruns=self.good_runlist()
         if goodruns==[]:
             INFO( "No runs pass run quality cuts.")
             return {}
         INFO(f"{len(goodruns)} runs pass run quality cuts.")
         DEBUG(f"Runlist: {goodruns}")
-        
-            
+
+
         ####################################################################################
         ###### Now get all existing input files
         ####################################################################################
@@ -213,8 +213,8 @@ order by runnumber
         run_condition=list_to_condition(goodruns)
         if run_condition!="" :
             infile_query += f"\n\tand {run_condition}"
-            
-        # Perform queries inside the run loop. More db reads but much smaller RAM 
+
+        # Perform queries inside the run loop. More db reads but much smaller RAM
 
         #### Now build up potential output files from what's available
         start=datetime.now()
@@ -224,7 +224,7 @@ order by runnumber
         INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         for runnumber in goodruns:
             # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
-            ## Note: Not all constraints are needed, but they may speed up the query 
+            ## Note: Not all constraints are needed, but they may speed up the query
             existing_output=self.get_existing_files(runnumber)
             DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")
 
@@ -239,7 +239,7 @@ order by runnumber
             CHATTY(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
             if len(candidates) == 0 :
                 # # By construction of runlist, every runnumber now should have at least one file
-                # TODO: No longer true, check 
+                # TODO: No longer true, check
                 # ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Skipping run.")
                 DEBUG(f"No input files found for run {runnumber}. Skipping run.")
                 continue
@@ -250,7 +250,7 @@ order by runnumber
             # TODO: or 'CALOFITTING' or many other job types
             if 'TRKR_SEED' in self.dsttype:
                 for infile in candidates:
-                    outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'                
+                    outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'
                     logbase= f'{outbase}-{infile.runnumber:{pRUNFMT}}-{infile.segment:{pSEGFMT}}'
                     dstfile = f'{logbase}.root'
                     if binary_contains_bisect(existing_output,dstfile):
@@ -263,7 +263,7 @@ order by runnumber
                     CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
                     #rule_matches[dstfile] = in_types_str, outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
                     rule_matches[dstfile] = ["dbinput"], outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
-                continue    
+                continue
 
             ####### NOT 1-1, requires more work:
             # For every segment, there is exactly one output file, and exactly one input file _from each stream_ OR from the previous step
@@ -279,7 +279,7 @@ order by runnumber
                     WARN(f"No GL1 files found for run {runnumber}. Skipping this run.")
                     continue
                 CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1_files}')
-                
+
                 ### Important change, 07/15/2025: By default, only care about segment 0!
                 segswitch="seg0fromdb"
                 if not self.input_config.combine_seg0_only:
@@ -291,7 +291,7 @@ order by runnumber
                         # Now enforce status!=0 for all files from this host
                         if any_zero_status :
                             files_for_run[host]=[]
-                    # Done with the non-default. 
+                    # Done with the non-default.
                 else: ### Use only segment 0; this is actually a bit harder
                     CHATTY("Using only input segment 0")
                     # GL1 file?
@@ -318,7 +318,7 @@ order by runnumber
                 # \combine_seg0_only
             # \if gl1daq in intypes
 
-            ####### "Easy" case. One way to identify this case is to see if gl1 is not needed 
+            ####### "Easy" case. One way to identify this case is to see if gl1 is not needed
             #  If the input has a segment number, then the output will have the same segment number
             #  - These are downstream objects (input is already a DST)
             #  - This can be 1-1 or many-to-1 (usually 2-1 for SEED + CLUSTER --> TRACKS)
@@ -327,7 +327,7 @@ order by runnumber
                 DEBUG("Getting available daq hosts for run {runnumber}")
                 ## TODO: Split between seb-like and not seb-like for tracking and calo!
                 daqhost_query=f"""
-select hostname from hostinfo 
+select hostname from hostinfo
 where hostname not like 'seb%' and hostname not like 'gl1%'
 and runnumber={runnumber}"""
                 available_hosts=set([ c.hostname for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ])
@@ -346,7 +346,7 @@ and runnumber={runnumber}"""
                 if len(available_tpc_hosts) < minNTPC and not self.physicsmode=='cosmics':
                     INFO(f"Skip run. Only {2*len(available_tpc_hosts)} TPC detectors turned on in the run.")
                     continue
-                
+
                 # 2. How many are TPC hosts are actually there in this run.
                 #    Not necessarily the same as above, if input DSTs aren't completely produced yet.
                 #    Other reason could be if the daq db is wrong.
@@ -366,7 +366,7 @@ and runnumber={runnumber}"""
                 CHATTY(f"Available non-TPC hosts in the daq db: {available_other_hosts}")
                 CHATTY(f"Present non-TPC leafs: {present_other_files}")
                 ### TODO: Only checking length here. Probably okay forever though.
-                if len(present_other_files) != len(available_other_hosts) and not self.physicsmode=='cosmics': 
+                if len(present_other_files) != len(available_other_hosts) and not self.physicsmode=='cosmics':
                     WARN(f"Skip run. Only {len(present_other_files)} non-TPC detectors actually in the run. {len(available_other_hosts)} possible.")
                     WARN(f"Available non-TPC hosts in the daq db: {available_other_hosts}")
                     WARN(f"Present non-TPC leafs: {present_other_files}")
@@ -383,7 +383,7 @@ and runnumber={runnumber}"""
                     elif segments != new_segments:
                         rejected.update( set(segments).symmetric_difference(set(new_segments)) )
                         segments = list( set(segments).intersection(new_segments))
-                        
+
                 if len(rejected) > 0  and not self.physicsmode=='cosmics' :
                     DEBUG(f"Run {runnumber}: Removed {len(rejected)} segments not present in all streams.")
                     CHATTY(f"Rejected segments: {rejected}")
@@ -399,13 +399,13 @@ and runnumber={runnumber}"""
                         continue
                     if dstfile in existing_status:
                         WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
-                        continue                      
+                        continue
                     # in_files_for_seg= []
                     # for host in files_for_run:
                     #     in_files_for_seg += [ f.filename for f in files_for_run[host] if f.segment == seg ]
                     # in_files_for_seg=[ "foo", "bar", "baz" ]
                     # CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
-                    ## in_types as first return?                    
+                    ## in_types as first return?
                     rule_matches[dstfile] = ["dbinput"], outbase, logbase, runnumber, seg, "dummy", self.dsttype
 
             ######## Streaming and triggered daq combination
@@ -430,17 +430,17 @@ and runnumber={runnumber}"""
                     if dstfile in existing_output:
                         CHATTY(f"Output file {dstfile} already exists. Not submitting.")
                         continue
-                    
+
                     if dstfile in existing_status:
                         WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
-                        continue                    
+                        continue
 
                     DEBUG(f"Creating {dstfile} for run {runnumber} with {len(files_for_run[daqhost])} input files")
-                    
+
                     files_for_run[daqhost].sort(key=lambda x: (x.segment)) # not needed but tidier
                     rule_matches[dstfile] = [segswitch], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
                 # \if gl1daq, i.e. combining or not
-            # \for run 
+            # \for run
         INFO(f'[Parsing time ] {(datetime.now() - start).total_seconds():.2f} seconds')
 
         return rule_matches
@@ -453,9 +453,9 @@ def parse_lfn(lfn: str, rule: RuleConfig) -> Tuple[str,...] :
         name=Path(name).name # could throw an error instead if we're handed a full path.
         #  split at, and remove, run3auau_new_nocbdtag_v001, remainder is 'DST_...', '-00066582-00000.root' (or .finished)
         # dsttype,runsegend=name.split(f'_{rule.outtriplet}_{rule.dataset}')
-        dsttype,runsegend=name.split(f'_{rule.dataset}_{rule.outtriplet}')        
+        dsttype,runsegend=name.split(f'_{rule.dataset}_{rule.outtriplet}')
         if runsegend=='.root':
-            raise ValueError("killkillkill")    
+            raise ValueError("killkillkill")
         _,run,segend=runsegend.split('-')
         seg,end=segend.split('.')
     except ValueError as e:
@@ -463,7 +463,7 @@ def parse_lfn(lfn: str, rule: RuleConfig) -> Tuple[str,...] :
         print(f"lfn = {lfn}")
         raise
         # else:
-        #     exit(-1)        
+        #     exit(-1)
     return dsttype,int(run),int(seg),end
 
 

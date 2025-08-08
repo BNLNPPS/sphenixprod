@@ -48,7 +48,7 @@ echo Using $(python --version)
 #       pbranch=""
 #       pstatus="\e[31m"
 #   fi
-  
+
 #    gitstatus="${branch_color_status} prod:${branch}\e[0m"
 #    if [ -n "$pbranch" ]; then
 #       #status="${status} \e[0;33mprodflow:${pbranch}\e[0m"
@@ -77,7 +77,7 @@ alias rehash='hash -r'
 # Specialized settings for individual users of sphnxpro
 # Identified from ssh agent forwarding
 if [[ `ssh-add -l` =~ "eickolja" ]] ; then
-    echo "Hello Kolja"    
+    echo "Hello Kolja"
     export GIT_CONFIG_GLOBAL=/sphenix/u/sphnxpro/.gitconfig.kolja
     git config --global user.name "Kolja Kauder"
     git config --global user.email "kkauder@gmail.com"
@@ -91,7 +91,7 @@ if [[ `ssh-add -l` =~ "eickolja" ]] ; then
 	export _CONDOR_SCRATCH_DIR=~/devkolja/condorscratch
 	echo " ... now set to $_CONDOR_SCRATCH_DIR"
     fi
-    
+
     # zsh-style history search
     bind '"\e[A": history-search-backward'
     bind '"\e[B": history-search-forward'

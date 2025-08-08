@@ -20,7 +20,7 @@ def submission_args():
     arg_parser.add_argument( '--andgo',dest='andgo',help="Submit condor jobs at the end", action="store_true")
     arg_parser.add_argument( '--profile',help="Enable profiling", action="store_true")
 
-    
+
     vgroup = arg_parser.add_argument_group('Logging level')
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()
     exclusive_vgroup.add_argument( '-v', '--verbose', help="Prints more information per repetition", action='count', default=0)
@@ -28,7 +28,7 @@ def submission_args():
     exclusive_vgroup.add_argument( '-c', '--chatty', help="Prints the most information", action="store_true")
     exclusive_vgroup.add_argument( '--loglevel', dest='loglevel', default='INFO',
                                    help="Specific logging level (CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL)" )
-    
+
     arg_parser.add_argument( '--submitdir', dest='submitdir', default='./tosubmit', help="Directory for condor submission files" )
     arg_parser.add_argument( '--sublogdir', dest='sublogdir', default=None, help="Directory for submission script logging (defaults under /tmp)" )
     arg_parser.add_argument( "--dbinput", default=True, action="store_true",help="Passes input filelist through the production status db rather than the argument list of the production script." )
@@ -48,7 +48,7 @@ def submission_args():
     arg_parser.add_argument( '--onlyseg0', help='Combine only segment 0 files.', action=argparse.BooleanOptionalAction)
     arg_parser.add_argument( '--choose20', help='Randomly choose 20% of available files for combining only (no effect downstream)',
                              action="store_true")
-    
+
     arg_parser.add_argument( '-N', '--nevents', default=0, dest='nevents', help='Number of events to process.  0=all.', type=int)
     ## sPHENIX files have specific names and locations. Overridde for testing or special purposes.
 #    arg_parser.add_argument( '--mangle-dstname',dest='mangle_dstname',help="Replaces 'DST' with the specified name.", default=None )
@@ -71,7 +71,7 @@ def submission_args():
         args.loglevel = 'DEBUG'
     if args.chatty or args.verbose==3 :
         args.loglevel = 'CHATTY'
-    
+
     return args
 
 # ============================================================================

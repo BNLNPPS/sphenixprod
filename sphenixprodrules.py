@@ -62,7 +62,7 @@ def is_executable(file_path):
         bool: True if the file is executable, False otherwise.
   """
   path = Path(file_path)
-    
+
   if not path.is_file():
     return False
 
@@ -105,12 +105,12 @@ class InputConfig:
     # Run Quality
     min_run_events:   Optional[int] = None
     min_run_time:     Optional[int] = None
-    combine_seg0_only:          Optional[bool] = True  # For combination jobs, use only segment 0. Default is yes. No effect for downstream jobs.    
+    combine_seg0_only:          Optional[bool] = True  # For combination jobs, use only segment 0. Default is yes. No effect for downstream jobs.
     choose20:         Optional[bool] = False  # Randomly choose 20% of available files
     infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
     direct_path: Optional[str]                = None  # Make direct_path optional
-    
+
 # ============================================================================
 @dataclass( frozen = True )
 class RuleConfig:
@@ -185,7 +185,7 @@ class RuleConfig:
         version_string = f'v{params_data["version"]:{VERFMT}}'
         outstub = params_data["dataset"] if "dataset" in params_data else params_data["period"]
         outtriplet = f'{build_string}_{params_data["dbtag"]}_{version_string}'
-        
+
         ### Which runs to process?
         runs=param_overrides["runs"]
         runlist=param_overrides["runlist"]
@@ -253,14 +253,14 @@ class RuleConfig:
                                 "combine_seg0_only","choose20",
                                 "infile_query_constraints",
                                 "status_query_constraints","physicsmode"] )
-        
+
         intriplet=input_data.get("intriplet")
         dsttype=params_data["dsttype"]
         input_stem = inputs_from_output[dsttype]
         CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
         if isinstance(input_stem, dict):
             indsttype = list(input_stem.values())
-        elif isinstance(input_stem, list):            
+        elif isinstance(input_stem, list):
             indsttype = input_stem
         else:
             ERROR("Unrecognized type of input file descriptor {type(input_stem)}")
@@ -274,7 +274,7 @@ class RuleConfig:
         combine_seg0_only=input_data.get("combine_seg0_only",True) # Default is true
         # If explicitly specified, argv overrides
         argv_combine_seg0_only=param_overrides.get("combine_seg0_only")
-        if argv_combine_seg0_only is not None:            
+        if argv_combine_seg0_only is not None:
             combine_seg0_only=argv_combine_seg0_only
 
         choose20=input_data.get("choose20",False)
@@ -289,14 +289,14 @@ class RuleConfig:
             else:
                 WARN ("Option 'choose20' ignored for downstream production.")
                 choose20=False
-            
+
         # Substitutions in direct input path, if given
         input_direct_path = input_data.get("direct_path")
         if input_direct_path is not None:
             input_direct_path = input_direct_path.format(mode=physicsmode)
             DEBUG (f"Using direct path {input_direct_path}")
         dataset = input_data.get("dataset",outstub)
-        
+
         # Allow arbitrary query constraints to be added
         infile_query_constraints  = input_data.get("infile_query_constraints", "")
         infile_query_constraints += param_overrides.get("infile_query_constraints", "")
@@ -307,7 +307,7 @@ class RuleConfig:
 
         input_config=InputConfig(
             db=input_data["db"],
-            table=input_data["table"],            
+            table=input_data["table"],
             intriplet=intriplet,
             indsttype=indsttype,
             indsttype_str=indsttype_str,
@@ -341,17 +341,17 @@ class RuleConfig:
         else:
             arguments_tmpl=glob_arguments_tmpl
         job_data["arguments_tmpl"]=arguments_tmpl
-                 
-        # Payload code etc. 
+
+        # Payload code etc.
         payload_list  = job_data.pop("payload")
         payload_list += param_overrides.get("payload_list",[])
         # Prepend by the yaml file's path unless they are direct
-        yaml_path = Path(yaml_file).parent.resolve()            
+        yaml_path = Path(yaml_file).parent.resolve()
         for i,loc in enumerate(payload_list):
             if not loc.startswith("/"):
                 payload_list[i]= f'{yaml_path}/{loc}'
         DEBUG(f'List of payload items is {payload_list}')
-                        
+
         # Filesystem paths
         filesystem = job_data.get("filesystem",None)
         if filesystem:
@@ -370,8 +370,8 @@ class RuleConfig:
                                                     rungroup='{rungroup}',
                                                     )
             DEBUG(f"{key}:\t {filesystem[key]}")
-        job_data["filesystem"]=filesystem 
-        
+        job_data["filesystem"]=filesystem
+
         # The executable
         script = job_data.pop("script")
         # Adjust the executable's path
@@ -389,7 +389,7 @@ class RuleConfig:
             for f in allfiles:
                 if script == Path(f).name:
                     script = f
-                    break        
+                    break
         INFO(f'Full path to script is {script}')
         if not Path(script).exists() :
             ERROR(f"Executable {script} does not exist")
@@ -445,14 +445,14 @@ class RuleConfig:
         environment=f'SPHENIXPROD_SCRIPT_PATH={param_overrides.get("script_path","None")}'
         job_data["environment"]=environment
 
-        # catch different production branches - prepend by branch if not main            
+        # catch different production branches - prepend by branch if not main
         branch_name="main"
         try:
             result = subprocess.run(
                 [f"git -C {Path(__file__).parent} rev-parse --abbrev-ref HEAD"],
                 shell=True,
-                capture_output=True, 
-                text=True, 
+                capture_output=True,
+                text=True,
                 check=True
             )
             branch_name = result.stdout.strip()
@@ -471,7 +471,7 @@ class RuleConfig:
                 continue
             condor_job_dict[param] = job_data[param]
         del job_data         # Kill job_data - it's stale now and easily used accidentally
-            
+
         ## Any remaining overrides
         priority=param_overrides.get("priority",None)
         if priority:
@@ -489,14 +489,14 @@ class RuleConfig:
         DebugString="CondorJobConfig:\n"
         for k,v in asdict(job_config).items():
             DebugString += f"{k}:\t {v} \n"
-        DEBUG(DebugString)        
-        
+        DEBUG(DebugString)
+
         ### With all preparations done, construct the constant RuleConfig object
         return cls(
             dsttype=dsttype,
             period=params_data["period"],
             physicsmode=physicsmode,
-            dataset=params_data.get("dataset"), 
+            dataset=params_data.get("dataset"),
             build=params_data["build"],
             dbtag=params_data["dbtag"],
             version=params_data["version"],

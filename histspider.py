@@ -54,18 +54,18 @@ def main():
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
-    
-    # Exit without fuss if we are already running 
+
+    # Exit without fuss if we are already running
     if should_I_quit(args=args, myname=sys.argv[0]):
         DEBUG("Stop.")
         exit(0)
-    
+
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if args.profile:
         DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
-        profiler.enable()    
+        profiler.enable()
 
     if test_mode:
         INFO("Running in testbed mode.")
@@ -85,7 +85,7 @@ def main():
     param_overrides["runs"]=args.runs
     param_overrides["runlist"]=args.runlist
     param_overrides["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
-        
+
     # Rest of the input substitutions
     if args.physicsmode is not None:
         param_overrides["physicsmode"] = args.physicsmode # e.g. physics
@@ -109,7 +109,7 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-    
+
     filesystem = rule.job_config.filesystem
     DEBUG(f"Filesystem: {filesystem}")
 
@@ -120,7 +120,7 @@ def main():
     find = shutil.which('find') # on gpfs, no need for lfs find, use the more powerful generic find
     histdir=filesystem['histdir']
     INFO(f"Histogram directory template: {histdir}")
-    
+
     # All leafs:
     leafparent=histdir.split('/{leafdir}')[0]
     leafdirs = shell_command(f"{find} {leafparent} -type d -name {rule.dsttype}\* -mindepth 1 -a -maxdepth 1")
@@ -133,12 +133,12 @@ def main():
     ### Finally, run over all HIST files in those directories
     # They too have dbinfo and need to be registered and renamed
     foundhists=[]
-    for hdir in allhistdirs:        
+    for hdir in allhistdirs:
         tmpfound = shell_command(f"{find} {hdir} -type f -name HIST\*root:\* -o -name CALIB\*")
-            
+
         # Remove files that already end in ".root" - they're already registered
         foundhists += [ file for file in tmpfound if not file.endswith(".root") ]
-    
+
     # Final cuts
     INFO(f"Found a total of {len(foundhists)} histograms to register. Checking against run constraint")
     act_on_hists=[]
@@ -163,7 +163,7 @@ def main():
             WARN(f"Error parsing lfn {lfn}: {e}. Skipped.")
             continue
 
-        fullpath=str(Path(loopfile).parent)+'/'+lfn        
+        fullpath=str(Path(loopfile).parent)+'/'+lfn
         if binary_contains_bisect(rule.runlist_int,run):
             if dbid <= 0:
                 ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
@@ -184,10 +184,10 @@ def main():
                 tag=rule.outtriplet,
                 )
         act_on_hists.append((full_file_path,fullinfo))
-        
-    fmax=len(act_on_hists)        
+
+    fmax=len(act_on_hists)
     INFO(f"Found {fmax} in the specified run range")
-    
+
     ###### Here be dragons
     tstart = datetime.now()
     tlast = tstart
@@ -200,7 +200,7 @@ def main():
             tlast = now
 
         origfile=fullinfo.origfile
-        ### Register first, then move. 
+        ### Register first, then move.
         upsert_filecatalog(fullinfos=fullinfo,
                            dryrun=args.dryrun # only prints the query if True
                            )
@@ -214,7 +214,7 @@ def main():
             print(f" {origfile}\n{full_file_path}" )
             ERROR(e)
             exit(1)
-            
+
     if args.profile:
         profiler.disable()
         DEBUG("Profiling finished. Printing stats...")
@@ -222,7 +222,7 @@ def main():
         stats.strip_dirs().sort_stats('time').print_stats(10)
 
     INFO(f"{Path(sys.argv[0]).name} DONE.")
-        
+
 # ============================================================================================
 
 if __name__ == '__main__':

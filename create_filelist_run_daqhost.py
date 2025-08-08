@@ -22,12 +22,12 @@ def main():
 
     # Using a defaultdict to easily append to lists of filenames per host
     file_list_by_host = defaultdict(list)
-    
+
     ### Important change, 07/15/2025: Usually only care about segment 0!
     segswitch=sys.argv[3]
     sql_query = f"""
-    SELECT filename, daqhost 
-    FROM datasets 
+    SELECT filename, daqhost
+    FROM datasets
     WHERE runnumber = {runnumber}"""
     if segswitch == "seg0fromdb":
         sql_query += "\n\t AND (segment = 0)"
@@ -35,9 +35,9 @@ def main():
         pass
     else:
         print("segswitch = {seg0fromdb|allsegsfromdb} must be explicitly provided")
-        exit(1)        
+        exit(1)
     sql_query += f"""
-    AND (daqhost = '{daqhost}' OR daqhost = 'gl1daq') 
+    AND (daqhost = '{daqhost}' OR daqhost = 'gl1daq')
     ORDER BY filename
     """
     print(sql_query)

@@ -28,9 +28,9 @@ def main():
 
     ### Minutiae
     args = steering_args()
-    setup_my_rot_handler(args)    
+    setup_my_rot_handler(args)
     slogger.setLevel(args.loglevel)
-    
+
     hostname=args.hostname.split('.')[0] if isinstance(args.hostname,str) else None
     if not hostname:
         hostname=platform.node().split('.')[0]
@@ -41,7 +41,7 @@ def main():
     if args.profile:
         DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
-        profiler.enable()    
+        profiler.enable()
 
     ### Parse yaml
     try:
@@ -59,21 +59,21 @@ def main():
     except KeyError:
         WARN(f"Host '{hostname}' not found in {args.steerfile}")
         exit(1)
-    
+
     ### defaultlocations is special
     # pop removes it so the remainder are rules
     # Note: Could be made optional for full path files, but too much fuss to be worth it.
     defaultlocations=host_data.pop("defaultlocations",None)
     if not defaultlocations:
         ERROR(f'Could not find field "defaultlocations" in the yaml for {hostname}')
-        exit(1)    
+        exit(1)
     prettyfs = pprint.pformat(defaultlocations)
     DEBUG(f"Default file locations:\n{prettyfs}")
     INFO(f"Successfully loaded {len(host_data)} rules for {hostname}")
     CHATTY(f"YAML dict for {hostname} is:\n{pprint.pformat(host_data)}")
-    
+
     ### Walk through the rules.
-    for rule in host_data:        
+    for rule in host_data:
         INFO(f"Working on {rule}")
         thisprod,ruleargs,sdh_tuple=collect_yaml_data(host_data=host_data,rule=rule,defaultlocations=defaultlocations,dryrun=args.dryrun)
 
@@ -82,7 +82,7 @@ def main():
         ruleargs+=f" --loglevel {args.loglevel}"
         if args.dryrun:
             ruleargs+=" --dryrun"
-        
+
         ### Loop through process types
         ### Go from fast to slow processes.
         ### They'll overlap anyway.
@@ -137,13 +137,13 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     submitdir=rule_data.get("submitdir",defaultlocations["submitdir"])
     submitdir=submitdir.format(rule=rule)
 
-    ### location of the this_sphenixprod script    
+    ### location of the this_sphenixprod script
     thisprod=f"{prodbase}/this_sphenixprod.sh"
     if not Path(thisprod).is_file():
         ERROR(f'Init script {thisprod} does not exist.')
         exit(1)
 
-    ### construct arguments    
+    ### construct arguments
     ruleargs=f"--rule {rule}"
     config=rule_data.get("config", None)
     if not config.startswith("/"):
@@ -156,7 +156,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     if not dryrun:
         Path(submitdir).mkdir( parents=True, exist_ok=True )
     ruleargs += f" --submitdir {submitdir}"
-    
+
     runs=rule_data.get("runs", None)
     if runs:
         runs = map(str,runs)
@@ -176,7 +176,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     jobprio=rule_data.get("jobprio", None)
     if jobprio:
         ruleargs += f" --priority {jobprio}"
-        
+
     ### Booleans for what to run
     sdh_tuple=SubmitDstHist(submit=rule_data.get("submit", False),
                             dstspider=rule_data.get("dstspider", True),
@@ -191,7 +191,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     ## cleanup
     while ruleargs.startswith(" "):
         ruleargs=ruleargs[1:-1]
-        
+
     return thisprod,ruleargs,sdh_tuple
 
 # ============================================================================================
@@ -248,7 +248,7 @@ def steering_args():
 
     return args
 
-    
+
 # ============================================================================================
 
 if __name__ == '__main__':

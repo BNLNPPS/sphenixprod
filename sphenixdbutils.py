@@ -29,7 +29,7 @@ Also, it needs a robust way to establish things like testbed vs. production mode
 
 #################### Test mode? Multiple ways to turn it on
 ### TODO: ".slurp" is outdated as a name, just using it for backward compatibility
-test_mode = ( 
+test_mode = (
         False
         or 'testbed' in str(Path(".").absolute()).lower()
         or Path(".slurp/testbed").exists() # deprecated
@@ -61,7 +61,7 @@ cnxn_string_map = {
     'daqr'        :  'DSN=daq;READONLY=True;UID=phnxrc',
     'rawr'        :  'DSN=RawdataCatalog_read;READONLY=True;UID=phnxrc',
     'testw'       :  'DSN=FileCatalogTest;UID=phnxrc',
-    
+
 }
 
 # Hack to test locally on Mac
@@ -110,12 +110,12 @@ def full_db_info(origfile: str, info: filedb_info, lfn: str, full_file_path: str
 # ============================================================================================
 files_db_line = "('{lfn}','{full_host_name}','{full_file_path}','{ctimestamp}',{file_size_bytes},'{md5}')"
 insert_files_tmpl="""
-insert into {files_table} (lfn,full_host_name,full_file_path,time,size,md5) 
-values 
+insert into {files_table} (lfn,full_host_name,full_file_path,time,size,md5)
+values
 {files_db_lines}
 on conflict
 on constraint {files_table}_pkey
-do update set 
+do update set
 time=EXCLUDED.time,
 size=EXCLUDED.size,
 md5=EXCLUDED.md5
@@ -126,7 +126,7 @@ md5=EXCLUDED.md5
 datasets_db_line="('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{lastevent},'{tag}')"
 insert_datasets_tmpl="""
 insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events,firstevent,lastevent,tag)
-values 
+values
 {datasets_db_lines}
 on conflict
 on constraint {datasets_table}_pkey
@@ -151,7 +151,7 @@ def upsert_filecatalog(fullinfos: long_filedb_info, dryrun=True ):
 @overload
 def upsert_filecatalog(fullinfos: List[long_filedb_info], dryrun=True ):
     ...
-    
+
 def upsert_filecatalog(fullinfos: Union[long_filedb_info,List[long_filedb_info]], dryrun=True ):
     if isinstance(fullinfos, long_filedb_info):
         fullinfos=[fullinfos]
@@ -183,7 +183,7 @@ def upsert_filecatalog(fullinfos: Union[long_filedb_info,List[long_filedb_info]]
             lastevent=fullinfo.last,
             tag=fullinfo.tag,
         ))
-        
+
     files_db_lines = ",\n".join(files_db_lines)
     insert_files=insert_files_tmpl.format(
         files_table='test_files' if test_mode else 'files',
@@ -202,7 +202,7 @@ def upsert_filecatalog(fullinfos: Union[long_filedb_info,List[long_filedb_info]]
         files_curs = dbQuery( cnxn_string_map[ dbstring ], insert_files )
         if files_curs:
             files_curs.commit()
-        else: 
+        else:
             ERROR(f"Failed to insert file(s)into database {dbstring}. Line was:")
             ERROR(f"{insert_files}")
             exit(1)
@@ -219,7 +219,7 @@ def upsert_filecatalog(fullinfos: Union[long_filedb_info,List[long_filedb_info]]
 update_prodstate_tmpl = """
 update production_status
 set status='{status}', ended='{ended}'
-where 
+where
 id={dbid}
 ;
 """
@@ -254,7 +254,7 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     # Guard rails - should not be needed, because only Readonly connections should be used
     assert( 'delete' not in query.lower() )
     #assert( 'insert' not in query.lower() )
-    #assert( 'update' not in query.lower() )    
+    #assert( 'update' not in query.lower() )
     #assert( 'select'     in query.lower() )
 
     CHATTY(f'[cnxn_string] {cnxn_string}')
@@ -282,7 +282,7 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             DEBUG(f"Attempt {itry} failed: {last_exception}")
     #TODO: Handle connn failure more gracefully
     CHATTY(f'[query time ] {(datetime.now() - start).total_seconds():.2f} seconds' )
-    
+
     return curs
 
 # ============================================================================================
@@ -305,7 +305,7 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
         - list_to_condition([100, 200], "runnumber") returns "and runnumber>=100 and runnumber<=200", [100, 101, ..., 200]
         - list_to_condition([1, 2, 3], "runnumber") returns "and runnumber in ( 1,2,3 )", [1, 2, 3]
         - list_to_condition([], "runnumber") returns None
-    """    
+    """
 
     if isinstance(lst,int):
         lst=[ lst ]
@@ -318,7 +318,7 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
     length=len( lst )
     if length==0:
         return ""
-    
+
     if length>100000:
         ERROR(f"List has {length} entries. Not a good idea. Bailing out.")
         exit(-1)

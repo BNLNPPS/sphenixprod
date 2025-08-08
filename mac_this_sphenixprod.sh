@@ -60,7 +60,7 @@ parse_git_branch() {
       pbranch=""
       pstatus="\e[31m"
   fi
-  
+
    # The output needs to include the leading space and the yellow color,
    # and ensure all internal ANSI codes are bracketed for correct prompt width calculation.
    gitstatus="${branch_color_status} prod:${branch}\e[0m"
@@ -89,7 +89,7 @@ if [[ -n "$BASH_VERSION" ]]; then
    #PS1="\e[36m\u@\h \e[33m\W>\e[0m "
    PS1="\u@\h \W> "
    git config --global user.name "Kolja Kauder"
-   git config --global user.email "kkauder@gmail.com"    
+   git config --global user.email "kkauder@gmail.com"
 elif [[ -n "$ZSH_VERSION" ]]; then
    # Zsh prompt
    PS1="%{[36m%}me@%m%{[33m%}%{[1;33m%} [%1~/]> %{[0m%}"

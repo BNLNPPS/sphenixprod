@@ -38,8 +38,8 @@ def main():
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
-    
-    # Exit without fuss if we are already running 
+
+    # Exit without fuss if we are already running
     if should_I_quit(args=args, myname=sys.argv[0]):
         DEBUG("Stop.")
         exit(0)
@@ -48,8 +48,8 @@ def main():
     if args.profile:
         DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
-        profiler.enable()    
-    
+        profiler.enable()
+
     if test_mode:
         INFO("Running in testbed mode.")
         args.mangle_dirpath = 'production-testbed'
@@ -68,7 +68,7 @@ def main():
     param_overrides["runs"]=args.runs
     param_overrides["runlist"]=args.runlist
     param_overrides["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
-        
+
     # Rest of the input substitutions
     if args.physicsmode is not None:
         param_overrides["physicsmode"] = args.physicsmode # e.g. physics
@@ -92,7 +92,7 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-    
+
     filesystem = rule.job_config.filesystem
     DEBUG(f"Filesystem: {filesystem}")
 
@@ -100,7 +100,7 @@ def main():
     # Lustre's robin hood, rbh-find, doesn't offer advantages for our usecase, and it is more cumbersome to use.
     # But "lfs find" is preferrable to the regular kind.
     find=shutil.which('find')
-    lfind = shutil.which('lfs')    
+    lfind = shutil.which('lfs')
     if lfind is None:
         WARN("'lfs find' not found")
         lfind = shutil.which('find')
@@ -136,8 +136,8 @@ def main():
     if Path(dstlistlock).exists():
         WARN(f"Lock file {dstlistlock} already exists, indicating another spider is running over the same rule.")
         # Safety valve. If it's old, we assume some job didn't end gracefully and proceed anyway.
-        mod_timestamp = Path(dstlistlock).stat().st_mtime 
-        mod_datetime = datetime.fromtimestamp(mod_timestamp) 
+        mod_timestamp = Path(dstlistlock).stat().st_mtime
+        mod_datetime = datetime.fromtimestamp(mod_timestamp)
         time_difference = datetime.now() - mod_datetime
         threshold = 8 * 60 * 60
         if time_difference.total_seconds() > threshold:
@@ -156,7 +156,7 @@ def main():
         INFO(" ... not found. Creating a new one.")
         Path(dstlistname).parent.mkdir( parents=True, exist_ok=True )
         Path(dstlistname).unlink(missing_ok=True) ### should never be necessary
-        
+
         # All leafs:
         tstart = datetime.now()
         leafparent=outlocation.split('/{leafdir}')[0]
@@ -165,7 +165,7 @@ def main():
 
         # Run groups that we're interested in
         desirable_rungroups = { rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100)) for run in rule.runlist_int }
-    
+
         ### Walk through leafs - assume rungroups may change between run groups
         for leafdir in leafdirs :
             available_rungroups = shell_command(f"{find} {leafdir} -name run_\* -type d -mindepth 1 -a -maxdepth 1")
@@ -173,10 +173,10 @@ def main():
             # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
             rungroups = {rg for rg in available_rungroups if any( drg in rg for drg in desirable_rungroups) }
             CHATTY(f"For {leafdir}, we have {len(rungroups)} run groups to work on")
-            
+
             for rungroup in rungroups:
                 shell_command(f"{lfind} {rungroup} -type f -name \*root:\* >> {dstlistname}")
-            
+
         if Path(dstlistname).exists():
             wccommand=f"wc -l {dstlistname}"
             ret = shell_command(wccommand)
@@ -212,7 +212,7 @@ def main():
     # Done with selecting or creating our chunk, release the lock
     if not args.dryrun:
         Path(dstlistlock).unlink()
-    
+
     ### Collect root files that satisfy run and dbid requirements
     mvfiles_info=[]
     for file in dstfiles:
@@ -225,18 +225,18 @@ def main():
                 exit(0)
             info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
             mvfiles_info.append( (file,info) )
-            
-    INFO(f"{len(mvfiles_info)} total root files to be processed.")    
-    
+
+    INFO(f"{len(mvfiles_info)} total root files to be processed.")
+
     ####################################### Start moving and registering DSTs
     tstart = datetime.now()
     tlast = tstart
     chunksize=2000
     fmax=len(mvfiles_info)
-    
+
     chunked_mvfiles = make_chunks(mvfiles_info, chunksize)
     for i, chunk in enumerate(chunked_mvfiles):
-        now = datetime.now()            
+        now = datetime.now()
         print( f'DST #{i*chunksize}/{fmax}, time since previous output:\t {(now - tlast).total_seconds():.2f} seconds ({chunksize/(now - tlast).total_seconds():.2f} Hz). ' )
         print( f'                   time since the start:       \t {(now - tstart).total_seconds():.2f} seconds (cum. {i*chunksize/(now - tstart).total_seconds():.2f} Hz). ' )
         tlast = now
@@ -267,9 +267,9 @@ def main():
                 tag=rule.outtriplet,
                 ))
             # end of chunk creation loop
-            
-        ###### Here be dragons        
-        ### Register first, then move. 
+
+        ###### Here be dragons
+        ### Register first, then move.
         try:
             upsert_filecatalog(fullinfos=fullinfo_chunk,
                            dryrun=args.dryrun # only prints the query if True
@@ -291,7 +291,7 @@ def main():
                     # exit(-1)
                 # end of chunk move loop
             # dryrun?
-        pass # End of DST loop 
+        pass # End of DST loop
 
     if args.profile:
         profiler.disable()
@@ -300,7 +300,7 @@ def main():
         stats.strip_dirs().sort_stats('time').print_stats(10)
 
     INFO(f"{Path(sys.argv[0]).name} DONE.")
-        
+
 # ============================================================================================
 
 if __name__ == '__main__':

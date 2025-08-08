@@ -12,7 +12,7 @@ from sphenixdbutils import cnxn_string_map, dbQuery # type: ignore
 def main():
     slogger.setLevel("DEBUG")
     script_name = sys.argv[0]
-    if len(sys.argv) == 4 : 
+    if len(sys.argv) == 4 :
         WARN(f"Deprecated usage of {script_name}. Please use this signature in the future:")
         WARN( "usage: <dataset> <intriplet> <dsttype> <runnumber> <segment> ")
         dsttype = sys.argv[1]
@@ -25,7 +25,7 @@ def main():
         runnumber_str = sys.argv[4]
         segment_str = sys.argv[5]
     else:
-        ERROR( "usage: [dataset] [intriplet] [dsttype] <runnumber> <segment> ")                
+        ERROR( "usage: [dataset] [intriplet] [dsttype] <runnumber> <segment> ")
         sys.exit(1)
 
     try:
@@ -37,16 +37,16 @@ def main():
         sys.exit(1)
 
     # dsttype comes as a a comma-separated list. Add ticks and parens
-    dsttype4sql=dsttype.replace(",","','")    
-    
+    dsttype4sql=dsttype.replace(",","','")
+
     # Why not the following, you ask?
-    # SELECT datasets.filename,files.full_file_path 
-    # FROM files,datasets 
+    # SELECT datasets.filename,files.full_file_path
+    # FROM files,datasets
     # WHERE files.lfn=datasets.filename
     # Because it's very slow. So split it into separate queries.
     datasets_query = f"""
     SELECT filename
-    FROM datasets 
+    FROM datasets
     WHERE datasets.dsttype in ( '{dsttype4sql}' )
     AND datasets.runnumber = {runnumber}
     AND datasets.segment = {segment} """
@@ -56,7 +56,7 @@ def main():
       AND tag='{intriplet}'
       AND dataset = '{dataset}'"""
     datasets_query += ";"
-    
+
     print (f"datasets query is {datasets_query}")
     rows = dbQuery( cnxn_string_map['fcr'], datasets_query).fetchall()
     file_list=[]
@@ -67,7 +67,7 @@ def main():
         print("No files found for the given criteria.")
         exit(1)
     filelist=sorted(file_list)
-    
+
     ### Collect full paths. Note, we can make this optional for combiner jobs.
     filelist_str="','".join(filelist)
     files_query = f"""
@@ -84,7 +84,7 @@ def main():
     if not full_path_list:
         print("No files found for the given criteria.")
         exit(1)
-        
+
     list_filename = "infile.list"
     full_path_list_filename = "infile_paths.list"
     try:
@@ -101,6 +101,6 @@ def main():
                 f_out.write(f"{fname}\n")
     except IOError as e:
             print(f"Error writing to file {full_path_list_filename}: {e}")
-            
+
 if __name__ == "__main__":
     main()

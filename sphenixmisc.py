@@ -52,14 +52,14 @@ def setup_rot_handler(args):
 
 # ============================================================================================
 def should_I_quit(args, myname) -> bool:
-    # Exit without fuss if we are already running 
+    # Exit without fuss if we are already running
     p = subprocess.Popen("ps axuww | /usr/bin/grep $USER",shell=True,stdout=subprocess.PIPE)
     stdout_bytes, stderr_bytes = p.communicate() # communicate() returns bytes
     stdout_str = stdout_bytes.decode(errors='ignore') # Decode to string
-    
+
     # Construct a search key with script name, config file, and rulename
     # to check for other running instances with the same parameters.
-    count_already_running = 0    
+    count_already_running = 0
     for psline in stdout_str.splitlines():
         if myname in psline and args.config in psline and args.rulename in psline:
             count_already_running += 1
@@ -72,7 +72,7 @@ def should_I_quit(args, myname) -> bool:
     if count_already_running > 1:
         DEBUG(f"Looks like there's already {count_already_running-1} running instance(s) of me. Suggest Stop.")
         return True
-        
+
     return False
 
 # ============================================================================================
