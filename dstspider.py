@@ -16,7 +16,7 @@ import pprint # noqa F401
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig,inputs_from_output
+from sphenixprodrules import RuleConfig
 from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
@@ -46,7 +46,7 @@ def main():
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if args.profile:
-        DEBUG(f"Profiling is ENABLED.")
+        DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
         profiler.enable()    
     
@@ -117,7 +117,8 @@ def main():
     outlocation=filesystem['outdir']
     INFO(f"Directory tree: {outlocation}")
     # Further down, we will simplify by assuming finaldir == outdir, otherwise this script shouldn't be used.
-    if filesystem['finaldir'] != outlocation:
+    finaldir = filesystem['finaldir']
+    if finaldir != outlocation:
          ERROR("Found finaldir != outdir. Use/adapt dstlakespider instead." )
          print(f"finaldir = {finaldir}")
          print(f"outdir = {outlocation}")
@@ -274,11 +275,12 @@ def main():
                            dryrun=args.dryrun # only prints the query if True
                            )
         except Exception as e:
-            WARN(f"dstspider is ignoring the database exception and moving on.")
+            WARN( f"dstspider is ignoring the database exception and moving on: {e}")
             ### database errors can happen when there are multiples of a file in the prod db.
             ### Why _that_ happens should be investigated, but here, we can just move on to the next chunk.
             continue
             exit(1)
+
         if not args.dryrun:
             for fullinfo in fullinfo_chunk:
                 try:

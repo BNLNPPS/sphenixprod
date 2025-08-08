@@ -7,7 +7,6 @@ import pstats
 import subprocess
 import sys
 import re
-from typing import List
 
 import pprint # noqa F401
 
@@ -91,7 +90,7 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace):
             exit(1)
         submitted_jobs+=len(dbids)
         dbids_str=", ".join(dbids)
-        now_str=timestamp=str(datetime.now().replace(microsecond=0))
+        now_str=str(datetime.now().replace(microsecond=0))
         update_prod_state = f"""
 UPDATE production_status
    SET status='submitted',submitted='{now_str}'
@@ -133,7 +132,7 @@ def main():
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if args.profile:
-        DEBUG(f"Profiling is ENABLED.")
+        DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
         profiler.enable()    
     

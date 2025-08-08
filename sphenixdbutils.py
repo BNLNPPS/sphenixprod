@@ -203,13 +203,15 @@ def upsert_filecatalog(fullinfos: Union[long_filedb_info,List[long_filedb_info]]
         if files_curs:
             files_curs.commit()
         else: 
-            ERROR(f"Failed to insert file {lfn} into database {dbstring}")
+            ERROR(f"Failed to insert file(s)into database {dbstring}. Line was:")
+            ERROR(f"{insert_files}")
             exit(1)
         datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
         if datasets_curs:
             datasets_curs.commit()
         else:
-            ERROR(f"Failed to insert dataset {lfn} into database {dbstring}")
+            ERROR(f"Failed to insert dataset(s)into database {dbstring}. Line was:")
+            ERROR(f"{insert_datasets}")
             exit(1)
 
 # ============================================================================================
@@ -310,7 +312,7 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
     elif isinstance(lst,list):
         pass
     else:
-        ERROR(f"list_to_condition: input argument is {type(runnumbers)}")
+        ERROR(f"list_to_condition: input argument is {type(lst)}")
         exit(1)
 
     length=len( lst )

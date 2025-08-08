@@ -63,7 +63,7 @@ def main():
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if args.profile:
-        DEBUG(f"Profiling is ENABLED.")
+        DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
         profiler.enable()    
 
@@ -206,7 +206,7 @@ def main():
                            )
         if args.dryrun:
             if not Path(origfile).is_file():
-                error(f"Can't see {origfile}")
+                ERROR(f"Can't see {origfile}")
                 exit(1)
         try:
             os.rename( origfile, full_file_path )

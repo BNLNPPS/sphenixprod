@@ -39,7 +39,7 @@ def main():
         WARN(f"{sys.argv[0]} invoked for {hostname} but from {platform.node().split('.')[0]}")
 
     if args.profile:
-        DEBUG(f"Profiling is ENABLED.")
+        DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
         profiler.enable()    
 
@@ -166,7 +166,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     if runlist:
         ruleargs += f" --runlist {runlist}"
     if runs and runlist:
-        ERROR(f'You cannot specify both "runs" and "runlist"')
+        ERROR( 'You cannot specify both "runs" and "runlist"')
         exit(1)
 
     ### More rare extra arguments

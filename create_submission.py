@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
-from pathlib import Path
 from datetime import datetime
-import yaml
+from pathlib import Path
+import yaml 
 import cProfile
 import pstats
-import subprocess
 import re
 import os
 import sys
@@ -16,12 +15,10 @@ import pprint # noqa F401
 if os.uname().sysname!='Darwin' :
     import htcondor # type: ignore
 
-import argparse
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
-from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
+from sphenixmisc import setup_rot_handler, should_I_quit
+from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
-from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixjobdicts import inputs_from_output
 from sphenixmatching import MatchConfig #, eradicate_runs
 from sphenixcondorjobs import CondorJob
@@ -68,7 +65,7 @@ def main():
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if args.profile:
-        DEBUG(f"Profiling is ENABLED.")
+        DEBUG( "Profiling is ENABLED.")
         profiler = cProfile.Profile()
         profiler.enable()    
 
@@ -159,10 +156,9 @@ def main():
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
     
-    #################### With the rule constructed, first remove all traces of the given runs 
-    if args.force:
-        eradicate_runs(rule)
-        
+    # #################### With the rule constructed, first remove all traces of the given runs 
+    # if args.force:
+    #     eradicate_runs(rule)
     
     #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
     INFO("Rule construction complete. Now constructing corresponding match configuration.")
@@ -199,7 +195,8 @@ def main():
     ## Instead of same-size chunks, group submission files by runnumber
     matchlist=list(rule_matches.items())
     ## Brittle! Assumes value[key][3] == runnumber
-    keyfunc = lambda item: item[1][3]  # x[0] is outfilename, x[1] is tuple, 4th field is runnumber
+    def keyfunc(item):
+        return item[1][3]  # x[0] is outfilename, x[1] is tuple, 4th field is runnumber
     matchlist=sorted(matchlist, key=keyfunc)
     matches_by_run = {k : list(g) for k, g in itertools.groupby(matchlist,key=keyfunc)}
     submittable_runs=list(matches_by_run.keys())

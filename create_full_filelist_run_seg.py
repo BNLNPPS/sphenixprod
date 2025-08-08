@@ -14,7 +14,7 @@ def main():
     script_name = sys.argv[0]
     if len(sys.argv) == 4 : 
         WARN(f"Deprecated usage of {script_name}. Please use this signature in the future:")
-        WARN(f"usage: <dataset> <intriplet> <dsttype> <runnumber> <segment> ")
+        WARN( "usage: <dataset> <intriplet> <dsttype> <runnumber> <segment> ")
         dsttype = sys.argv[1]
         runnumber_str = sys.argv[2]
         segment_str = sys.argv[3]
@@ -25,7 +25,7 @@ def main():
         runnumber_str = sys.argv[4]
         segment_str = sys.argv[5]
     else:
-        ERROR(f"usage: [dataset] [intriplet] [dsttype] <runnumber> <segment> ")                
+        ERROR( "usage: [dataset] [intriplet] [dsttype] <runnumber> <segment> ")                
         sys.exit(1)
 
     try:

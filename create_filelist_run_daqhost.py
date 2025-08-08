@@ -30,7 +30,7 @@ def main():
     FROM datasets 
     WHERE runnumber = {runnumber}"""
     if segswitch == "seg0fromdb":
-        sql_query += f"\n\t AND (segment = 0)"
+        sql_query += "\n\t AND (segment = 0)"
     elif segswitch == "allsegsfromdb":
         pass
     else:
