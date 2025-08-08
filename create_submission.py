@@ -272,7 +272,7 @@ queue log,output,error,arguments from {condor_infile}
                                              daqhost=daqhost,
                                             )
             condor_rows.append(condor_job.condor_row())
-            
+
             # Make sure directories exist
             if not args.dryrun and keep_this_run:
                 Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
