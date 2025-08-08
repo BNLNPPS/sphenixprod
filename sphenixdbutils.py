@@ -239,7 +239,7 @@ def update_proddb( dbid: int, filestat=None, dryrun=True ):
                 prodstate_curs.commit()
             else:
                 ERROR(f"Failed to update production status for {dbid} in database {dbstring}")
-                exit()
+                exit(1)
 
 # ============================================================================================
 def printDbInfo( cnxn_string, title ):

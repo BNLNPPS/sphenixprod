@@ -292,7 +292,11 @@ queue log,output,error,arguments from {condor_infile}
             prodstate='submitting'
             if not keep_this_run:
                 prodstate='skipped'
+<<<<<<< HEAD
 
+=======
+                
+>>>>>>> main
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
                 dstname=outbase,

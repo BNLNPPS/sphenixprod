@@ -534,7 +534,6 @@ class RuleConfig:
                              param_overrides=param_overrides,
                             )
 
-
 # ============================================================================
 def parse_spiderstuff(filename: str) -> Tuple[str,...] :
     try:
