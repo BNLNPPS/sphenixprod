@@ -30,13 +30,13 @@ def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace):
 
     sub_files = list(Path(submitdir).glob(f'{subbase}*.sub'))
     sub_files = list(map(str,sub_files))
-    DEBUG(f"Submission files before run constraint:\n{pprint.pformat(sub_files)}")
+    DEBUG(f"[locate_submitfiles] Submission files before run constraint:\n{pprint.pformat(sub_files)}")
     runlist=list(map(str,rule.runlist_int))
 
     # Only use those who match the run condition - the pythonic way
     sub_files = {file for file in sub_files if any( f'_{runnumber}' in file for runnumber in runlist) }
     sub_files = sorted(sub_files,reverse=True) # latest runs first
-    DEBUG(f"Submission files after run constraint:\n{pprint.pformat(sub_files)}")
+    DEBUG(f"[locate_submitfiles] Submission files AFTER run constraint:\n{pprint.pformat(sub_files)}")
     if sub_files == []:
         INFO("No submission files found.")
     return sub_files

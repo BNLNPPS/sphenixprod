@@ -19,9 +19,10 @@ import argparse
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig, MatchConfig
+from sphenixprodrules import RuleConfig
 from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixjobdicts import inputs_from_output
+from sphenixmatching import MatchConfig #, eradicate_runs
 from sphenixcondorjobs import CondorJob
 from sphenixdbutils import test_mode as dbutils_test_mode
 import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
@@ -47,8 +48,6 @@ def main():
     slogger.setLevel(args.loglevel)
 
     if args.force:
-        ERROR('Got "--force": That doesn\'t work yet. Sorry.')
-        exit(1)
         #### For --force, we could do the file and database deletion in RuleConfig.
         # Would be kinda nice because only then we'll know what's _really_ affected, and we could use the logic there.
         # Instead, ensure that the rule logic needs no special cases, set everything up here.
@@ -158,7 +157,11 @@ def main():
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
     
-
+    #################### With the rule constructed, first remove all traces of the given runs 
+    if args.force:
+        eradicate_runs(rule)
+        
+    
     #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
     INFO("Rule construction complete. Now constructing corresponding match configuration.")
 

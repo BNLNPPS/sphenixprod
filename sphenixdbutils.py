@@ -282,3 +282,55 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     CHATTY(f'[query time ] {(datetime.now() - start).total_seconds():.2f} seconds' )
     
     return curs
+
+# ============================================================================================
+def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
+    """
+    Generates a condition string usable in a SQL query from a list of values.
+
+    This function takes a list (`lst`) and a field name (`name`) and constructs a
+    string that can be used as a `WHERE` clause condition in a SQL query.
+
+    Args:
+        lst: A list of positive integers. Usually runnumbers.
+        name: The name of the field/column in the database (usually runnumber)
+
+    Returns:
+        A string representing a (an?) SQL condition, or "" if the list is empty.
+
+    Examples:
+        - list_to_condition([123], "runnumber") returns "and runnumber=123", [123]
+        - list_to_condition([100, 200], "runnumber") returns "and runnumber>=100 and runnumber<=200", [100, 101, ..., 200]
+        - list_to_condition([1, 2, 3], "runnumber") returns "and runnumber in ( 1,2,3 )", [1, 2, 3]
+        - list_to_condition([], "runnumber") returns None
+    """    
+
+    if isinstance(lst,int):
+        lst=[ lst ]
+    elif isinstance(lst,list):
+        pass
+    else:
+        ERROR(f"list_to_condition: input argument is {type(runnumbers)}")
+        exit(1)
+
+    length=len( lst )
+    if length==0:
+        return ""
+    
+    if length>100000:
+        ERROR(f"List has {length} entries. Not a good idea. Bailing out.")
+        exit(-1)
+
+    if length==1:
+        return f"{name}={lst[0]}"
+
+    sorted_lst=sorted(lst)
+    if (sorted_lst != lst):
+        WARN("Original list isn't sorted, that shouldn't happen. Proceeding anyway.")
+
+    # range or list with gaps?
+    if list(range(min(lst),max(lst)+1)) == sorted_lst:
+        return f"{name}>={lst[0]} and {name}<={lst[-1]}"
+
+    strlist=map(str,lst)
+    return f"{name} in  ( {','.join(strlist)} )"
