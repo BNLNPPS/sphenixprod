@@ -243,7 +243,7 @@ def main():
 
         condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
         condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
-        if not args.dryrun: # Submission execution will delete this file if the run is skipped
+        if not args.dryrun: # Note: Deletion of skipped submission files is handled in execute_condorsubmission.py
             # (Re-) create the "header" - common job parameters
             Path(condor_subfile).unlink(missing_ok=True) 
             with open(condor_subfile, "w") as f:
