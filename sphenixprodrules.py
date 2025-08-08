@@ -673,7 +673,7 @@ class MatchConfig:
         status_query += self.input_config.status_query_constraints
         existing_status = { c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
         INFO(f"Already have {len(existing_status)} output files in the production db")
-        
+            
         ####################################################################################
         ###### Now get all existing input files
         ####################################################################################
