@@ -76,6 +76,45 @@ def should_I_quit(args, myname) -> bool:
     return False
 
 # ============================================================================================
+def unlock_file(file_path, dryrun: bool=True):
+    lock_name=file_path+".lock"
+    DEBUG(f"Deleting lock file {lock_name}")
+    if not dryrun:
+        Path(lock_name).unlink(missing_ok=True)
+        
+# ============================================================================================
+def lock_file(file_path, dryrun: bool=True, max_lock_age: int=2*60*60) -> bool:
+    lock_name=file_path+".lock"
+    if Path(lock_name).exists():
+        WARN(f"Lock file {lock_name} already exists.")
+        # Safety valve. If the lock is old, we assume some job didn't end gracefully and proceed anyway.
+        mod_timestamp = Path(lock_name).stat().st_mtime
+        mod_datetime = datetime.fromtimestamp(mod_timestamp)
+        time_difference = datetime.now() - mod_datetime
+        if time_difference.total_seconds() > max_lock_age:
+            WARN(f"lock file is already {time_difference.total_seconds()} seconds old. Overriding.")
+        else:
+            return False
+
+    if not dryrun:
+        Path(lock_name).parent.mkdir(parents=True,exist_ok=True)
+        Path(lock_name).touch()
+
+    return True
+
+# ============================================================================================
+def read_batches(file_path, batch_size=1000):
+    with open(file_path, 'r') as file:
+        batch = []
+        for line in file:
+            batch.append(line.strip())
+            if len(batch) == batch_size:
+                yield batch
+                batch = []
+        if batch: # Yield any remaining lines in the last batch
+            yield batch
+
+# ============================================================================================
 def make_chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
     # source https://stackoverflow.com/questions/312443/how-do-i-split-a-list-into-equally-sized-chunks
