@@ -46,7 +46,7 @@ def submission_args():
     # arg_parser.add_argument( '--segments', nargs='+', help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list", default=[] )
     arg_parser.add_argument( '--physics-mode','--experiment-mode',dest="physicsmode",help="Specifies the experiment mode (cosmics, commissioning, physics) for direct lookup of input files.",default=None)
     arg_parser.add_argument( '--onlyseg0', help='Combine only segment 0 files.', action=argparse.BooleanOptionalAction)
-    arg_parser.add_argument( '--choose20', help='Randomly choose 20% of available files for combining only (no effect downstream)',
+    arg_parser.add_argument( '--choose20', help='Randomly choose 20%% of available files for combining only (no effect downstream)',
                              action="store_true")
     
     arg_parser.add_argument( '-N', '--nevents', default=0, dest='nevents', help='Number of events to process.  0=all.', type=int)
