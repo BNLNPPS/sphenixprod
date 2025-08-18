@@ -63,7 +63,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
         if Path(dstlistname).exists():
             wccommand=f"wc -l {dstlistname}"
             ret = shell_command(wccommand)
-            nfiles = ret[0]
+            nfiles = int(ret[0])
 
     INFO(f"Found {nfiles} files to delete.")
 
@@ -79,7 +79,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
 
     if not dryrun:
         unlock_file(file_path=dstlistname,dryrun=dryrun)
-        Path(dstlistname).unlink(missing_ok=True)
+        #Path(dstlistname).unlink(missing_ok=True)
     
     exit()
 
