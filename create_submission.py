@@ -20,7 +20,8 @@ from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixjobdicts import inputs_from_output
-from sphenixmatching import MatchConfig #, eradicate_runs
+from sphenixmatching import MatchConfig
+from eradicate_runs import eradicate_runs
 from sphenixcondorjobs import CondorJob
 from sphenixdbutils import test_mode as dbutils_test_mode
 import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
@@ -51,10 +52,10 @@ def main():
         # Instead, ensure that the rule logic needs no special cases, set everything up here.
         WARN('Got "--force": Override existing output in files, datasets, and production_status DBs. Delete those files.')
         WARN('               Note that it\'s YOUR job to ensure there\'s no job in the queue or file in the DST lake which will overwrite this later!')
-        answer = input("Do you want to continue? (yes/no): ")
-        if answer.lower() != "yes":
-            print("Exiting. Smart.")
-            exit(0)
+        # answer = input("Do you want to continue? (yes/no): ")
+        # if answer.lower() != "yes":
+        #     print("Exiting. Smart.")
+        #     exit(0)
         WARN("Here we go then.")
 
     # Exit without fuss if we are already running
@@ -155,11 +156,7 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-
-    # #################### With the rule constructed, first remove all traces of the given runs
-    # if args.force:
-    #     eradicate_runs(rule)
-
+        
     #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
     INFO("Rule construction complete. Now constructing corresponding match configuration.")
 
@@ -167,6 +164,11 @@ def main():
     match_config = MatchConfig.from_rule_config(rule)
     CHATTY("Match configuration:")
     CHATTY(yaml.dump(match_config.dict))
+
+    # #################### With the matching rules constructed, first remove all traces of the given runs
+    if args.force:
+        eradicate_runs(match_config=match_config, dryrun=args.dryrun)
+    exit()
 
     # Note: matches() is keyed by output file names, but the run scripts use the output base name and separately the run number
     rule_matches=match_config.matches()
@@ -292,11 +294,7 @@ queue log,output,error,arguments from {condor_infile}
             prodstate='submitting'
             if not keep_this_run:
                 prodstate='skipped'
-<<<<<<< HEAD
 
-=======
-                
->>>>>>> main
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
                 dstname=outbase,
