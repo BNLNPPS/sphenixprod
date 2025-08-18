@@ -29,6 +29,7 @@ tmtags
 #for vscode
 .vscode
 ._*
+*.code-workspace
 
 # For redcar:
 .redcar

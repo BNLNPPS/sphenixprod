@@ -1,21 +1,15 @@
 import yaml
 import re
 from typing import Dict, List, Tuple, Any, Optional
-import itertools
-import operator
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import stat
 import subprocess
 import pprint # noqa: F401
-import os
-import psutil
 
-from sphenixdbutils import cnxn_string_map, dbQuery
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import inputs_from_output
 from sphenixcondorjobs import CondorJobConfig,CondorJobConfig_fieldnames,glob_arguments_tmpl
-from sphenixmisc import binary_contains_bisect
 
 """ This file contains the dataclasses for the rule configuration and matching.
     It encapsulates what is tedious but hopefully easily understood instantiation
@@ -131,7 +125,7 @@ class RuleConfig:
 
     # Nested dataclasses
     input_config: InputConfig
-    job_config:   CondorJobConfig
+    job_config:   Any  # CondorJobConfig created dynamically via make_dataclass
 
     ### Optional fields have to be down here to allow for default values
     physicsmode: str     # cosmics, commissioning, physics (default: physics)
@@ -183,7 +177,6 @@ class RuleConfig:
         ### Fill derived data fields
         build_string=params_data["build"].replace(".","")
         version_string = f'v{params_data["version"]:{VERFMT}}'
-        outstub = params_data["dataset"] if "dataset" in params_data else params_data["period"]
         outtriplet = f'{build_string}_{params_data["dbtag"]}_{version_string}'
 
         ### Which runs to process?
@@ -240,7 +233,6 @@ class RuleConfig:
         ### Optionals
         physicsmode = params_data.get("physicsmode", "physics")
         physicsmode = param_overrides.get("physicsmode", physicsmode)
-        comment = params_data.get("comment", None)
 
         ###### Now create InputConfig and CondorJobConfig
         # Extract and validate input_config
@@ -295,7 +287,6 @@ class RuleConfig:
         if input_direct_path is not None:
             input_direct_path = input_direct_path.format(mode=physicsmode)
             DEBUG (f"Using direct path {input_direct_path}")
-        dataset = input_data.get("dataset",outstub)
 
         # Allow arbitrary query constraints to be added
         infile_query_constraints  = input_data.get("infile_query_constraints", "")
@@ -465,7 +456,7 @@ class RuleConfig:
         # Fill in all class fields.
         condor_job_dict={}
         for param in job_data:
-            if not param in CondorJobConfig_fieldnames:
+            if param not in CondorJobConfig_fieldnames:
                 WARN( f"Unexpected field '{param}' in params. Removing, but you should clean up the yaml")
                 # raise ValueError(f"Unexpected field '{param}'.")
                 continue
@@ -482,7 +473,7 @@ class RuleConfig:
 
         request_memory=condor_job_dict.get("request_memory",None)         # Ensure sanity after the mem juggling act
         if not request_memory:
-            raise ValueError(f"Missing required field 'request_memory'.")
+            raise ValueError( "Missing required field 'request_memory'.")
 
         #####  Now instantiate the main condor config object for all jobs
         job_config=CondorJobConfig(**condor_job_dict) # Do NOT forget the ** for Dictionary Unpacking

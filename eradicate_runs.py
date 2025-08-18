@@ -1,23 +1,13 @@
 #!/usr/bin/env python
 
 from pathlib import Path
-from datetime import datetime
-import cProfile
-import pstats
-import subprocess
-import sys
-import shutil
 
 import pprint # noqa F401
 
-import argparse
-from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit, shell_command
-from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
+from sphenixmisc import shell_command
+from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixmatching import MatchConfig
-from sphenixdbutils import test_mode as dbutils_test_mode
-from sphenixdbutils import cnxn_string_map, dbQuery
-from sphenixmisc import shell_command,read_batches,lock_file,unlock_file
+from sphenixmisc import read_batches,lock_file,unlock_file
 
 def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
     """ Run this script to remove files and db entries
@@ -52,7 +42,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
     #dstlistname="/tmp/delmelist"
     #dstlistname=None
     if not lock_file(file_path=dstlistname, dryrun=dryrun, max_lock_age=30*60):
-        ERROR(f"Not safe to proceed without intervention.")
+        ERROR( "Not safe to proceed without intervention.")
         exit(1)
     
     rootfiles=match_config.get_output_files(filemask="\*root\*",dstlistname=dstlistname,dryrun=dryrun)
