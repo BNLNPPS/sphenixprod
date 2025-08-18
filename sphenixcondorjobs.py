@@ -1,5 +1,5 @@
 from dataclasses import dataclass, make_dataclass, field, asdict
-from typing import Optional, ClassVar, List,Any
+from typing import Optional, ClassVar, List, Any
 import math
 import pprint # noqa: F401
 
@@ -97,7 +97,7 @@ class CondorJob:
     """
 
     # --- Class Variable (Shared across all instances) ---
-    job_config:            ClassVar[CondorJobConfig]
+    job_config:            ClassVar[Any]  # CondorJobConfig created dynamically via make_dataclass
 
     # --- Instance Variables (Specific to each job) ---
     arguments:              str

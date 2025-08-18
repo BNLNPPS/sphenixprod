@@ -2,5 +2,6 @@ pyodbc
 pyyaml
 htcondor
 classad
+psutil
 #lipsum
 #nanoid

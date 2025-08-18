@@ -8,7 +8,6 @@ import pstats
 import sys
 import shutil
 import os
-import math
 
 # from dataclasses import fields
 import pprint # noqa F401
@@ -113,7 +112,7 @@ def main():
 
     INFO(f"Looking for existing filelist {dstlistname}")
     if Path(dstlistname).exists():
-        INFO(f" ... found.")
+        INFO( " ... found.")
     else:
         INFO(" ... not found. Creating a new one.")
         Path(dstlistname).parent.mkdir( parents=True, exist_ok=True )
@@ -125,7 +124,7 @@ def main():
 
     wccommand=f"wc -l {dstlistname}"
     ret = shell_command(wccommand)
-    INFO("List contains {ret[0]} files.")
+    INFO(f"List contains {ret[0]} files.")
 
     ### Grab the first N files and work on those.
     nfiles_to_process=500000
