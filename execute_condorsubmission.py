@@ -42,7 +42,6 @@ def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace):
 
 
 # ============================================================================================
-
 def execute_submission(rule: RuleConfig, args: argparse.Namespace):
     """ Look for job files and submit condor jobs if the current load is acceptable.
     Update production database to "submitted".
