@@ -3,18 +3,22 @@ import itertools
 import operator
 from dataclasses import dataclass, asdict
 from pathlib import Path
+import shutil
 from datetime import datetime
 import stat
+import sys
 import subprocess
 import pprint # noqa: F401
 import psutil
+import math
+from contextlib import nullcontext # For optional file writing
 
-from sphenixprodrules import RuleConfig,InputConfig
+from sphenixprodrules import RuleConfig, InputConfig
 from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixjobdicts import inputs_from_output
-from sphenixmisc import binary_contains_bisect
+from sphenixmisc import binary_contains_bisect, shell_command
 
 from collections import namedtuple
 FileHostRunSegStat = namedtuple('FileHostRunSeg',['filename','daqhost','runnumber','segment','status'])
@@ -38,6 +42,8 @@ class MatchConfig:
     dataset:        str
     outtriplet:     str
     physicsmode:    str
+    filesystem:     Dict
+    rungroup_tmpl:  str
 
     # Internal, derived variables
     dst_type_template: str
@@ -56,13 +62,15 @@ class MatchConfig:
             A MatchConfig object with fields pre-populated from the RuleConfig.
         """
 
-        dsttype      = rule_config.dsttype
-        runlist_int  = rule_config.runlist_int
-        input_config = rule_config.input_config
-        dataset      = rule_config.dataset
-        outtriplet   = rule_config.outtriplet
-        physicsmode  = rule_config.physicsmode
-
+        dsttype       = rule_config.dsttype
+        runlist_int   = rule_config.runlist_int
+        input_config  = rule_config.input_config
+        dataset       = rule_config.dataset
+        outtriplet    = rule_config.outtriplet
+        physicsmode   = rule_config.physicsmode
+        filesystem    = rule_config.job_config.filesystem
+        rungroup_tmpl = rule_config.job_config.rungroup_tmpl
+        
         ## derived
         dst_type_template = f'{dsttype}'
         # This test should be equivalent to if 'raw' in input_config.db
@@ -79,12 +87,14 @@ class MatchConfig:
             in_types = input_stem
 
         return cls(
-            dsttype      = dsttype,
-            runlist_int  = runlist_int,
-            input_config = input_config,
-            dataset      = dataset,
-            outtriplet   = outtriplet,
-            physicsmode  = physicsmode,
+            dsttype       = dsttype,
+            runlist_int   = runlist_int,
+            input_config  = input_config,
+            dataset       = dataset,
+            outtriplet    = outtriplet,
+            physicsmode   = physicsmode,
+            filesystem    = filesystem,
+            rungroup_tmpl = rungroup_tmpl,
             ## derived
             dst_type_template = dst_type_template,
             in_types=in_types,
@@ -98,7 +108,7 @@ class MatchConfig:
     # ------------------------------------------------
     def good_runlist(self) -> List[int]:
         ### Run quality
-        CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+        CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
         # Here would be a  good spot to check against golden or bad runlists and to enforce quality cuts on the runs
 
         INFO("Checking runlist against run quality cuts.")
@@ -133,7 +143,7 @@ order by runnumber
 
 
     # ------------------------------------------------
-    def get_existing_files(self, runnumbers: Any) :
+    def get_files_in_db(self, runnumbers: Any) :
 
         exist_query  = f"""select filename from datasets
         where tag='{self.outtriplet}'
@@ -146,6 +156,89 @@ order by runnumber
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
         existing_output.sort()
         return existing_output
+
+    # ------------------------------------------------
+    def get_output_files(self, filemask: str = "\*.root:\*", dstlistname: str=None, dryrun: bool=True) -> List[str]:
+        ### Which find command to use for lustre?
+        find=shutil.which('find')
+        lfind = shutil.which('lfs')
+        if lfind is None:
+            WARN("'lfs find' not found")
+            lfind = shutil.which('find')
+        else:
+            lfind = f'{lfind} find'
+            INFO(f'Using find={find} and lfind="{lfind}.')
+
+        if dstlistname:
+            INFO(f"Piping output to {dstlistname}")
+            if not dryrun:
+                Path(dstlistname).unlink(missing_ok=True)
+            else:
+                dstlistname="/dev/null"
+                INFO(f"Dryrun. Piping output to {dstlistname}")
+
+        outlocation=self.filesystem['outdir']
+        # Further down, we will simplify by assuming finaldir == outdir, otherwise this script shouldn't be used.
+        finaldir=self.filesystem['finaldir']
+        if finaldir != outlocation:
+            ERROR("Found finaldir != outdir. Use/adapt dstlakespider instead." )
+            print(f"finaldir = {finaldir}")
+            print(f"outdir = {outlocation}")
+            exit(1)
+        INFO(f"Directory tree: {outlocation}")
+
+        # All leafs:
+        leafparent=outlocation.split('/{leafdir}')[0]
+        leafdirs_cmd=f"{find} {leafparent} -type d -name {self.dsttype}\* -mindepth 1 -a -maxdepth 1"
+        leafdirs = shell_command(leafdirs_cmd)
+        CHATTY(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
+
+        # Run groups that we're interested in
+        sorted_runlist = sorted(self.runlist_int)
+        def rungroup(run):
+            return self.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
+        desirable_rungroups = { rungroup(run) for run in sorted_runlist }
+        runs_by_group = { group : [] for group in desirable_rungroups}
+        outidentifier=f'{self.dataset}_{self.outtriplet}'
+        for run in sorted_runlist:
+            # runs_by_group[rungroup(run)].append(str(run))
+            runstr=f'{outidentifier}-{run:{pRUNFMT}}'
+            ## could also add segment, runstr+=f'-{segment:{pSEGFMT}}'
+            runs_by_group[rungroup(run)].append(runstr)
+
+        # INFO(f"Size of the filter dictionary is {sys.getsizeof(runs_by_group)} bytes")
+        # INFO(f"Length of the filter dictionary is {len(runs_by_group.keys())}")
+        # INFO(f"Size of one entry is {sys.getsizeof(runs_by_group['run_00072000_00072100'])} bytes")
+        # INFO(f"Size of one string is {sys.getsizeof(runs_by_group['run_00072000_00072100'][0])} bytes")
+        ## --> Negligible. << 1MB
+
+        ### Walk through leafs - assume rungroups may change between run groups
+        ret=[]
+
+        tstart=datetime.now()
+        with open(dstlistname,"w") if dstlistname else nullcontext() as dstlistfile:
+            for leafdir in leafdirs :
+                CHATTY(f"Searching {leafdir}")
+                available_rungroups = shell_command(f"{find} {leafdir} -name run_\* -type d -mindepth 1 -a -maxdepth 1")
+                DEBUG(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
+                
+                # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
+                rungroups = {rg for rg in available_rungroups if any( drg in rg for drg in desirable_rungroups) }
+                print(f"For {leafdir}, we have {len(rungroups)} run groups to work on")                
+                for rungroup in rungroups:
+                    runs_str=runs_by_group[Path(rungroup).name]
+                    find_command=f"{lfind} {rungroup} -type f -name {filemask}"
+                    CHATTY(find_command)
+                    group_runs = shell_command(find_command)
+                    # Enforce run number constraint
+                    group_runs = [ run for run in group_runs if any( dr in run for dr in runs_str) ]
+                    if dstlistfile:
+                        for run in group_runs:
+                            dstlistfile.write(f"{run}\n")
+                    else:
+                        ret += group_runs
+        INFO(f"List creation took {(datetime.now() - tstart).total_seconds():.2f} seconds.")
+        return ret
 
     # ------------------------------------------------
     def get_prod_status(self, runnumbers):
@@ -225,7 +318,7 @@ order by runnumber
         for runnumber in goodruns:
             # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
             ## Note: Not all constraints are needed, but they may speed up the query
-            existing_output=self.get_existing_files(runnumber)
+            existing_output=self.get_files_in_db(runnumber)
             DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")
 
             existing_status=self.get_prod_status(runnumber)
