@@ -17,10 +17,10 @@ from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
-from sphenixprodrules import parse_lfn,parse_spiderstuff
+from sphenixmatching import MatchConfig, parse_lfn, parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
-from sphenixmisc import binary_contains_bisect,shell_command
+from sphenixmisc import binary_contains_bisect,shell_command,lock_file,unlock_file
 
 
 # ============================================================================================
@@ -84,7 +84,7 @@ def main():
 
     #################### Load specific rule from the given yaml file.
     try:
-        rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, param_overrides=param_overrides )
+        rule = RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, param_overrides=param_overrides )
         INFO(f"Successfully loaded rule configuration: {args.rulename}")
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
@@ -92,37 +92,12 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-
     filesystem = rule.job_config.filesystem
-    DEBUG(f"Filesystem: {filesystem}")
 
-    ### Which find command to use for lustre?
-    # Lustre's robin hood, rbh-find, doesn't offer advantages for our usecase, and it is more cumbersome to use.
-    # But "lfs find" is preferrable to the regular kind.
-    find=shutil.which('find')
-    lfind = shutil.which('lfs')
-    if lfind is None:
-        WARN("'lfs find' not found")
-        lfind = shutil.which('find')
-    else:
-        lfind = f'{lfind} find'
-    INFO(f'Using find={find} and lfind="{lfind}.')
-
-    ##################### DSTs, from lustre to lustre
-    # Original output directory, the final destination, and the file name trunk
-    dstbase = f'{rule.dsttype}\*{rule.dataset}_{rule.outtriplet}\*'
-    # dstbase = f'{rule.dsttype}\*{rule.outtriplet}_{rule.dataset}\*' ## WRONG
-    INFO(f'DST files filtered as {dstbase}')
-
-    outlocation=filesystem['outdir']
-    INFO(f"Directory tree: {outlocation}")
-    # Further down, we will simplify by assuming finaldir == outdir, otherwise this script shouldn't be used.
-    finaldir = filesystem['finaldir']
-    if finaldir != outlocation:
-         ERROR("Found finaldir != outdir. Use/adapt dstlakespider instead." )
-         print(f"finaldir = {finaldir}")
-         print(f"outdir = {outlocation}")
-         exit(1)
+    # Create a match configuration from the rule
+    match_config = MatchConfig.from_rule_config(rule)
+    CHATTY("Match configuration:")
+    CHATTY(yaml.dump(match_config.dict))
 
     ### Use or create a list file containing all the existing files to work on.
     ### This reduces memory footprint and repeated slow `find` commands for large amounts of files
@@ -131,60 +106,26 @@ def main():
     while dstlistname.endswith("/"):
         dstlistname=dstlistname[0:-1]
     dstlistname=f"{dstlistname}/{rule.dsttype}_dstlist"
-    dstlistlock=dstlistname+".lock"
+    
     # First, lock. This way multiple spiders can work on a file without stepping on each others' (8) toes
-    if Path(dstlistlock).exists():
-        WARN(f"Lock file {dstlistlock} already exists, indicating another spider is running over the same rule.")
-        # Safety valve. If it's old, we assume some job didn't end gracefully and proceed anyway.
-        mod_timestamp = Path(dstlistlock).stat().st_mtime
-        mod_datetime = datetime.fromtimestamp(mod_timestamp)
-        time_difference = datetime.now() - mod_datetime
-        threshold = 8 * 60 * 60
-        if time_difference.total_seconds() > threshold:
-            WARN(f"lock file is already {time_difference.total_seconds()} seconds old. Overriding.")
-        else:
-            exit(0)
-    if not args.dryrun:
-        Path(dstlistlock).parent.mkdir(parents=True,exist_ok=True)
-        Path(dstlistlock).touch()
+    if not lock_file(dstlistname,args.dryrun):
+        exit(0)
+
     INFO(f"Looking for existing filelist {dstlistname}")
     if Path(dstlistname).exists():
-        wccommand=f"wc -l {dstlistname}"
-        ret = shell_command(wccommand)
-        INFO(f" ... found. List contains {ret[0]} files.")
+        INFO(f" ... found.")
     else:
         INFO(" ... not found. Creating a new one.")
         Path(dstlistname).parent.mkdir( parents=True, exist_ok=True )
-        Path(dstlistname).unlink(missing_ok=True) ### should never be necessary
+        match_config.get_output_files("\*root:\*",dstlistname,args.dryrun)
 
-        # All leafs:
-        tstart = datetime.now()
-        leafparent=outlocation.split('/{leafdir}')[0]
-        leafdirs = shell_command(f"{find} {leafparent} -type d -name {rule.dsttype}\* -mindepth 1 -a -maxdepth 1")
-        CHATTY(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
+    if not Path(dstlistname).is_file():
+        INFO("List file not found.")
+        exit(0)
 
-        # Run groups that we're interested in
-        desirable_rungroups = { rule.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100)) for run in rule.runlist_int }
-
-        ### Walk through leafs - assume rungroups may change between run groups
-        for leafdir in leafdirs :
-            available_rungroups = shell_command(f"{find} {leafdir} -name run_\* -type d -mindepth 1 -a -maxdepth 1")
-            # Very pythonic list comprehension here...
-            # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
-            rungroups = {rg for rg in available_rungroups if any( drg in rg for drg in desirable_rungroups) }
-            CHATTY(f"For {leafdir}, we have {len(rungroups)} run groups to work on")
-
-            for rungroup in rungroups:
-                shell_command(f"{lfind} {rungroup} -type f -name \*root:\* >> {dstlistname}")
-
-        if Path(dstlistname).exists():
-            wccommand=f"wc -l {dstlistname}"
-            ret = shell_command(wccommand)
-            INFO(f"Found {ret[0]} DSTs to process.")
-            INFO(f"List creation took {(datetime.now() - tstart).total_seconds():.2f} seconds.")
-        else:
-            INFO("No files found.")
-            exit(0)
+    wccommand=f"wc -l {dstlistname}"
+    ret = shell_command(wccommand)
+    INFO("List contains {ret[0]} files.")
 
     ### Grab the first N files and work on those.
     nfiles_to_process=500000
@@ -208,10 +149,9 @@ def main():
             Path(dstlistname).unlink(missing_ok=True)
     else:
         Path(tmpname).unlink(missing_ok=True)
-
+ 
     # Done with selecting or creating our chunk, release the lock
-    if not args.dryrun:
-        Path(dstlistlock).unlink()
+    unlock_file(dstlistname,args.dryrun)
 
     ### Collect root files that satisfy run and dbid requirements
     mvfiles_info=[]
