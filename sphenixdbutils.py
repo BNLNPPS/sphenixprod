@@ -251,12 +251,6 @@ def printDbInfo( cnxn_string, title ):
 # ============================================================================================
 def dbQuery( cnxn_string, query, ntries=10 ):
 
-    # Guard rails - should not be needed, because only Readonly connections should be used
-    assert( 'delete' not in query.lower() )
-    #assert( 'insert' not in query.lower() )
-    #assert( 'update' not in query.lower() )
-    #assert( 'select'     in query.lower() )
-
     CHATTY(f'[cnxn_string] {cnxn_string}')
     CHATTY(f'[query      ]\n{query}')
 
