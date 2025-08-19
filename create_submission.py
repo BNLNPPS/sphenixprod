@@ -168,9 +168,8 @@ def main():
     # #################### With the matching rules constructed, first remove all traces of the given runs
     if args.force:
         eradicate_runs(match_config=match_config, dryrun=args.dryrun)
-    exit()
 
-    # Note: matches() is keyed by output file names, but the run scripts use the output base name and separately the run number
+    # #################### Now proceed with submission     
     rule_matches=match_config.matches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
 
