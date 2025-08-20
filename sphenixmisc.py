@@ -83,7 +83,7 @@ def unlock_file(file_path, dryrun: bool=True):
         Path(lock_name).unlink(missing_ok=True)
         
 # ============================================================================================
-def lock_file(file_path, dryrun: bool=True, max_lock_age: int=2*60*60) -> bool:
+def lock_file(file_path, dryrun: bool=True, max_lock_age: int=4*60*60) -> bool:
     lock_name=file_path+".lock"
     if Path(lock_name).exists():
         WARN(f"Lock file {lock_name} already exists.")
