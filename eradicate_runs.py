@@ -50,7 +50,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
     rootfiles=match_config.get_output_files(filemask="\*root\*",dstlistname=dstlistname,dryrun=dryrun)
     nfiles=0
     if not dstlistname:
-        nfiles=len(rootfiles)        
+        nfiles=len(rootfiles)
     else:
         if Path(dstlistname).exists():
             wccommand=f"wc -l {dstlistname}"
@@ -74,7 +74,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
         #Path(dstlistname).unlink(missing_ok=True)
 
     ### 2. Select from production DB
-    # We could do this together with the next step, for individual lfns. 
+    # We could do this together with the next step, for individual lfns.
     existing_status=match_config.get_prod_status(runlist)
     existing_status=list(existing_status.keys())
     INFO(f"Found {len(existing_status)} output files in the production db")
@@ -82,15 +82,14 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
     ### 2a. Delete from production db.
     dbstring = 'statw'
     status_query="SELECT id" if dryrun else "DELETE"
-    status_query+=f"""
+    status_query+="""
     FROM production_status
         WHERE
     dstfile in
     """
-    chunksize=5000 
+    chunksize=5000
     statusmax=len(existing_status)
     for i,statuschunk in enumerate(make_chunks(existing_status,chunksize)):
-        DEBUG( f'' )
         statuschunk_str="','".join(statuschunk)
         
         DEBUG( f'Removing file #{i*chunksize}/{statusmax} from database production_status')
@@ -125,7 +124,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
     lfn in
     """
     
-    chunksize=5000 
+    chunksize=5000
     lfnmax=len(existing_lfns)
     for i,lfnchunk in enumerate(make_chunks(existing_lfns,chunksize)):
         DEBUG( f'File #{i*chunksize}/{lfnmax}' )
