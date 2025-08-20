@@ -18,7 +18,7 @@ from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
-from sphenixmatching import MatchConfig, parse_lfn, parse_spiderstuff
+from sphenixmatching import parse_lfn, parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect

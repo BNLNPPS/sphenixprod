@@ -221,7 +221,7 @@ order by runnumber
                 
                 # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
                 rungroups = {rg for rg in available_rungroups if any( drg in rg for drg in desirable_rungroups) }
-                print(f"For {leafdir}, we have {len(rungroups)} run groups to work on")                
+                DEBUG(f"For {leafdir}, we have {len(rungroups)} run groups to work on")                
                 for rungroup in rungroups:
                     runs_str=runs_by_group[Path(rungroup).name]
                     find_command=f"{lfind} {rungroup} -type f -name {filemask}"
