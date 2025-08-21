@@ -432,7 +432,8 @@ and runnumber={runnumber}"""
                 available_tpc_hosts=available_hosts.intersection(TPCset)
                 DEBUG(f"available TPC hosts: {available_tpc_hosts}")
                 DEBUG(f"  len(available_tpc_hosts) = {len(available_tpc_hosts)}")
-                minNTPC=30 / 2
+                ### CHANGE 08/21/2025: On request from jdosbo, change back to requiring all ebdcs.
+                minNTPC=48 / 2
                 if len(available_tpc_hosts) < minNTPC and not self.physicsmode=='cosmics':
                     INFO(f"Skip run. Only {2*len(available_tpc_hosts)} TPC detectors turned on in the run.")
                     continue
