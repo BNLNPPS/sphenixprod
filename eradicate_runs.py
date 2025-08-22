@@ -6,7 +6,7 @@ import sys
 import pprint # noqa F401
 
 from argparsing import submission_args
-from create_submission import dbutils_test_mode
+from sphenixdbutils import test_mode as dbutils_test_mode
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
@@ -70,7 +70,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
         INFO(f"Processing batch {i}, length is {len(batch)} lines.")
         if not dryrun:
             for rootfile in batch:
-                # Path(rootfile).unlink(missing_ok=True)
+                Path(rootfile).unlink(missing_ok=True)
                 pass
 
     if not dryrun:
@@ -186,6 +186,12 @@ def main():
 
     if args.physicsmode is not None:
         param_overrides["physicsmode"] = args.physicsmode
+
+    # filesystem is the base for all output, allow for mangling here
+    # "production" (in the default filesystem) is replaced
+    param_overrides["prodmode"] = "production"
+    if args.mangle_dirpath:
+        param_overrides["prodmode"] = args.mangle_dirpath
 
     # Load specific rule from the given yaml file.
     try:
