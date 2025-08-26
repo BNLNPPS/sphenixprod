@@ -66,7 +66,8 @@ destname="${destname}:size:${size}"
 destname="${destname}:ctime:${ctime}"
 destname="${destname}:dbid:${dbid}"
 
-action="cp -v ${filename} ${destination}/${destname} && rm -v ${filename}"
+action="dd if=${filename} of=${destination}/${destname} bs=12MB && rm -v ${filename}"
+# action="cp -v ${filename} ${destination}/${destname} && rm -v ${filename}"
 echo ${action}
 echo
 eval ${action}
