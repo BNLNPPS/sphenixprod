@@ -416,13 +416,38 @@ order by runnumber
                 ### Get available input
                 DEBUG("Getting available daq hosts for run {runnumber}")
                 ## TODO: Split between seb-like and not seb-like for tracking and calo!
-                daqhost_query=f"""
-select hostname from hostinfo
-where hostname not like 'seb%' and hostname not like 'gl1%'
-and runnumber={runnumber}"""
-                available_hosts=set([ c.hostname for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ])
+                #                 daqhost_query=f"""
+                # select hostname from hostinfo
+                # where hostname not like 'seb%' and hostname not like 'gl1%'
+                # and runnumber={runnumber}"""
+                daqhost_query=f"""select hostname,serverid from hostinfo where runnumber={runnumber}"""
+                daqhost_serverid=[ (c.hostname,c.serverid) for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ]
+                available_tpc=set()
+                available_tracking=set()
+                available_seb=set()
+                for (hostname,serverid) in daqhost_serverid:
+                    if hostname=='ebdc39' : # special case for TPOT
+                        available_tracking.add(hostname)
+                        continue
+                    if 'ebdc' in hostname:
+                        available_tpc.add(f"{hostname}_{serverid}")
+                        continue
+                    if 'seb' in hostname:
+                        available_seb.add(hostname)
+                        continue
+                    # remainder is other tracking detectors (and gl1)
+                    if not 'gl1' in hostname:
+                        available_tracking.add(hostname)
+                    
+                DEBUG(f"Found {len(available_tpc)} TPC hosts in the run db:\n{available_tpc}")
+                DEBUG(f"Found {len(available_tracking)} other tracking hosts in the run db:\n{available_tracking}")
+                DEBUG(f"Found {len(available_seb)} sebXX hosts in the run db:\n{available_seb}")
+               
+                exit()
+                       
                 ### Here we could enforce both mandatory and masked hosts
                 DEBUG(f"available_hosts = {available_hosts}")
+                exit()
 
                 # FIXME: More TPC hardcoding
                 # 1. require at least N=30 out of the 48 ebdc_[0-24]_[01] to be turned on in the run
