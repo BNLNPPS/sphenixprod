@@ -439,54 +439,49 @@ order by runnumber
                     if not 'gl1' in hostname:
                         available_tracking.add(hostname)
                     
-                DEBUG(f"Found {len(available_tpc)} TPC hosts in the run db:\n{available_tpc}")
-                DEBUG(f"Found {len(available_tracking)} other tracking hosts in the run db:\n{available_tracking}")
-                DEBUG(f"Found {len(available_seb)} sebXX hosts in the run db:\n{available_seb}")
-               
-                exit()
-                       
+                DEBUG (f"Found {len(available_tpc)} TPC hosts in the run db")
+                CHATTY(f"{available_tpc}")
+                DEBUG (f"Found {len(available_tracking)} other tracking hosts in the run db")
+                CHATTY(f"{available_tracking}")
+                DEBUG (f"Found {len(available_seb)} sebXX hosts in the run db")
+                CHATTY(f"{available_seb}")
                 ### Here we could enforce both mandatory and masked hosts
-                DEBUG(f"available_hosts = {available_hosts}")
-                exit()
 
-                # FIXME: More TPC hardcoding
-                # 1. require at least N=30 out of the 48 ebdc_[0-24]_[01] to be turned on in the run
-                #    This is an early breakpoint to see if the run can be used for tracking
-                #    run db doesn't have _[01] though
-                TPCset = set( f'ebdc{n:02}' for n in range(0,24) )
-                available_tpc_hosts=available_hosts.intersection(TPCset)
-                DEBUG(f"available TPC hosts: {available_tpc_hosts}")
-                DEBUG(f"  len(available_tpc_hosts) = {len(available_tpc_hosts)}")
-                ### CHANGE 08/21/2025: On request from jdosbo, change back to requiring all ebdcs.
-                minNTPC=48 / 2
-                if len(available_tpc_hosts) < minNTPC and not self.physicsmode=='cosmics':
-                    INFO(f"Skip run. Only {2*len(available_tpc_hosts)} TPC detectors turned on in the run.")
-                    continue
+                # TPC hardcoding
+                if 'TRKR_CLUSTER' in self.dsttype:
+                    # 1. require at least N=30 out of the 48 ebdc_[0-24]_[01] to be turned on in the run
+                    #    This is an early breakpoint to see if the run can be used for tracking
+                    #    CHANGE 08/21/2025: On request from jdosbo, change back to requiring all ebdcs.
+                    ### Important note: NO such requirement for cosmics. FIXME?
+                    minNTPC=48
+                    if len(available_tpc) < minNTPC and not self.physicsmode=='cosmics':
+                        WARN(f"Skip run. Only {len(available_tpc)} TPC detectors turned on in the run.")
+                        continue
+                    
+                    # 2. How many are TPC hosts are actually there in this run.
+                    #    Not necessarily the same as above, if input DSTs aren't completely produced yet.
+                    #    Other reason could be if the daq db is wrong.
+                    present_tpc_files=set()
+                    for host in files_for_run:
+                        for available in available_tpc:
+                            if available in host:
+                                present_tpc_files.add(host)
+                                continue                
+                    if len(present_tpc_files) < minNTPC and not self.physicsmode=='cosmics':
+                        WARN(f"Skip run {runnumber}. Only {len(present_tpc_files)} TPC detectors actually in the run.")
+                        continue
+                    DEBUG (f"Found {len(present_tpc_files)} TPC files in the catalog")
 
-                # 2. How many are TPC hosts are actually there in this run.
-                #    Not necessarily the same as above, if input DSTs aren't completely produced yet.
-                #    Other reason could be if the daq db is wrong.
-                present_tpc_files=set()
-                for host in files_for_run:
-                    for available in available_tpc_hosts:
-                        if available in host:
-                            present_tpc_files.add(host)
-                            continue
-                if len(present_tpc_files) < minNTPC and not self.physicsmode=='cosmics':
-                    WARN(f"Skip run {runnumber}. Only {len(present_tpc_files)} TPC detectors actually in the run.")
-                    continue
-
-                # 3. For INTT, MVTX, enforce that they're all available if possible
-                available_other_hosts=available_hosts.symmetric_difference(TPCset)
-                present_other_files=set(files_for_run).symmetric_difference(present_tpc_files)
-                CHATTY(f"Available non-TPC hosts in the daq db: {available_other_hosts}")
-                CHATTY(f"Present non-TPC leafs: {present_other_files}")
-                ### TODO: Only checking length here. Probably okay forever though.
-                if len(present_other_files) != len(available_other_hosts) and not self.physicsmode=='cosmics':
-                    WARN(f"Skip run. Only {len(present_other_files)} non-TPC detectors actually in the run. {len(available_other_hosts)} possible.")
-                    WARN(f"Available non-TPC hosts in the daq db: {available_other_hosts}")
-                    WARN(f"Present non-TPC leafs: {present_other_files}")
-                    continue
+                    # 3. For INTT, MVTX, enforce that they're all available if possible
+                    present_tracking=set(files_for_run).symmetric_difference(present_tpc_files)
+                    CHATTY(f"Available non-TPC hosts in the daq db: {present_tracking}")
+                    ### TODO: Only checking length here. Probably okay forever though.
+                    if len(present_tracking) != len(available_tracking) and not self.physicsmode=='cosmics':
+                        WARN(f"Skip run. Only {len(present_tracking)} non-TPC detectors actually in the run. {len(available_tracking)} possible.")
+                        WARN(f"Available non-TPC hosts in the daq db: {available_tracking}")
+                        WARN(f"Present non-TPC leafs: {present_tracking}")
+                        continue
+                    DEBUG (f"Found {len(present_tracking)} other tracking files in the catalog")
 
                 # Sort and group the input files by segment. Reject if not all hosts are present in the segment yet
                 segments = None
