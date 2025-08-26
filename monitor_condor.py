@@ -54,6 +54,7 @@ def main():
     param_overrides = {}
     param_overrides["runs"] = args.runs
     param_overrides["runlist"] = args.runlist
+    param_overrides["nevents"] = 0 # Not relevant, but needed for the RuleConfig ctor
 
     if args.physicsmode is not None:
         param_overrides["physicsmode"] = args.physicsmode
