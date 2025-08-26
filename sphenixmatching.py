@@ -244,8 +244,7 @@ order by runnumber
         status_query  = f"""select dstfile,status from production_status
         where dstname like '%{self.dst_type_template}%'
         and dstname like '%{self.outtriplet}%'"""
-        print(status_query)
-        exit()
+
         run_condition=list_to_condition(runnumbers)
         if run_condition!="" :
             status_query += f"\n\tand {run_condition.replace('runnumber','run')}"
