@@ -11,18 +11,45 @@ from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # 
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
 from sphenixmisc import setup_rot_handler, should_I_quit
+import htcondor
+import classad
 
-def monitor_condor_jobs(match_config: MatchConfig, dryrun: bool=True):
+def monitor_condor_jobs(match_config: MatchConfig, batch_name: str, dryrun: bool=True):
     """
     Check on the status of running, held, finished jobs using condor_q.
     """
-    INFO("Payload for monitor_condor_jobs is a placeholder.")
-    # TODO: Implement the actual condor_q logic here.
-    # For example:
-    # cmd = "condor_q -all"
-    # status, output = shell_command(cmd)
-    # INFO(f"condor_q output:\n{output}")
-    pass
+    INFO("Polling condor jobs using condor_q via subprocess...")
+    import subprocess, csv
+    # Use -autoformat :Q for robust quoted output
+    attrs = [
+        'JobStatus', 'Owner', 'JobBatchName', 'QDate', 'CompletionDate',
+        'ExitCode', 'HoldReason', 'RemoveReason', 'Cmd', 'Args', 'Iwd', 'RemoteHost', 'NumJobStarts'
+    ]
+    batch_pattern = f'.*\\.{batch_name}$'
+    cmd = [
+        'condor_q',
+        '-const', f'regexp("{batch_pattern}", JobBatchName)',
+        '-autoformat:jV',
+    ] + attrs + ['-nobatch']
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        lines = result.stdout.strip().split('\n')
+        job_info_list = {}
+        for line in lines:
+            if not line.strip():
+                continue
+            reader = csv.reader([line], delimiter=' ', quotechar='"')
+            values = next(reader)
+            job_info = dict(zip(["jobid"] + attrs, values))
+            dbid=job_info.get('Args', '').split()[-1]
+            dbid = int(dbid) if dbid.isdigit() else None
+            job_info_list[dbid] = job_info
+        INFO(f"Found {len(job_info_list)} jobs for batch_name {batch_name}.")
+
+        pprint.pprint(next(iter(job_info_list.items())))
+        print(f"{sys.getsizeof(job_info_list)/1024**2:.2f} MB")
+    except subprocess.CalledProcessError as e:
+        ERROR(f"condor_q failed: {e.stderr}")
 
 def main():
     args = submission_args()
@@ -82,7 +109,9 @@ def main():
     INFO("Match configuration created.")
 
     # Call the main monitoring function
-    monitor_condor_jobs(match_config, dryrun=args.dryrun)
+    batch_name=rule.job_config.batch_name # usually starts with "main." or so. Remove that
+    batch_name=batch_name.split(".", 1)[-1]
+    monitor_condor_jobs(match_config=match_config, batch_name=batch_name, dryrun=args.dryrun)
 
     INFO(f"{Path(__file__).name} DONE.")
 
