@@ -4,10 +4,10 @@ if ! echo "$SHELL" | grep -q "bash"; then
 fi
 
 OS=$( hostnamectl | awk '/Operating System/{ print $3" "$4 }' )
-if ! [[ "$OS" =~ "Alma" || "$OS" =~ "CentOS" || "$OS" =~ "Rocky" || "$OS" =~ "RHEL" || "$OS" =~ "Ubuntu" ]]; then
-   echo "This script must be run on a supported OS"
-   return 1
-fi
+# if ! [[ "$OS" =~ "Alma" || "$OS" =~ "CentOS" || "$OS" =~ "Rocky" || "$OS" =~ "RHEL" || "$OS" =~ "Ubuntu" ]]; then
+#    echo "This script must be run on a supported OS"
+#    return 1
+# fi
 echo "Setting up sPHENIX Production for ${OS}"
 
 # This is the directory of the script (but no symlinks allowed)
@@ -18,12 +18,12 @@ source /opt/sphenix/core/bin/sphenix_setup.sh -n new
 export PATH=${PATH}:${HOME}/bin:./bin
 export ODBCINI=./.odbc.ini
 
-if [[ $OS =~ "Alma" ]]; then
-   export PATH=/usr/bin:${PATH}
-   export PYTHONPATH=/opt/sphenix/core/lib/python3.9/site-packages
-   alias python=/usr/bin/python
-   alias pip=/opt/sphenix/core/bin/pip3.9
-fi
+# if [[ $OS =~ "Alma" ]]; then
+#    export PATH=/usr/bin:${PATH}
+#    export PYTHONPATH=/opt/sphenix/core/lib/python3.9/site-packages
+#    alias python=/usr/bin/python
+#    alias pip=/opt/sphenix/core/bin/pip3.9
+# fi
 
 export PYTHONPATH=${PYTHONPATH}:${SCRIPT_DIR}
 export PATH=${PATH}:${SCRIPT_DIR}
