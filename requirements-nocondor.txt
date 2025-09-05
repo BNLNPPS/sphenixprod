@@ -1,6 +1,7 @@
 pyodbc
 pyyaml
-# htcondor
-classad
+matplotlib
+# htcondor2
+classad2
 #lipsum
 #nanoid
