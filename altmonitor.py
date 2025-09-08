@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from pathlib import Path
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 import numpy as np
@@ -23,6 +24,8 @@ def plot_memory_distribution(memory_usage, request_memory, output_file):
     if not memory_usage and not request_memory:
         INFO("No memory data to plot for distribution.")
         return
+
+    mpl.rcParams['axes.formatter.useoffset'] = False
 
     plt.style.use('seaborn-v0_8-deep')
     fig, ax = plt.subplots(figsize=(12, 7))

@@ -11,45 +11,59 @@ from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # 
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
 from sphenixmisc import setup_rot_handler, should_I_quit
-import htcondor
-import classad
+import htcondor2 as htcondor
+import classad2 as classad
 
 def monitor_condor_jobs(match_config: MatchConfig, batch_name: str, dryrun: bool=True):
     """
-    Check on the status of running, held, finished jobs using condor_q.
+    Check on the status of held jobs and process them using the htcondor2 bindings.
     """
-    INFO("Polling condor jobs using condor_q via subprocess...")
-    import subprocess, csv
-    # Use -autoformat :Q for robust quoted output
-    attrs = [
-        'JobStatus', 'Owner', 'JobBatchName', 'QDate', 'CompletionDate',
-        'ExitCode', 'HoldReason', 'RemoveReason', 'Cmd', 'Args', 'Iwd', 'RemoteHost', 'NumJobStarts'
-    ]
-    batch_pattern = f'.*\\.{batch_name}$'
-    cmd = [
-        'condor_q',
-        '-const', f'regexp("{batch_pattern}", JobBatchName)',
-        '-autoformat:jV',
-    ] + attrs + ['-nobatch']
+    INFO("Polling for all condor jobs using htcondor2 python bindings...")
+    
     try:
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        lines = result.stdout.strip().split('\n')
-        job_info_list = {}
-        for line in lines:
-            if not line.strip():
-                continue
-            reader = csv.reader([line], delimiter=' ', quotechar='"')
-            values = next(reader)
-            job_info = dict(zip(["jobid"] + attrs, values))
-            dbid=job_info.get('Args', '').split()[-1]
-            dbid = int(dbid) if dbid.isdigit() else None
-            job_info_list[dbid] = job_info
-        INFO(f"Found {len(job_info_list)} jobs for batch_name {batch_name}.")
+        schedd = htcondor.Schedd()
 
-        pprint.pprint(next(iter(job_info_list.items())))
-        print(f"{sys.getsizeof(job_info_list)/1024**2:.2f} MB")
-    except subprocess.CalledProcessError as e:
-        ERROR(f"condor_q failed: {e.stderr}")
+        batch_pattern = f'.*\\.{batch_name}$'
+        # Query all jobs for the batch, we will filter by status locally
+        constraint = f'regexp("{batch_pattern}", JobBatchName)'
+        INFO(f"Querying condor with constraint: {constraint}")
+
+        attrs = [
+            'ClusterId', 'ProcId', 'JobStatus', 'Owner', 'JobBatchName', 'QDate', 'CompletionDate',
+            'ExitCode', 'HoldReason', 'RemoveReason', 'Cmd', 'Args', 'Iwd', 'RemoteHost', 'NumJobStarts',
+            'ResidentSetSize', 'MemoryProvisioned', 'LastHoldReasonCode'
+        ]
+
+        jobs = schedd.query(constraint=constraint, projection=attrs)
+
+        if not jobs:
+            INFO("No jobs found for the specified batch name.")
+            return
+
+        INFO(f"Found {len(jobs)} jobs for batch_name {batch_name}.")
+    except Exception as e:
+        ERROR(f"An unexpected error occurred during condor query: {e}")
+        exit(1)
+
+    ad_by_dbid = {}
+    for ad in jobs:
+        dbid=ad.get('Args', '').split()[-1]
+        if not dbid.isdigit():
+            ERROR(f"Job with Args {ad.get('Args', '')} has non-integer dbid {dbid}. Stop.")
+            exit(1)
+        dbid = int(dbid)
+        if dbid in ad_by_dbid:
+            ERROR(f"Duplicate dbid {dbid} found in jobs, overwriting previous entry. Stop.")
+            exit(1)
+        ad_by_dbid[dbid] = ad
+    INFO(f"Mapped {len(ad_by_dbid)} jobs by dbid.")
+
+        # # Filter for held jobs (JobStatus == 5)
+        # held_jobs_ads = [ad for ad in jobs if ad.get('JobStatus') == 5]
+
+        # if not held_jobs_ads:
+        #     INFO(f"Found {len(jobs)} total jobs, but none are currently held.")
+        #     return
 
 def main():
     args = submission_args()
