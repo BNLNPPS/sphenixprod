@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
 from pathlib import Path
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
-import numpy as np
+import matplotlib as mpl # type: ignore
+import matplotlib.pyplot as plt # type: ignore
+from matplotlib.colors import LogNorm # type: ignore
+import numpy as np # type: ignore
 import collections
 import sys
 
@@ -16,8 +16,8 @@ from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # 
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
 from sphenixmisc import setup_rot_handler, should_I_quit
-import htcondor2 as htcondor
-import classad2 as classad
+import htcondor2 as htcondor # type: ignore
+import classad2 as classad # type: ignore
 
 def plot_memory_distribution(memory_usage, request_memory, output_file):
     """Generates and saves a histogram of memory usage vs. requested memory."""
