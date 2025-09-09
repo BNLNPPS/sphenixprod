@@ -5,7 +5,7 @@ import sys
 
 import pprint # noqa F401
 
-from argparsing import submission_args
+from argparsing import monitor_args
 from sphenixdbutils import test_mode as dbutils_test_mode
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
@@ -66,7 +66,7 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True):
         #     return
 
 def main():
-    args = submission_args()
+    args = monitor_args()
     #################### Test mode?
     test_mode = (
             dbutils_test_mode
@@ -77,11 +77,6 @@ def main():
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
-
-    # Exit without fuss if we are already running
-    if should_I_quit(args=args, myname=sys.argv[0]):
-        DEBUG("Stop.")
-        exit(0)
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
     if test_mode:
@@ -96,7 +91,7 @@ def main():
     INFO(f"{Path(__file__).name} DONE.")
 
 def base_batchname_from_args():
-    args = submission_args()
+    args = monitor_args()
     if args.base_batchname is not None:
         return args.base_batchname
 

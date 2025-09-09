@@ -46,6 +46,10 @@ def _base_arguments(parser):
                         help="Specifies the experiment mode (cosmics, commissioning, physics) for direct lookup of input files.",
                         default=None)
 
+    parser.add_argument('--submitdir', dest='submitdir', default='./tosubmit', help="Directory for condor submission files")
+    parser.add_argument('--sublogdir', dest='sublogdir', default=None,
+                        help="Directory for submission script logging (defaults under /tmp)")
+
     return parser
 
 # ============================================================================================
@@ -68,9 +72,6 @@ def submission_args():
                         default="DST_STREAMING_run3auau_new_2024p012.yaml")
     parser.add_argument('--rulename', dest='rulename', required=True, help="Name of submission rule",
                         default="DST_EVENT")
-    parser.add_argument('--submitdir', dest='submitdir', default='./tosubmit', help="Directory for condor submission files")
-    parser.add_argument('--sublogdir', dest='sublogdir', default=None,
-                        help="Directory for submission script logging (defaults under /tmp)")
     parser.add_argument('-N', '--nevents', default=0, dest='nevents', help='Number of events to process.  0=all.',
                         type=int)
 
@@ -98,11 +99,16 @@ def submission_args():
     return parse_and_set_loglevel(parser)
 
 # ============================================================================================
-def monitor_arguments():
+def monitor_args():
     """Handle command line tedium for monitoring jobs."""
     parser = argparse.ArgumentParser(prog='altmonitor.py',
                                      description='"Production script to monitor jobs in the batch system for sPHENIX."')
     parser = _base_arguments(parser)
+
+    # Job description arguments - here, they are optional
+    parser.add_argument('--config', dest='config', required=False, help="Name of the YAML file containing production rules.")
+    parser.add_argument('--rulename', dest='rulename', required=False, help="Name of submission rule")
+
 
     # Can be used to query/manipulate the queue directly
     parser.add_argument('--base_batchname', default=None, help="Select a specific condor batch by name.")
