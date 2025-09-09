@@ -1,8 +1,6 @@
 #!/usr/bin/env python
-
+import argparse
 from pathlib import Path
-import sys
-
 import pprint # noqa F401
 
 from argparsing import monitor_args
@@ -57,41 +55,10 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True):
             exit(1)
         ad_by_dbid[dbid] = ad
     INFO(f"Mapped {len(ad_by_dbid)} jobs by dbid.")
+    return ad_by_dbid
 
-        # # Filter for held jobs (JobStatus == 5)
-        # held_jobs_ads = [ad for ad in jobs if ad.get('JobStatus') == 5]
 
-        # if not held_jobs_ads:
-        #     INFO(f"Found {len(jobs)} total jobs, but none are currently held.")
-        #     return
-
-def main():
-    args = monitor_args()
-    #################### Test mode?
-    test_mode = (
-            dbutils_test_mode
-            or args.test_mode
-            # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
-        )
-
-    # Set up submission logging before going any further
-    sublogdir=setup_rot_handler(args)
-    slogger.setLevel(args.loglevel)
-    INFO(f"Logging to {sublogdir}, level {args.loglevel}")
-
-    if test_mode:
-        INFO("Running in testbed mode.")
-        args.mangle_dirpath = 'production-testbed'
-    else:
-        INFO("Running in production mode.")
-
-    base_batch_name=base_batchname_from_args()
-    print( base_batch_name)
-    monitor_condor_jobs(batch_name=base_batch_name, dryrun=args.dryrun)
-    INFO(f"{Path(__file__).name} DONE.")
-
-def base_batchname_from_args():
-    args = monitor_args()
+def base_batchname_from_args(args: argparse.Namespace) -> str:
     if args.base_batchname is not None:
         return args.base_batchname
 
@@ -129,6 +96,29 @@ def base_batchname_from_args():
     batch_name=rule.job_config.batch_name # usually starts with "main." or so. Remove that
     batch_name=batch_name.split(".", 1)[-1]
     return batch_name
+
+def main():
+    args = monitor_args()
+    #################### Test mode?
+    test_mode = (
+            dbutils_test_mode
+            or args.test_mode
+            # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
+        )
+
+    # Set up submission logging before going any further
+    sublogdir=setup_rot_handler(args)
+    slogger.setLevel(args.loglevel)
+    INFO(f"Logging to {sublogdir}, level {args.loglevel}")
+
+    if test_mode:
+        INFO("Running in testbed mode.")
+        args.mangle_dirpath = 'production-testbed'
+    else:
+        INFO("Running in production mode.")
+
+    monitor_condor_jobs(batch_name=base_batchname_from_args(args), dryrun=args.dryrun)
+    INFO(f"{Path(__file__).name} DONE.")
 
 if __name__ == '__main__':
     main()
