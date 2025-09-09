@@ -97,6 +97,8 @@ def main():
 
 def base_batchname_from_args():
     args = submission_args()
+    if args.base_batchname is not None:
+        return args.base_batchname
 
     # Prepare param_overrides for RuleConfig
     param_overrides = {}
