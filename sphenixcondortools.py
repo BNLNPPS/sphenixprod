@@ -12,7 +12,7 @@ from sphenixmisc import setup_rot_handler, should_I_quit
 import htcondor2 as htcondor  # type: ignore
 import classad2 as classad # type: ignore
 
-def monitor_condor_jobs(batch_name: str, dryrun: bool=True):
+def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
     """
     Check on the status of held jobs and process them using the htcondor2 bindings.
     """
@@ -36,7 +36,7 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True):
 
         if not jobs:
             INFO("No jobs found for the specified batch name.")
-            return
+            return {}
 
         INFO(f"Found {len(jobs)} jobs for batch_name {batch_name}.")
     except Exception as e:
@@ -57,7 +57,7 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True):
     INFO(f"Mapped {len(ad_by_dbid)} jobs by dbid.")
     return ad_by_dbid
 
-
+# ============================================================================================
 def base_batchname_from_args(args: argparse.Namespace) -> str:
     if args.base_batchname is not None:
         return args.base_batchname
@@ -110,7 +110,7 @@ def main():
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
-
+ 
     if test_mode:
         INFO("Running in testbed mode.")
         args.mangle_dirpath = 'production-testbed'
