@@ -1,5 +1,6 @@
 # project-specific
 odbc.ini
+.odbc.ini
 odbc_prod.ini
 odbc_test.ini
 # .slurp
