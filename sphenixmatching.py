@@ -304,7 +304,6 @@ order by runnumber
         run_condition=list_to_condition(goodruns)
         if run_condition!="" :
             infile_query += f"\n\tand {run_condition}"
-
         # Perform queries inside the run loop. More db reads but much smaller RAM
 
         #### Now build up potential output files from what's available
@@ -378,9 +377,9 @@ order by runnumber
                     segswitch="allsegsfromdb"
                     for host in files_for_run:
                         files_for_run[host] = gl1_files + files_for_run[host]
-                        any_zero_status = any(file_tuple.status == 0 for file_tuple in files_for_run[host])
+                        any_bad_status = any(file_tuple.status != 1 for file_tuple in files_for_run[host])
                         # Now enforce status!=0 for all files from this host
-                        if any_zero_status :
+                        if any_bad_status :
                             files_for_run[host]=[]
                     # Done with the non-default.
                 else: ### Use only segment 0; this is actually a bit harder
@@ -388,7 +387,7 @@ order by runnumber
                     # GL1 file?
                     gl1file0=None
                     for f in gl1_files:
-                        if f.segment==0 and f.status!=0:
+                        if f.segment==0 and f.status==1:
                             gl1file0=f
                             break
                     if not gl1file0:
@@ -400,7 +399,7 @@ order by runnumber
                     # With a segment0 gl1 file, we can now go over the other hosts
                     for host in files_for_run:
                         for f in files_for_run[host]:
-                            if f.segment==0 and f.status!=0:
+                            if f.segment==0 and f.status==1:
                                 files_for_run[host]=[gl1file0,f]
                                 break
                         else:  # remember that python's for-else executes when the break doesn't
