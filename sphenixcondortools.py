@@ -27,9 +27,17 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
         INFO(f"Querying condor with constraint: {constraint}")
 
         attrs = [
-            'ClusterId', 'ProcId', 'JobStatus', 'Owner', 'JobBatchName', 'QDate', 'CompletionDate',
-            'ExitCode', 'HoldReason', 'RemoveReason', 'Cmd', 'Args', 'Iwd', 'RemoteHost', 'NumJobStarts',
-            'ResidentSetSize', 'MemoryProvisioned', 'LastHoldReasonCode'
+            'ClusterId', 'ProcId', # access via job_id = f"{ClusterId}.{ProcId}"
+                # Interesting Statistics
+            'JobStatus',  'QDate', 'CompletionDate', 
+            'ExitCode', 'HoldReason', 'RemoveReason',
+            'RemoteHost', 'NumJobStarts',
+            'ResidentSetSize', 'MemoryProvisioned', 'LastHoldReasonCode',
+                # Important for cloning
+            'Owner', 'JobBatchName','Environment', 'JobPrio',
+            'Cmd', 'Args', 'Iwd',
+            'JobSubmitFile', 'Out', 'Err', 'UserLog',
+            'RequestCpus', 'RequestDisk', 'RequestMemory', 'Requestxferslots'
         ]
 
         jobs = schedd.query(constraint=constraint, projection=attrs)

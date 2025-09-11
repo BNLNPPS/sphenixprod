@@ -6,19 +6,15 @@ import matplotlib.pyplot as plt # type: ignore
 from matplotlib.colors import LogNorm # type: ignore
 import numpy as np # type: ignore
 import collections
-import sys
 
 import pprint # noqa F401
 
 from argparsing import monitor_args
 from sphenixdbutils import test_mode as dbutils_test_mode
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig
-from sphenixmatching import MatchConfig
-from sphenixmisc import setup_rot_handler, should_I_quit
+from sphenixmisc import setup_rot_handler
 from sphenixcondortools import base_batchname_from_args, monitor_condor_jobs
 import htcondor2 as htcondor # type: ignore
-import classad2 as classad # type: ignore
 
 def plot_memory_distribution(memory_usage, request_memory, output_file):
     """Generates and saves a histogram of memory usage vs. requested memory."""
@@ -150,68 +146,51 @@ def main():
     held_request_memory = []
     under_memory_hold_reasons = collections.Counter()
     for job_ad in held_jobs_ads:
-        try:
-            # MemoryUsage and RequestMemory are in MB
-            mu = int(job_ad.get('ResidentSetSize', 0))/1024  # Convert from KB to MB
-            rm = int(job_ad.get('MemoryProvisioned', 0))
-            held_memory_usage.append(mu)
-            held_request_memory.append(rm)
-            # If memory usage is below request, it's interesting to see why it's held.
-            if mu < rm:
-                hold_reason = job_ad.get('HoldReason', 'Not Available')
-                job_id = f"{job_ad.get('ClusterId')}.{job_ad.get('ProcId')}"
-                DEBUG(f"Job {job_id} held with mu ({mu:.0f}MB) < rm ({rm}MB). Reason: {hold_reason}")
-                reason_code = job_ad.get('LastHoldReasonCode', 0) # Default to 0 (None)
-                if reason_code !=26 :
-                    WARN(f'Job {job_id} held with mu ({mu:.0f}MB) < rm ({rm}MB). Reason Code {reason_code}:\n\t"{hold_reason}"')
-                under_memory_hold_reasons[reason_code] += 1
-        except (ValueError, TypeError):
-            continue # Skip if memory values are not valid integers
+        # MemoryUsage and RequestMemory are in MB
+        mu = int(job_ad.get('ResidentSetSize', 0))/1024  # Convert from KB to MB
+        rm = int(job_ad.get('MemoryProvisioned', 0))
+        held_memory_usage.append(mu)
+        held_request_memory.append(rm)
+        # If memory usage is below request, it's interesting to see why it's held.
+        if mu < rm:
+            hold_reason = job_ad.get('HoldReason', 'Not Available')
+            job_id = f"{job_ad.get('ClusterId')}.{job_ad.get('ProcId')}"
+            DEBUG(f"Job {job_id} held with mu ({mu:.0f}MB) < rm ({rm}MB). Reason: {hold_reason}")
+            reason_code = job_ad.get('LastHoldReasonCode', 0) # Default to 0 (None)
+            if reason_code !=26 :
+                WARN(f'Job {job_id} held with mu ({mu:.0f}MB) < rm ({rm}MB). Reason Code {reason_code}:\n\t"{hold_reason}"')
+            under_memory_hold_reasons[reason_code] += 1
 
-    # if held_memory_usage or held_request_memory:
-    #     dist_plot_file = f"{batch_name}_memory_distribution.png"
-    #     box_plot_file  = f"{batch_name}_memory_boxplot.png"
-    #     scatter_plot_file = f"{batch_name}_memory_scatterplot.png"
-    #     plot_memory_distribution(held_memory_usage, held_request_memory, dist_plot_file)
-    #     plot_memory_boxplot(held_memory_usage, held_request_memory, box_plot_file)
-    #     plot_memory_scatterplot(held_memory_usage, held_request_memory, scatter_plot_file)
+        # Now let's kill and resubmit this job with adjusted memory request
+        new_submit_ad = htcondor.Submit(dict(job_ad))
+        new_rm=int(rm * 1.5)  # Increase request by 50%
+        new_submit_ad['RequestMemory'] = str(new_rm)
+        if not args.dryrun:
+            schedd = htcondor.Schedd()
+            try:
+                # The transaction context manager is deprecated. The following operations are not atomic.
+                schedd.act(htcondor.JobAction.Remove, [f"{job_ad['ClusterId']}.{job_ad['ProcId']}"])
+                INFO(f"Removed held job {job_ad['ClusterId']}.{job_ad['ProcId']} from queue.")
+                submit_result = schedd.submit(new_submit_ad)
+                new_queue_id = submit_result.cluster()
+                INFO(f"Resubmitted job with increased memory request ({rm}MB -> {new_rm}MB) as {new_queue_id}.")
+            except Exception as e:
+                ERROR(f"Failed to remove and resubmit job {job_ad['ClusterId']}.{job_ad['ProcId']}: {e}")
+        else:
+            INFO(f"(Dry Run) Would remove held job {job_ad['ClusterId']}.{job_ad['ProcId']} and resubmit with RequestMemory={new_rm}MB.")
+
+    if held_memory_usage or held_request_memory:
+        dist_plot_file = f"{batch_name}_memory_distribution.png"
+        box_plot_file  = f"{batch_name}_memory_boxplot.png"
+        scatter_plot_file = f"{batch_name}_memory_scatterplot.png"
+        plot_memory_distribution(held_memory_usage, held_request_memory, dist_plot_file)
+        plot_memory_boxplot(held_memory_usage, held_request_memory, box_plot_file)
+        plot_memory_scatterplot(held_memory_usage, held_request_memory, scatter_plot_file)
 
     if under_memory_hold_reasons:
         INFO("Frequency of hold reason codes for jobs held while under memory request:")
         pprint.pprint(dict(under_memory_hold_reasons))
 
-    # Now let's kill and resubmit jobs that are held due to memory issues
-    jobs_to_resubmit = []
-    for job_ad in held_jobs_ads:
-        try:
-            mu = int(job_ad.get('ResidentSetSize', 0))/1024  # Convert from KB to MB
-            rm = int(job_ad.get('MemoryProvisioned', 0))
-            if mu < rm:
-                rm = int(rm * 1.5)  # Increase request by 50%
-            jobs_to_resubmit.append((job_id, rm))
-        except (ValueError, TypeError):
-            print("Skipping job with invalid memory values.")
-            continue
-
-    if jobs_to_resubmit:
-        INFO(f"Preparing to resubmit {len(jobs_to_resubmit)} jobs with increased memory requests.")
-        coll = htcondor.Collector()
-        schedd = coll.locate(htcondor.DaemonTypes.Schedd)
-        schedd = htcondor.Schedd(schedd)
-        for job_id, new_rm in jobs_to_resubmit:
-            cluster_id, proc_id = map(str, job_id.split('.'))
-            try:
-                schedd.edit([cluster_id], 'MemoryProvisioned', str(new_rm))
-                #schedd.act(htcondor.JobAction.Release, [classad.ExprTree(f'ClusterId == {cluster_id} && ProcId == {proc_id}')])
-                schedd.act(htcondor.JobAction.Release, f'ClusterId == {cluster_id} && ProcId == {proc_id}')
-                INFO(f"Resubmitted job {job_id} with new MemoryProvisioned={new_rm}MB")
-                exit()
-            except Exception as e:
-                ERROR(f"Failed to resubmit job {job_id}: {e}")
-        # if not args.dryrun:
-        #     pass
-        # else:
-        #     INFO("Dry run mode: No jobs were actually resubmitted.")
 
     INFO(f"{Path(__file__).name} DONE.")
 
