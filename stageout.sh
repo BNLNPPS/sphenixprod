@@ -29,9 +29,9 @@ fi
 # if [ -d "$destination" ]; then   echo "$DIRECTORY does exist." ; else exit 1; fi
 
 # Number of events and first/last event numbers
-rm -f numbers.txt
-root.exe -l -b -q GetNumbers.C\(\"${filename}\"\) 2>&1
-cat numbers.txt  | grep -v '\*\*' | grep -v Row | sed -e 's/\*//g' | awk '{print $2}' > cleannumbers.txt
+rm -f numbers.txt  cleannumbers.txt
+root.exe -l -b -q GetEntriesAndEventNr.C\(\"${filename}\"\) > numbers.txt
+tail -n 3  numbers.txt  | awk '{print $NF}' > cleannumbers.txt
 
 nevents=`sed -n '1p' cleannumbers.txt`
 first=`sed -n '2p' cleannumbers.txt`
