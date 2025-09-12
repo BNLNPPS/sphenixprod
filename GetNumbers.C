@@ -1,46 +1,52 @@
 #ifndef MACRO_GETENTRIES_C
 #define MACRO_GETENTRIES_C
 
-#ifdef OFFLINE_MAIN
 #include <frog/FROG.h>
+#include <ffaobjects/SyncObjectv1.h>
+
 R__LOAD_LIBRARY(libFROG.so)
-#else 
-#include "TTree.h"
-#include "TLeaf.h"
-#include "TFile.h"
-#endif
-void GetNumbers(const std::string &file)
+R__LOAD_LIBRARY(libffaobjects.so)
+
+void GetEntriesAndEventNr(const std::string &file)
 {
+  gSystem->Load("libFROG.so");
+  gSystem->Load("libg4dst.so");
   // prevent root to start gdb-backtrace.sh
   // in case of crashes, it hangs the condor job
   for (int i = 0; i < kMAXSIGNALS; i++)
   {
-    gSystem->IgnoreSignal((ESignals)i);
-  }  
-#ifdef OFFLINE_MAIN
-  gSystem->Load("libFROG.so");
-  gSystem->Load("libg4dst.so");
+     gSystem->IgnoreSignal((ESignals)i);
+  }
   FROG *fr = new FROG();
   TFile *f = TFile::Open(fr->location(file));
-#else
-  TFile *f = TFile::Open(file.c_str());
-#endif
-  gSystem->RedirectOutput("numbers.txt");
+  cout << "Getting events for " << file << endl;
   TTree *T = (TTree *) f->Get("T");
-  int nEntries = -1;
-  if (T) {
-    T->SetScanField(0);
-    nEntries = T->GetEntries();
-    cout << "nEntries " << nEntries << endl;
-    T->Scan("eventnumber","","",1,0);
-    T->Scan("eventnumber","","",1,nEntries-1);
-    return;
+  if (! T)
+  {
+    cout << "Number of Entries: -2" << endl;
   }
-
-  // Fallback
-  cout << " ***** T is null, dummy values" << endl;
-  cout << "dummyEntries " << nEntries << endl;
-  cout << "dummyFirst "   << -1 << endl;
-  cout << "dummyLast "    << -1 << endl;						
-};              
+  else
+  {
+    cout << "Number of Entries: " <<  T->GetEntries() << endl;
+  }
+  long lastEvent = -1;
+  long firstEvent = -1;
+  if (T) // this makes only sense if we have a T TTree
+  {
+    SyncObjectv1 *sync {nullptr};
+    T->SetBranchAddress("DST#Sync",&sync);
+    T->GetEntry(0);
+    if (sync)
+    {
+      firstEvent=sync->EventNumber();
+    }
+    T->GetEntry(T->GetEntries()-1);
+    if (sync)
+    {
+      lastEvent=sync->EventNumber();
+    }
+  }
+  cout << "First event number: " << firstEvent << endl;
+  cout << "Last event number: " << lastEvent << endl;
+}
 #endif
