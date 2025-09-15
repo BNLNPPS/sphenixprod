@@ -109,10 +109,15 @@ def monitor_args():
     parser.add_argument('--config', dest='config', required=False, help="Name of the YAML file containing production rules.")
     parser.add_argument('--rulename', dest='rulename', required=False, help="Name of submission rule")
 
-
     # Can be used to query/manipulate the queue directly
     parser.add_argument('--base_batchname', default=None, help="Select a specific condor batch by name.")
 
+    # Resubmission options
+    parser.add_argument('--resubmit-held', dest='resubmit_held', default=False, action='store_true',
+                        help='Held jobs are killed and resubmitted with adjusted memory requests')
+    parser.add_argument('--max-memory', dest='max_memory', default=12000, type=int,
+                        help='Maximum memory (MB) to request for resubmitted held jobs (default: 12000)')
+    
     return parse_and_set_loglevel(parser)
 
 # ============================================================================================

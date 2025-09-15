@@ -144,6 +144,7 @@ def main():
 
     held_memory_usage = []
     held_request_memory = []
+    kill_suggestion = []
     under_memory_hold_reasons = collections.Counter()
     for job_ad in held_jobs_ads:
         # MemoryUsage and RequestMemory are in MB
@@ -164,6 +165,11 @@ def main():
         # Now let's kill and resubmit this job with adjusted memory request
         new_submit_ad = htcondor.Submit(dict(job_ad))
         new_rm=int(rm * 1.5)  # Increase request by 50%
+        if new_rm > args.max_memory:
+            WARN(f"Calculated new memory request {new_rm}MB exceeds maximum of {args.max_memory}MB. Skipping.")
+            kill_suggestion.append(f"{job_ad['ClusterId']}.{job_ad['ProcId']}")
+            
+            continue
         new_submit_ad['RequestMemory'] = str(new_rm)
         if not args.dryrun:
             schedd = htcondor.Schedd()
@@ -191,6 +197,9 @@ def main():
         INFO("Frequency of hold reason codes for jobs held while under memory request:")
         pprint.pprint(dict(under_memory_hold_reasons))
 
+    if kill_suggestion:
+        INFO(f"There were {len(kill_suggestion)} jobs that could not be resubmitted due to exceeding max memory.")
+        INFO(f"You may want to kill them manually: \n{', '.join(kill_suggestion)}")
 
     INFO(f"{Path(__file__).name} DONE.")
 
