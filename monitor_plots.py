@@ -162,24 +162,29 @@ def main():
                 WARN(f'Job {job_id} held with mu ({mu:.0f}MB) < rm ({rm}MB). Reason Code {reason_code}:\n\t"{hold_reason}"')
             under_memory_hold_reasons[reason_code] += 1
 
-        # Now let's kill and resubmit this job with adjusted memory request
+        # Now let's kill and resubmit this job
+        # Fix difference between Submit object and ClassAd keys
+        job_ad['output']=job_ad.pop('Out')
+        job_ad['error']=job_ad.pop('Err')
+        # adjust memory request
         new_submit_ad = htcondor.Submit(dict(job_ad))
         new_rm=int(rm * 1.5)  # Increase request by 50%
         if new_rm > args.max_memory:
             WARN(f"Calculated new memory request {new_rm}MB exceeds maximum of {args.max_memory}MB. Skipping.")
             kill_suggestion.append(f"{job_ad['ClusterId']}.{job_ad['ProcId']}")
-            
             continue
         new_submit_ad['RequestMemory'] = str(new_rm)
         if not args.dryrun:
             schedd = htcondor.Schedd()
             try:
-                # The transaction context manager is deprecated. The following operations are not atomic.
+                # The transaction context manager is deprecated. The following replacement operations are not atomic.
                 schedd.act(htcondor.JobAction.Remove, [f"{job_ad['ClusterId']}.{job_ad['ProcId']}"])
                 INFO(f"Removed held job {job_ad['ClusterId']}.{job_ad['ProcId']} from queue.")
                 submit_result = schedd.submit(new_submit_ad)
                 new_queue_id = submit_result.cluster()
                 INFO(f"Resubmitted job with increased memory request ({rm}MB -> {new_rm}MB) as {new_queue_id}.")
+                
+                exit()
             except Exception as e:
                 ERROR(f"Failed to remove and resubmit job {job_ad['ClusterId']}.{job_ad['ProcId']}: {e}")
         else:
