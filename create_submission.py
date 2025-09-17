@@ -99,7 +99,8 @@ def main():
 
     script_path = Path(__file__).parent.resolve()
     payload_list += [ f"{script_path}/stageout.sh" ]
-    payload_list += [ f"{script_path}/GetNumbers.C" ]
+    # payload_list += [ f"{script_path}/GetNumbers.C" ]
+    payload_list += [ f"{script_path}/GetEntriesAndEventNr.C" ]
     payload_list += [ f"{script_path}/common_runscript_prep.sh" ]
     payload_list += [ f"{script_path}/create_filelist_run_daqhost.py" ]
     payload_list += [ f"{script_path}/create_filelist_run_seg.py" ]
