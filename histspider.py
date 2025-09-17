@@ -123,7 +123,7 @@ def main():
 
     # All leafs:
     leafparent=histdir.split('/{leafdir}')[0]
-    leafdirs = shell_command(f"{find} {leafparent} -type d -name {rule.dsttype}\* -mindepth 1 -a -maxdepth 1")
+    leafdirs = shell_command(rf"{find} {leafparent} -type d -name {rule.dsttype}\* -mindepth 1 -a -maxdepth 1")
     DEBUG(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
     allhistdirs = []
     for leafdir in leafdirs :
@@ -134,7 +134,7 @@ def main():
     # They too have dbinfo and need to be registered and renamed
     foundhists=[]
     for hdir in allhistdirs:
-        tmpfound = shell_command(f"{find} {hdir} -type f -name HIST\*root:\* -o -name CALIB\*")
+        tmpfound = shell_command(rf"{find} {hdir} -type f -name HIST\*root:\* -o -name CALIB\*")
 
         # Remove files that already end in ".root" - they're already registered
         foundhists += [ file for file in tmpfound if not file.endswith(".root") ]

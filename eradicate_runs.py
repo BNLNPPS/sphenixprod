@@ -51,7 +51,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
         ERROR( "Not safe to proceed without intervention.")
         exit(1)
     
-    rootfiles=match_config.get_output_files(filemask="\*root\*",dstlistname=dstlistname,dryrun=dryrun)
+    rootfiles=match_config.get_output_files(filemask=r"\*root\*",dstlistname=dstlistname,dryrun=dryrun)
     nfiles=0
     if not dstlistname:
         nfiles=len(rootfiles)

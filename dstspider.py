@@ -116,7 +116,7 @@ def main():
     else:
         INFO(" ... not found. Creating a new one.")
         Path(dstlistname).parent.mkdir( parents=True, exist_ok=True )
-        match_config.get_output_files("\*root:\*",dstlistname,args.dryrun)
+        match_config.get_output_files(r"\*root:\*",dstlistname,args.dryrun)
 
     if not Path(dstlistname).is_file():
         INFO("List file not found.")
