@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt # type: ignore
 from matplotlib.colors import LogNorm # type: ignore
 import numpy as np # type: ignore
 import collections
+import pickle
+import json
 
 import pprint # noqa F401
 
@@ -171,24 +173,24 @@ def main():
         new_rm=int(rm * 1.5)  # Increase request by 50%
         if new_rm > args.max_memory:
             WARN(f"Calculated new memory request {new_rm}MB exceeds maximum of {args.max_memory}MB. Skipping.")
-            kill_suggestion.append(f"{job_ad['ClusterId']}.{job_ad['ProcId']}")
+            #kill_suggestion.append(f"{job_ad['ClusterId']}.{job_ad['ProcId']}")
+            kill_suggestion.append(job_ad)
             continue
         new_submit_ad['RequestMemory'] = str(new_rm)
-        if not args.dryrun:
-            schedd = htcondor.Schedd()
-            try:
-                # The transaction context manager is deprecated. The following replacement operations are not atomic.
-                schedd.act(htcondor.JobAction.Remove, [f"{job_ad['ClusterId']}.{job_ad['ProcId']}"])
-                INFO(f"Removed held job {job_ad['ClusterId']}.{job_ad['ProcId']} from queue.")
-                submit_result = schedd.submit(new_submit_ad)
-                new_queue_id = submit_result.cluster()
-                INFO(f"Resubmitted job with increased memory request ({rm}MB -> {new_rm}MB) as {new_queue_id}.")
-                
-                exit()
-            except Exception as e:
-                ERROR(f"Failed to remove and resubmit job {job_ad['ClusterId']}.{job_ad['ProcId']}: {e}")
-        else:
-            INFO(f"(Dry Run) Would remove held job {job_ad['ClusterId']}.{job_ad['ProcId']} and resubmit with RequestMemory={new_rm}MB.")
+        if args.resubmit:
+            if not args.dryrun:
+                schedd = htcondor.Schedd()
+                try:
+                    # The transaction context manager is deprecated. The following replacement operations are not atomic.
+                    schedd.act(htcondor.JobAction.Remove, [f"{job_ad['ClusterId']}.{job_ad['ProcId']}"])
+                    INFO(f"Removed held job {job_ad['ClusterId']}.{job_ad['ProcId']} from queue.")
+                    submit_result = schedd.submit(new_submit_ad)
+                    new_queue_id = submit_result.cluster()
+                    INFO(f"Resubmitted job with increased memory request ({rm}MB -> {new_rm}MB) as {new_queue_id}.")                    
+                except Exception as e:
+                    ERROR(f"Failed to remove and resubmit job {job_ad['ClusterId']}.{job_ad['ProcId']}: {e}")
+            else:
+                INFO(f"(Dry Run) Would remove held job {job_ad['ClusterId']}.{job_ad['ProcId']} and resubmit with RequestMemory={new_rm}MB.")
 
     if held_memory_usage or held_request_memory:
         dist_plot_file = f"{batch_name}_memory_distribution.png"
@@ -204,7 +206,25 @@ def main():
 
     if kill_suggestion:
         INFO(f"There were {len(kill_suggestion)} jobs that could not be resubmitted due to exceeding max memory.")
-        INFO(f"You may want to kill them manually: \n{', '.join(kill_suggestion)}")
+        if args.kill:
+            INFO(f"Killing them now as per --kill option.")
+            if not args.dryrun:
+                schedd = htcondor.Schedd()
+                with open(f"{batch_name}_killed_jobs.pkl", "wb") as f:
+                    pickle.dump(kill_suggestion, f)
+                with open(f"{batch_name}_killed_jobs.json", "w") as f:
+                    for job_ad in kill_suggestion:
+                        json.dump(dict(job_ad), f, indent=4)
+                try:
+
+                    #schedd.act(htcondor.JobAction.Remove, kill_procs)
+                    INFO(f"Killed {len(kill_suggestion)} jobs that exceeded max memory limit of {args.max_memory}MB.")
+                except Exception as e:
+                    ERROR(f"Failed to kill jobs: {e}")
+        else:
+            kill_procs=[f"{job_ad['ClusterId']}.{job_ad['ProcId']}" for job_ad in kill_suggestion]
+            INFO(f"You may want to kill them manually: \n{', '.join(kill_procs)}")
+
 
     INFO(f"{Path(__file__).name} DONE.")
 
