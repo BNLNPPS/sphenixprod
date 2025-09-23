@@ -316,10 +316,16 @@ order by runnumber
             # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
             ## Note: Not all constraints are needed, but they may speed up the query
             existing_output=self.get_files_in_db(runnumber)
-            DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")
+            if existing_output==[]:
+                DEBUG(f"No output files yet for run {runnumber}")
+            else:
+                DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")
 
             existing_status=self.get_prod_status(runnumber)
-            INFO(f"Already have {len(existing_status)} output files in the production db")
+            if existing_status=={}:
+                DEBUG(f"No output files yet in the production db for run {runnumber}")
+            else:   
+                DEBUG(f"Already have {len(existing_status)} output files in the production db")
 
             # Potential input files for this run
             run_query = infile_query + f"\n\t and runnumber={runnumber} "
@@ -469,6 +475,11 @@ order by runnumber
                                 continue                
                     if len(present_tpc_files) < minNTPC and not self.physicsmode=='cosmics':
                         WARN(f"Skip run {runnumber}. Only {len(present_tpc_files)} TPC detectors actually in the run.")
+                        #WARN(f"Available TPC hosts in the daq db: {sorted(available_tpc)}")
+                        #WARN(f"Present TPC hosts: {sorted(present_tpc_files)}")
+                        missing_hosts = [host for host in available_tpc if not any(host in present for present in present_tpc_files)]
+                        if missing_hosts:
+                            WARN(f"Missing TPC hosts: {missing_hosts}")
                         continue
                     DEBUG (f"Found {len(present_tpc_files)} TPC files in the catalog")
 
@@ -477,9 +488,9 @@ order by runnumber
                     CHATTY(f"Available non-TPC hosts in the daq db: {present_tracking}")
                     ### TODO: Only checking length here. Probably okay forever though.
                     if len(present_tracking) != len(available_tracking) and not self.physicsmode=='cosmics':
-                        WARN(f"Skip run. Only {len(present_tracking)} non-TPC detectors actually in the run. {len(available_tracking)} possible.")
-                        WARN(f"Available non-TPC hosts in the daq db: {available_tracking}")
-                        WARN(f"Present non-TPC leafs: {present_tracking}")
+                        WARN(f"Skip run {runnumber}. Only {len(present_tracking)} non-TPC detectors actually in the run. {len(available_tracking)} possible.")
+                        # WARN(f"Available non-TPC hosts in the daq db: {sorted(available_tracking)}")
+                        # WARN(f"Present non-TPC leafs: {sorted(present_tracking)}")
                         continue
                     DEBUG (f"Found {len(present_tracking)} other tracking files in the catalog")
 
