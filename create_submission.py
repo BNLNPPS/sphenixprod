@@ -33,6 +33,7 @@ from execute_condorsubmission import locate_submitfiles,execute_submission
 def main():
     ### digest arguments
     args = submission_args()
+    args.force = args.force_delete or args.force # -fd implies -f
 
     #################### Test mode?
     test_mode = (
@@ -50,8 +51,10 @@ def main():
         #### For --force, we could do the file and database deletion in RuleConfig.
         # Would be kinda nice because only then we'll know what's _really_ affected, and we could use the logic there.
         # Instead, ensure that the rule logic needs no special cases, set everything up here.
-        WARN('Got "--force": Override existing output in files, datasets, and production_status DBs. Delete those files.')
+        WARN('Got "--force": Override existing output in files, datasets, and production_status DBs.')
         WARN('               Note that it\'s YOUR job to ensure there\'s no job in the queue or file in the DST lake which will overwrite this later!')
+        if args.force_delete:
+            WARN('               Also got "--force-delete": Deleting existing files that are reproduced.')
         # answer = input("Do you want to continue? (yes/no): ")
         # if answer.lower() != "yes":
         #     print("Exiting. Smart.")
@@ -168,10 +171,10 @@ def main():
 
     # #################### With the matching rules constructed, first remove all traces of the given runs
     if args.force:
-        eradicate_runs(match_config=match_config, dryrun=args.dryrun)
+        eradicate_runs(match_config=match_config, dryrun=args.dryrun, delete_files=args.force_delete)
 
-    # #################### Now proceed with submission     
-    rule_matches=match_config.matches()
+    # #################### Now proceed with submission
+    rule_matches = match_config.matches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
 
     if os.uname().sysname=='Darwin' :
@@ -334,7 +337,7 @@ returning id
 
     ### And submit, if so desired
     if args.andgo:
-        execute_submission(rule, args)
+        execute_submission(rule, args, True)
 
     if args.profile:
         profiler.disable()
