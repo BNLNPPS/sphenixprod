@@ -60,8 +60,11 @@ def submission_args():
     parser = _base_arguments(parser)
 
     # General arguments
-    parser.add_argument("--force", "-f", dest="force", help="Override existing output in file and prod db. Delete those files.",
+    parser.add_argument("--force", "-f", dest="force", help="Override existing output in file and prod db.",
                         action="store_true")
+    parser.add_argument("--force-delete", "-fd", dest="force_delete", help="Set --force and delete existing files that are reproduced.",
+                        action="store_true")
+
     parser.add_argument('--print-query', dest='printquery', help="Print the query after parameter substitution and exit",
                         action="store_true")
     parser.add_argument('--andgo', dest='andgo', help="Submit condor jobs at the end", action="store_true")
@@ -92,8 +95,6 @@ def submission_args():
     parser.add_argument('--mem', help="Override memory allocated for a job", default=None)
     parser.add_argument('--priority', help="Override condor priority for this job (more is higher)", default=None)
     parser.add_argument('--maxjobs', dest="maxjobs", help="Maximum number of jobs to pass to condor", default=None)
-    parser.add_argument('-r', '--resubmit', dest='resubmit', default=False, action='store_true',
-                        help='Existing filecatalog entry does not block a job')
     parser.add_argument('--docstring', default=None, help="Appends a documentation string to the log entry")
 
     return parse_and_set_loglevel(parser)
@@ -112,12 +113,13 @@ def monitor_args():
     # Can be used to query/manipulate the queue directly
     parser.add_argument('--base_batchname', default=None, help="Select a specific condor batch by name.")
 
-    # Resubmission options
-    parser.add_argument('--resubmit-held', dest='resubmit_held', default=False, action='store_true',
-                        help='Held jobs are killed and resubmitted with adjusted memory requests')
     parser.add_argument('--max-memory', dest='max_memory', default=12000, type=int,
                         help='Maximum memory (MB) to request for resubmitted held jobs (default: 12000)')
-    
+    parser.add_argument('-r', '--resubmit', dest='resubmit', default=False, action='store_true',
+                        help='Held jobs are killed and resubmitted with adjusted memory requests')
+    parser.add_argument('-k', '--kill', dest='kill', default=False, action='store_true',
+                        help='Held jobs above max-mem are serialized, then killed and not resubmitted')
+
     return parse_and_set_loglevel(parser)
 
 # ============================================================================================
