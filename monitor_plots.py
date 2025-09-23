@@ -208,7 +208,7 @@ def main():
         INFO(f"There were {len(kill_suggestion)} jobs that could not be resubmitted due to exceeding max memory.")
         if args.kill:
             INFO(f"Killing them now as per --kill option.")
-            if not args.dryrun:
+            if not args.dryrun or True:
                 schedd = htcondor.Schedd()
                 with open(f"{batch_name}_killed_jobs.pkl", "wb") as f:
                     pickle.dump(kill_suggestion, f)
