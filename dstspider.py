@@ -49,6 +49,9 @@ def main():
         profiler = cProfile.Profile()
         profiler.enable()
 
+    INFO("Starting dstspider.")
+    INFO(sys.argv)
+
     if test_mode:
         INFO("Running in testbed mode.")
         args.mangle_dirpath = 'production-testbed'
