@@ -130,6 +130,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
                              "submit", "dstspider","histspider",
                              "prodbase", "configbase",
                              "jobmem", "jobprio",
+                             "force", "force_delete",
                              ])
     ### Local file location changes?
     prodbase=rule_data.get("prodbase",defaultlocations["prodbase"])
@@ -176,6 +177,14 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     jobprio=rule_data.get("jobprio", None)
     if jobprio:
         ruleargs += f" --priority {jobprio}"
+
+    ### Force options
+    force=rule_data.get("force", False)
+    force_delete=rule_data.get("force_delete", False)
+    if force:
+        ruleargs += " --force"
+    if force_delete:
+        ruleargs += " --force-delete"
 
     ### Booleans for what to run
     sdh_tuple=SubmitDstHist(submit=rule_data.get("submit", False),
