@@ -9,6 +9,9 @@ odbc_test.ini
 *.prof
 .testbed
 *.png
+*.pkl
+*.json
+
 
 # For MacOS:
 .DS_Store
