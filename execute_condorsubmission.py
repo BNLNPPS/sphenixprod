@@ -20,7 +20,7 @@ from sphenixdbutils import cnxn_string_map, dbQuery
 
 
 # ============================================================================================
-def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace):
+def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace, allruns: bool=False):
     ### Outsourced because this function is independently useful
     submitdir = Path(f'{args.submitdir}').resolve()
     subbase = f'{rule.dsttype}_{rule.dataset}_{rule.outtriplet}'
@@ -33,7 +33,12 @@ def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace):
     runlist=list(map(str,rule.runlist_int))
 
     # Only use those who match the run condition - the pythonic way
-    sub_files = {file for file in sub_files if any( f'_{runnumber}' in file for runnumber in runlist) }
+    if allruns:
+        INFO("Ignoring run constraints, using all submission files.")
+    else:
+        INFO(f"Selecting submission files for runs: {runlist}")
+        sub_files = {file for file in sub_files if any( f'_{runnumber}' in file for runnumber in runlist) }
+
     sub_files = sorted(sub_files,reverse=True) # latest runs first
     DEBUG(f"[locate_submitfiles] Submission files AFTER run constraint:\n{pprint.pformat(sub_files)}")
     if sub_files == []:
@@ -42,13 +47,13 @@ def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace):
 
 
 # ============================================================================================
-def execute_submission(rule: RuleConfig, args: argparse.Namespace):
+def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool=False):
     """ Look for job files and submit condor jobs if the current load is acceptable.
     Update production database to "submitted".
     Locking and deleting is used to avoid double-submission.
     """
 
-    sub_files=locate_submitfiles(rule, args)
+    sub_files=locate_submitfiles(rule, args, allruns)
     if sub_files == []:
         INFO("No submission files found.")
 
