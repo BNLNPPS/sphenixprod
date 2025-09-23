@@ -15,7 +15,7 @@ from sphenixmisc import read_batches,lock_file, unlock_file
 from sphenixmisc import shell_command
 from sphenixdbutils import cnxn_string_map, dbQuery
 
-def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
+def eradicate_runs(match_config: MatchConfig, dryrun: bool=True, delete_files: bool=False):
     """ Run this script to remove files and db entries
     so that the run can be resubmitted.
     (Ex.: With different resource specs)
@@ -45,33 +45,35 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True):
     while dstlistname.endswith("/"):
         dstlistname=dstlistname[0:-1]
     dstlistname=f"{dstlistname}/{dsttype}_deletelist"
-    #dstlistname="/tmp/delmelist"
-    #dstlistname=None
-    if not lock_file(file_path=dstlistname, dryrun=dryrun, max_lock_age=30*60):
-        ERROR( "Not safe to proceed without intervention.")
-        exit(1)
-    
-    rootfiles=match_config.get_output_files(filemask=r"\*root\*",dstlistname=dstlistname,dryrun=dryrun)
-    nfiles=0
-    if not dstlistname:
-        nfiles=len(rootfiles)
-    else:
-        if Path(dstlistname).exists():
-            wccommand=f"wc -l {dstlistname}"
-            ret = shell_command(wccommand)
-            nfiles = int(ret[0])
 
-    INFO(f"Found {nfiles} files to delete.")
+    if not delete_files:
+        WARN(f"Not deleting files, because --force-delete not given.")
+    else: 
+        WARN(f"Deleting files, because --force-delete given.")    
+        if not lock_file(file_path=dstlistname, dryrun=dryrun, max_lock_age=30*60):
+            ERROR( "Not safe to proceed without intervention.")
+            exit(1)
+        rootfiles=match_config.get_output_files(filemask=r"\*root\*",dstlistname=dstlistname,dryrun=dryrun)
+        nfiles=0
+        if not dstlistname:
+            nfiles=len(rootfiles)
+        else:
+            if Path(dstlistname).exists():
+                wccommand=f"wc -l {dstlistname}"
+                ret = shell_command(wccommand)
+                nfiles = int(ret[0])
 
-    filebatches=[]
-    if nfiles>0:
-        filebatches=read_batches(dstlistname,100000) if dstlistname else (rootfiles,)
-    for i,batch in enumerate(filebatches):
-        INFO(f"Processing batch {i}, length is {len(batch)} lines.")
-        if not dryrun:
-            for rootfile in batch:
-                Path(rootfile).unlink(missing_ok=True)
-                pass
+        INFO(f"Found {nfiles} existing files to delete.")
+
+        filebatches=[]
+        if nfiles>0:
+            filebatches=read_batches(dstlistname,100000) if dstlistname else (rootfiles,)
+        for i,batch in enumerate(filebatches):
+            INFO(f"Processing batch {i}, length is {len(batch)} lines.")
+            if delete_files and not dryrun:
+                for rootfile in batch:
+                    Path(rootfile).unlink(missing_ok=True)
+                    pass
 
     if not dryrun:
         unlock_file(file_path=dstlistname,dryrun=dryrun)
@@ -210,7 +212,7 @@ def main():
     INFO("Match configuration created.")
 
     # Call the main eradication function
-    eradicate_runs(match_config, dryrun=args.dryrun)
+    eradicate_runs(match_config, dryrun=args.dryrun,delete_files=args.force_delete)
 
     INFO(f"{Path(__file__).name} DONE.")
 
