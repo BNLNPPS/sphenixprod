@@ -182,9 +182,11 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     force=rule_data.get("force", False)
     force_delete=rule_data.get("force_delete", False)
     if force:
-        ruleargs += " --force"
+        WARN('"force" is not a good idea. Uncomment if you\'re sure')
+        # ruleargs += " --force"
     if force_delete:
-        ruleargs += " --force-delete"
+        WARN('"force_delete" is not a good idea. Uncomment if you\'re sure')
+        #ruleargs += " --force-delete"
 
     ### Booleans for what to run
     sdh_tuple=SubmitDstHist(submit=rule_data.get("submit", False),
