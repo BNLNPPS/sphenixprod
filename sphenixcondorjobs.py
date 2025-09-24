@@ -104,9 +104,9 @@ class CondorJob:
     outdir:                 str  # where the DST files are written to
     finaldir:               str  # where the DST files are eventually moved to by a spider - currently unused, the spider should know
     histdir:                str  # where histograms go
-    output:                 str
-    error:                  str
-    log:                    str
+    output:                 str  # Stdout file for condor
+    error:                  str  # Stderr file for condor
+    log:                    str  # Log file for condor
     output_file:            str           # Output file for the job --> not used directly except for bookkeeping
     inputs:                 List[Any]     # Can be list of input files for the job; usually holds a steering string or flag though.
     outbase:                str           # Base name for the output file
