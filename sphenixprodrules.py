@@ -41,7 +41,8 @@ _default_filesystem = {
     'finaldir' :    "/sphenix/lustre01/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}",
     'logdir'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
     'histdir'  : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/hist",
-    'condor'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
+    'condor'   :     "/tmp/sphenixprod/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
+    #'condor'   : "/sphenix/data/data02/sphnxpro/{prodmode}/{period}/{physicsmode}/{outtriplet}/{leafdir}/{rungroup}/log",
 }
 
 # ============================================================================
@@ -96,6 +97,8 @@ class InputConfig:
     intriplet:        str = None # ==tag, i.e. new_nocdbtag_v001
     indsttype:        List[str] = None # ['DST_STREAMING_EVENT_epcd01_0','DST_STREAMING_EVENT_epcd01_1'];
     indsttype_str:    str = None        # " ".join(indsttype) for SQL query
+    # Rule name. Sometimes needed to identify input files
+    rule_name: str = None
     # Run Quality
     min_run_events:   Optional[int] = None
     min_run_time:     Optional[int] = None
@@ -302,6 +305,7 @@ class RuleConfig:
             intriplet=intriplet,
             indsttype=indsttype,
             indsttype_str=indsttype_str,
+            rule_name=rule_name,
             min_run_events=min_run_events,
             min_run_time=min_run_time,
             combine_seg0_only=combine_seg0_only,
