@@ -107,7 +107,8 @@ def main():
     dstlistname=dstlistname.split("{")[0]
     while dstlistname.endswith("/"):
         dstlistname=dstlistname[0:-1]
-    dstlistname=f"{dstlistname}/{rule.dsttype}_dstlist"
+    #dstlistname=f"{dstlistname}/{args.rulename}_{rule.dsttype}_dstlist"
+    dstlistname=f"{dstlistname}/{args.rulename}_dstlist"
     
     # First, lock. This way multiple spiders can work on a file without stepping on each others' (8) toes
     if not lock_file(dstlistname,args.dryrun):
