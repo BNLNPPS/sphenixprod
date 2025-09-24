@@ -36,7 +36,8 @@ def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace, allruns: bool
     if allruns:
         INFO("Ignoring run constraints, using all submission files.")
     else:
-        INFO(f"Selecting submission files for runs: {runlist}")
+        #INFO(f"Selecting submission files for runs: {runlist}")
+        INFO("Selecting submission files based on runlist")
         sub_files = {file for file in sub_files if any( f'_{runnumber}' in file for runnumber in runlist) }
 
     sub_files = sorted(sub_files,reverse=True) # latest runs first
@@ -69,7 +70,7 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool
     if len(idle_procs) > 0:
         INFO(f"We already have {len(idle_procs)} jobs in the queue waiting for execution.")
     if len(held_procs) > 0:
-        WARN(f"There are {len(held_procs)} held jobs what should be removed and resubmitted.")
+        WARN(f"There are {len(held_procs)} held jobs that should be removed and/or resubmitted.")
 
     max_submitted=10000
     for sub_file in sub_files:
