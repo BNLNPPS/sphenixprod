@@ -44,7 +44,8 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True, delete_files: b
     dstlistname=dstlistname.split("{")[0]
     while dstlistname.endswith("/"):
         dstlistname=dstlistname[0:-1]
-    dstlistname=f"{dstlistname}/{dsttype}_deletelist"
+    #dstlistname=f"{dstlistname}/{args.rulename}_{rule.dsttype}_dstlist"
+    dstlistname=f"{dstlistname}/{match_config.input_config.rule_name}_dstlist"
 
     if not delete_files:
         WARN(f"Not deleting files, because --force-delete not given.")
