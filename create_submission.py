@@ -160,7 +160,7 @@ def main():
 
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
-        
+
     #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
     INFO("Rule construction complete. Now constructing corresponding match configuration.")
 
@@ -289,9 +289,6 @@ queue log,output,error,arguments from {condor_infile}
 
             # Add to production database
             dsttype=logbase.split(f'_{rule.dataset}')[0]
-            # if 'TRIGGERED_EVENT' in dsttype or 'STREAMING_EVENT' in dsttype: # TODO: FIXME for those as well
-            #     dstfile=f'{outbase}-{run:{pRUNFMT}}-{0:{pSEGFMT}}'
-            # else:
             dstfile=out_file # this is much more robust and correct
             # Following is fragile, don't add spaces
             prodstate='submitting'
