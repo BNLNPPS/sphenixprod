@@ -378,7 +378,19 @@ order by runnumber
 
                 ### Important change, 07/15/2025: By default, only care about segment 0!
                 segswitch="seg0fromdb"
+                segments=set()
+                for host in files_for_run:
+                    for f in files_for_run[host]:
+                        if f.status==1:
+                            segments.add(f.segment)
+                if segments:
+                    CHATTY(f"Run {runnumber} has {len(segments)} segments in the input streams: {sorted(segments)}")
+
+                okforseg0=(segments=={0})
                 if not self.input_config.combine_seg0_only:
+                    if okforseg0:
+                        DEBUG(f"Run {runnumber} has {len(segments)} segments in the input streams: {sorted(segments)}. Skipping this run.")
+                        continue
                     DEBUG("Using, and requiring, all input segments")
                     segswitch="allsegsfromdb"
                     for host in files_for_run:
@@ -390,6 +402,9 @@ order by runnumber
                     # Done with the non-default.
                 else: ### Use only segment 0; this is actually a bit harder
                     CHATTY("Using only input segment 0")
+                    if not okforseg0:
+                        DEBUG(f"Run {runnumber} has {len(segments)} segments in the input streams: {sorted(segments)}. Skipping this run.")
+                        continue
                     # GL1 file?
                     gl1file0=None
                     for f in gl1_files:
@@ -413,6 +428,7 @@ order by runnumber
                             files_for_run[host]=[]
                 # \combine_seg0_only
             # \if gl1daq in intypes
+            
 
             ####### "Easy" case. One way to identify this case is to see if gl1 is not needed
             #  If the input has a segment number, then the output will have the same segment number
@@ -489,6 +505,9 @@ order by runnumber
                     ### TODO: Only checking length here. Probably okay forever though.
                     if len(present_tracking) != len(available_tracking) and not self.physicsmode=='cosmics':
                         WARN(f"Skip run {runnumber}. Only {len(present_tracking)} non-TPC detectors actually in the run. {len(available_tracking)} possible.")
+                        missing_hosts = [host for host in available_tracking if not any(host in present for present in present_tracking)]
+                        if missing_hosts:
+                            WARN(f"Missing non-TPC hosts: {missing_hosts}")
                         # WARN(f"Available non-TPC hosts in the daq db: {sorted(available_tracking)}")
                         # WARN(f"Present non-TPC leafs: {sorted(present_tracking)}")
                         continue
@@ -509,6 +528,7 @@ order by runnumber
                 if len(rejected) > 0  and not self.physicsmode=='cosmics' :
                     DEBUG(f"Run {runnumber}: Removed {len(rejected)} segments not present in all streams.")
                     CHATTY(f"Rejected segments: {rejected}")
+                
 
                 # If the output doesn't exist yet, use input files to create the job
                 # outbase=f'{self.dsttype}_{self.outtriplet}_{self.outdataset}'
