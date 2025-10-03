@@ -280,10 +280,10 @@ order by runnumber
                 run_segs[r] = {}
             run_segs[r][h] = s
 
-        CHATTY("Run segments per daqhost:")
-        for r, hosts in run_segs.items():
-            for h, s in hosts.items():
-                CHATTY(f"Run {r} has {s} segments for host {h}")
+        # CHATTY("Run segments per daqhost:")
+        # for r, hosts in run_segs.items():
+        #     for h, s in hosts.items():
+        #         CHATTY(f"Run {r} has {s} segments for host {h}")
 
         ### How many segments are actually present in the file catalog?
         lustre_query =   "select runnumber,daqhost,count(status) from datasets"
@@ -299,13 +299,22 @@ order by runnumber
                 lustre_segs[r] = {}
             lustre_segs[r][h] = s
         
-        CHATTY("Run segments per daqhost in the file catalog:")
-        for r, hosts in lustre_segs.items():
-            for h, s in hosts.items():
-                CHATTY(f"Run {r} has {s} segments for host {h} on lustre")
+        # CHATTY("Run segments per daqhost in the file catalog:")
+        # for r, hosts in lustre_segs.items():
+        #     for h, s in hosts.items():
+        #         CHATTY(f"Run {r} has {s} segments for host {h} on lustre")
 
-
-
+        ## Now compare the two and decide which runs to use
+        runs_to_use = []
+        for r, hosts in run_segs.items():
+            if r in lustre_segs:
+                for h, s in hosts.items():
+                    if h in lustre_segs[r]:
+                        if s == lustre_segs[r][h]:
+                            runs_to_use.append(r)
+                            CHATTY(f"Run {r} has all {s} segments for host {h}. Using this run.")
+        
+        pprint.pprint(f"Using {runs_to_use} runs for combination.")
         exit()
 
 
@@ -318,11 +327,6 @@ order by runnumber
             return self.matches_combining()
         else:
             return self.matches()
-        
-    
-
-
-
 
     # ------------------------------------------------
     def matches(self) :
