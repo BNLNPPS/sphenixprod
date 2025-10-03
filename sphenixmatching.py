@@ -155,7 +155,7 @@ order by runnumber
         return existing_output
 
     # ------------------------------------------------
-    def get_output_files(self, filemask: str = "\*.root:\*", dstlistname: str=None, dryrun: bool=True) -> List[str]:
+    def get_output_files(self, filemask: str = r"\*.root:\*", dstlistname: str=None, dryrun: bool=True) -> List[str]:
         ### Which find command to use for lustre?
         find=shutil.which('find')
         lfind = shutil.which('lfs')
@@ -186,7 +186,7 @@ order by runnumber
 
         # All leafs:
         leafparent=outlocation.split('/{leafdir}')[0]
-        leafdirs_cmd=f"{find} {leafparent} -type d -name {self.dsttype}\* -mindepth 1 -a -maxdepth 1"
+        leafdirs_cmd=rf"{find} {leafparent} -type d -name {self.dsttype}\* -mindepth 1 -a -maxdepth 1"
         leafdirs = shell_command(leafdirs_cmd)
         CHATTY(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
 
@@ -216,7 +216,7 @@ order by runnumber
         with open(dstlistname,"w") if dstlistname else nullcontext() as dstlistfile:
             for leafdir in leafdirs :
                 CHATTY(f"Searching {leafdir}")
-                available_rungroups = shell_command(f"{find} {leafdir} -name run_\* -type d -mindepth 1 -a -maxdepth 1")
+                available_rungroups = shell_command(rf"{find} {leafdir} -name run_\* -type d -mindepth 1 -a -maxdepth 1")
                 DEBUG(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
                 
                 # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
@@ -540,7 +540,7 @@ order by runnumber
                         CHATTY(f"Output file {dstfile} already exists. Not submitting.")
                         continue
                     if dstfile in existing_status:
-                        WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
+                        CHATTY(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                         continue
                     # in_files_for_seg= []
                     # for host in files_for_run:
