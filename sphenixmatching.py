@@ -138,7 +138,6 @@ order by runnumber
         DEBUG(f"Runlist: {runlist_int}")
         return runlist_int
 
-
     # ------------------------------------------------
     def get_files_in_db(self, runnumbers: Any) :
 
@@ -155,7 +154,7 @@ order by runnumber
         return existing_output
 
     # ------------------------------------------------
-    def get_output_files(self, filemask: str = "\*.root:\*", dstlistname: str=None, dryrun: bool=True) -> List[str]:
+    def get_output_files(self, filemask: str = r"\*.root:\*", dstlistname: str=None, dryrun: bool=True) -> List[str]:
         ### Which find command to use for lustre?
         find=shutil.which('find')
         lfind = shutil.which('lfs')
@@ -186,7 +185,7 @@ order by runnumber
 
         # All leafs:
         leafparent=outlocation.split('/{leafdir}')[0]
-        leafdirs_cmd=f"{find} {leafparent} -type d -name {self.dsttype}\* -mindepth 1 -a -maxdepth 1"
+        leafdirs_cmd=rf"{find} {leafparent} -type d -name {self.dsttype}\* -mindepth 1 -a -maxdepth 1"
         leafdirs = shell_command(leafdirs_cmd)
         CHATTY(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
 
@@ -216,7 +215,7 @@ order by runnumber
         with open(dstlistname,"w") if dstlistname else nullcontext() as dstlistfile:
             for leafdir in leafdirs :
                 CHATTY(f"Searching {leafdir}")
-                available_rungroups = shell_command(f"{find} {leafdir} -name run_\* -type d -mindepth 1 -a -maxdepth 1")
+                available_rungroups = shell_command(rf"{find} {leafdir} -name run_\* -type d -mindepth 1 -a -maxdepth 1")
                 DEBUG(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
                 
                 # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
@@ -278,6 +277,82 @@ order by runnumber
         return existing_status
 
     # ------------------------------------------------
+    def matches_combining(self) :
+        ### Matches for combining jobs
+
+        # Run quality:
+        goodruns=self.good_runlist()
+        if goodruns==[]:
+            INFO( "No runs pass run quality cuts.")
+            return {}
+        INFO(f"{len(goodruns)} runs pass run quality cuts.")
+        DEBUG(f"Runlist: {goodruns}")
+        if goodruns==[]:
+            return {}
+        run_condition=list_to_condition(goodruns)
+    
+        ### How many segments were produced per daqhost?
+        seg_query=   "select runnumber,hostname,count(sequence) from filelist"
+        seg_query+= f" WHERE {run_condition}"
+        seg_query+= f" and hostname in {tuple(self.in_types)}"
+        seg_query+=  " group by runnumber,hostname;"
+        print(seg_query)
+        seg_result = dbQuery( cnxn_string_map['daqr'], seg_query ).fetchall()
+        run_segs = {}
+        for r,h,s in seg_result:
+            if r not in run_segs:
+                run_segs[r] = {}
+            run_segs[r][h] = s
+
+        # CHATTY("Run segments per daqhost:")
+        # for r, hosts in run_segs.items():
+        #     for h, s in hosts.items():
+        #         CHATTY(f"Run {r} has {s} segments for host {h}")
+
+        ### How many segments are actually present in the file catalog?
+        lustre_query =   "select runnumber,daqhost,count(status) from datasets"
+        lustre_query += f" where {run_condition}"
+        lustre_query += f" and daqhost in {tuple(self.in_types)}"
+        lustre_query += f" and status::int > 0"
+        lustre_query +=  " group by runnumber,daqhost;"
+        print(lustre_query)
+        lustre_result = dbQuery( cnxn_string_map[ self.input_config.db ], lustre_query ).fetchall()
+        lustre_segs = {}
+        for r,h,s in lustre_result:
+            if r not in lustre_segs:
+                lustre_segs[r] = {}
+            lustre_segs[r][h] = s
+        
+        # CHATTY("Run segments per daqhost in the file catalog:")
+        # for r, hosts in lustre_segs.items():
+        #     for h, s in hosts.items():
+        #         CHATTY(f"Run {r} has {s} segments for host {h} on lustre")
+
+        ## Now compare the two and decide which runs to use
+        runs_to_use = []
+        for r, hosts in run_segs.items():
+            if r in lustre_segs:
+                for h, s in hosts.items():
+                    if h in lustre_segs[r]:
+                        if s == lustre_segs[r][h]:
+                            runs_to_use.append(r)
+                            CHATTY(f"Run {r} has all {s} segments for host {h}. Using this run.")
+        
+        pprint.pprint(f"Using {runs_to_use} runs for combination.")
+        exit()
+
+
+
+    # ------------------------------------------------
+    def devmatches(self) :
+        ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
+        # The logic for combination and downstream jobs is sufficiently different to warrant separate functions
+        if 'raw' in self.input_config.db:
+            return self.matches_combining()
+        else:
+            return self.matches()
+
+    # ------------------------------------------------
     def matches(self) :
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # Despite the "like" clause, this is a fast query. Extra cuts or substitute cuts like
@@ -286,13 +361,13 @@ order by runnumber
         # Note: If the file database is not up to date, we can use a filesystem search in the output directory
         # Note: The db field in the yaml is for input queries only, all output queries go to the FileCatalog
 
+        # TODO: Move this query and use it only for combination jobs
         goodruns=self.good_runlist()
         if goodruns==[]:
             INFO( "No runs pass run quality cuts.")
             return {}
         INFO(f"{len(goodruns)} runs pass run quality cuts.")
         DEBUG(f"Runlist: {goodruns}")
-
 
         ####################################################################################
         ###### Now get all existing input files
@@ -351,9 +426,11 @@ order by runnumber
             else:   
                 DEBUG(f"Already have {len(existing_status)} output files in the production db")
 
+
             # Potential input files for this run
             run_query = infile_query + f"\n\t and runnumber={runnumber} "
             CHATTY(f"run_query:\n{run_query}")
+            exit()
             db_result = dbQuery( cnxn_string_map[ self.input_config.db ], run_query ).fetchall()
             candidates = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
             CHATTY(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
@@ -562,7 +639,7 @@ order by runnumber
                         CHATTY(f"Output file {dstfile} already exists. Not submitting.")
                         continue
                     if dstfile in existing_status:
-                        WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
+                        CHATTY(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                         continue
                     # in_files_for_seg= []
                     # for host in files_for_run:
