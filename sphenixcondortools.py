@@ -33,6 +33,7 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
             'ExitCode', 'HoldReason', 'RemoveReason',
             'RemoteHost', 'NumJobStarts',
             'ResidentSetSize', 'MemoryProvisioned', 'LastHoldReasonCode',
+            'EnteredCurrentStatus',
                 # Important for cloning
             'Owner', 'JobBatchName','Environment', 'JobPrio',
             'Cmd', 'Args', 'Iwd',
