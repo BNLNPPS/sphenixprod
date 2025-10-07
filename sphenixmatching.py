@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Set, Any
 import itertools
 import operator
 from dataclasses import dataclass, asdict
@@ -253,8 +253,8 @@ order by runnumber
         return existing_status
 
     # ------------------------------------------------
-    def matches_combining(self) :
-        ### Matches for combining jobs
+    def daqhosts_for_combining(self) -> Dict[int, Set[int]]:
+        ### Which DAQ hosts have all required segments present in the file catalog for a given run?
 
         # Run quality:
         goodruns=self.good_runlist()
@@ -266,13 +266,33 @@ order by runnumber
         if goodruns==[]:
             return {}
         run_condition=list_to_condition(goodruns)
-    
-        ### How many segments were produced per daqhost?
+
+        # If we only care about segment 0, we can skip a lot of the checks
+        if self.input_config.combine_seg0_only:
+            INFO("Only combining segment 0. Skipping detailed checks.")
+            
+            # Which hosts have a segment 0 in the file catalog?
+            lustre_query =   "select runnumber,daqhost from datasets"
+            lustre_query += f" WHERE {run_condition}"
+            lustre_query += f" AND daqhost in {tuple(self.in_types)}"
+            lustre_query += f" AND segment=0 AND status::int > 0;"
+            lustre_result = dbQuery( cnxn_string_map[ self.input_config.db ], lustre_query ).fetchall()
+            daqhosts_for_combining = {}
+            for r,h in lustre_result:
+                if r not in daqhosts_for_combining:
+                    daqhosts_for_combining[r] = set()
+                daqhosts_for_combining[r].add(h)
+            for run in daqhosts_for_combining:
+                CHATTY(f"Available on lustre for run {run}: {daqhosts_for_combining.get(run,set())}")
+
+            return daqhosts_for_combining
+
+        ### More general case, need to check all segments
+        # How many segments were produced per daqhost?
         seg_query=   "select runnumber,hostname,count(sequence) from filelist"
         seg_query+= f" WHERE {run_condition}"
         seg_query+= f" and hostname in {tuple(self.in_types)}"
         seg_query+=  " group by runnumber,hostname;"
-        print(seg_query)
         seg_result = dbQuery( cnxn_string_map['daqr'], seg_query ).fetchall()
         run_segs = {}
         for r,h,s in seg_result:
@@ -280,18 +300,12 @@ order by runnumber
                 run_segs[r] = {}
             run_segs[r][h] = s
 
-        # CHATTY("Run segments per daqhost:")
-        # for r, hosts in run_segs.items():
-        #     for h, s in hosts.items():
-        #         CHATTY(f"Run {r} has {s} segments for host {h}")
-
         ### How many segments are actually present in the file catalog?
         lustre_query =   "select runnumber,daqhost,count(status) from datasets"
         lustre_query += f" where {run_condition}"
         lustre_query += f" and daqhost in {tuple(self.in_types)}"
         lustre_query += f" and status::int > 0"
         lustre_query +=  " group by runnumber,daqhost;"
-        print(lustre_query)
         lustre_result = dbQuery( cnxn_string_map[ self.input_config.db ], lustre_query ).fetchall()
         lustre_segs = {}
         for r,h,s in lustre_result:
@@ -299,32 +313,80 @@ order by runnumber
                 lustre_segs[r] = {}
             lustre_segs[r][h] = s
         
-        # CHATTY("Run segments per daqhost in the file catalog:")
-        # for r, hosts in lustre_segs.items():
-        #     for h, s in hosts.items():
-        #         CHATTY(f"Run {r} has {s} segments for host {h} on lustre")
-
         ## Now compare the two and decide which runs to use
-        runs_to_use = []
+        ## For a given host, all segments must be present
+        daqhosts_for_combining = {}
         for r, hosts in run_segs.items():
+            WARN(f"Produced segments for run {r}: {hosts}")
             if r in lustre_segs:
+                WARN(f"Available on lustre for run {r}: {lustre_segs[r]}")
                 for h, s in hosts.items():
                     if h in lustre_segs[r]:
                         if s == lustre_segs[r][h]:
-                            runs_to_use.append(r)
-                            CHATTY(f"Run {r} has all {s} segments for host {h}. Using this run.")
-        
-        pprint.pprint(f"Using {runs_to_use} runs for combination.")
-        exit()
+                            daqhosts_for_combining[r] = daqhosts_for_combining.get(r, set())
+                            daqhosts_for_combining[r].add(h)
+                            CHATTY(f"Run {r} has all {s} segments for host {h}. Using this host.")
+                        else:
+                            CHATTY(f"Run {r} host {h} has only {lustre_segs[r][h]} out of {s} segments on lustre. Not using this host.")
 
-
+        return daqhosts_for_combining
 
     # ------------------------------------------------
     def devmatches(self) :
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # The logic for combination and downstream jobs is sufficiently different to warrant separate functions
+        start=datetime.now()
         if 'raw' in self.input_config.db:
-            return self.matches_combining()
+            rule_matches = {}
+            segswitch="seg0fromdb"
+            if not self.input_config.combine_seg0_only:
+                segswitch="allsegsfromdb"
+            daqhosts_for_combining = self.daqhosts_for_combining()
+            if daqhosts_for_combining=={}:
+                WARN("No runs satisfy the segment availability criteria. No jobs to submit.")
+                return {}
+            INFO(f"{len(daqhosts_for_combining)} runs satisfy the segment availability criteria.")
+
+            ## Now check against production status and existing files
+            for runnumber in daqhosts_for_combining:
+                existing_output=self.get_files_in_db(runnumber)
+                if existing_output==[]:
+                    DEBUG(f"No output files yet for run {runnumber}")
+                else:
+                    DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")
+
+                existing_status=self.get_prod_status(runnumber)
+                if existing_status=={}:
+                    DEBUG(f"No output files yet in the production db for run {runnumber}")
+                else:   
+                    DEBUG(f"Already have {len(existing_status)} output files in the production db")
+
+                for leaf, daqhost in self.input_stem.items():
+                    if daqhost not in daqhosts_for_combining[runnumber]:
+                        CHATTY(f"No inputs from {daqhost} for run {runnumber}.")
+                        continue
+                    # We still could explicitly query the input files from the db here, but we already know that all segments are present
+                    dsttype  = f'{self.dsttype}_{leaf}'
+                    dsttype += f'_{self.dataset}'
+                    outbase=f'{dsttype}_{self.outtriplet}'
+                    # For combining, use segment 0 as key for logs and for existing output
+                    logbase=f'{outbase}-{runnumber:{pRUNFMT}}-{0:{pSEGFMT}}'
+                    dstfile=f'{logbase}.root'
+                    if dstfile in existing_output:
+                        CHATTY(f"Output file {dstfile} already exists. Not submitting.")
+                        continue
+
+                    if dstfile in existing_status:
+                        WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
+                        continue
+
+                    # DEBUG(f"Creating {dstfile} for run {runnumber} with {len(files_for_run[daqhost])} input segments")
+                    DEBUG(f"Creating {dstfile} for run {runnumber}.")
+
+                    rule_matches[dstfile] = [segswitch], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
+
+            INFO(f'[Parsing time ] {(datetime.now() - start).total_seconds():.2f} seconds')
+            return rule_matches
         else:
             return self.matches()
 
@@ -401,7 +463,6 @@ order by runnumber
                 DEBUG(f"No output files yet in the production db for run {runnumber}")
             else:   
                 DEBUG(f"Already have {len(existing_status)} output files in the production db")
-
 
             # Potential input files for this run
             run_query = infile_query + f"\n\t and runnumber={runnumber} "
