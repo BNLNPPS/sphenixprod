@@ -237,6 +237,30 @@ order by runnumber
         return ret
 
     # ------------------------------------------------
+    def select_matches_for_combination(self, files_for_run: Dict[str, List[FileHostRunSegStat]],
+                                       runnumber: int) -> Dict[str, List[FileHostRunSegStat]]:
+        gl1_files = files_for_run.pop('gl1daq',None)
+        if gl1_files is None:
+            WARN(f"No GL1 files found for run {runnumber}. Skipping this run.")
+            return {}
+        CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1_files}')
+
+        # We need to determine which segments are present
+        segments=set()
+        for host in files_for_run:
+            for f in files_for_run[host]:
+                if f.status==1:
+                    segments.add(f.segment)
+        if segments:
+            CHATTY(f"Run {runnumber} has {len(segments)} segments in the input streams: {sorted(segments)}")
+
+        #segswitch="seg0fromdb"
+
+        return files_for_run
+
+
+
+    # ------------------------------------------------
     def get_prod_status(self, runnumbers):
         ### Check production status
         INFO('Checking for output already in production...')
@@ -472,9 +496,6 @@ order by runnumber
             candidates = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
             CHATTY(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
             if len(candidates) == 0 :
-                # # By construction of runlist, every runnumber now should have at least one file
-                # TODO: No longer true, check
-                # ERROR(f"No input files found for run {runnumber}. That should not happen at this point. Skipping run.")
                 DEBUG(f"No input files found for run {runnumber}. Skipping run.")
                 continue
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
@@ -495,7 +516,6 @@ order by runnumber
                         continue
                     in_files_for_seg=[infile]
                     CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
-                    #rule_matches[dstfile] = in_types_str, outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
                     rule_matches[dstfile] = ["dbinput"], outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
                 continue
 
@@ -508,6 +528,8 @@ order by runnumber
 
             # daq file lists all need GL1 files. Pull them out and add them to the others
             if ( 'gl1daq' in in_types_str ):
+                files_for_run = self.select_matches_for_combination( files_for_run, runnumber )
+
                 gl1_files = files_for_run.pop('gl1daq',None)
                 if gl1_files is None:
                     WARN(f"No GL1 files found for run {runnumber}. Skipping this run.")
@@ -542,7 +564,7 @@ order by runnumber
                     CHATTY("Using only input segment 0")
                     if not okforseg0:
                         DEBUG(f"Run {runnumber} has {len(segments)} segments in the input streams: {sorted(segments)}. Skipping this run.")
-                        continue
+                        continue    
                     # GL1 file?
                     gl1file0=None
                     for f in gl1_files:
