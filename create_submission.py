@@ -174,7 +174,7 @@ def main():
         eradicate_runs(match_config=match_config, dryrun=args.dryrun, delete_files=args.force_delete)
 
     # #################### Now proceed with submission
-    rule_matches = match_config.matches()
+    rule_matches = match_config.devmatches()
     INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
 
     if os.uname().sysname=='Darwin' :
