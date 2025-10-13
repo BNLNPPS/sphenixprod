@@ -170,7 +170,8 @@ def main():
         job_ad['error']=job_ad.pop('Err')
         # adjust memory request
         new_submit_ad = htcondor.Submit(dict(job_ad))
-        new_rm=int(rm * 1.5)  # Increase request by 50%
+        new_rm=int(rm)
+        new_rm=int(new_rm * 1.5)  # Increase request by 50%
         if new_rm > args.max_memory:
             WARN(f"Calculated new memory request {new_rm}MB exceeds maximum of {args.max_memory}MB. Skipping.")
             #kill_suggestion.append(f"{job_ad['ClusterId']}.{job_ad['ProcId']}")
