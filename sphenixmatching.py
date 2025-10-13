@@ -491,7 +491,6 @@ order by runnumber
             # Potential input files for this run
             run_query = infile_query + f"\n\t and runnumber={runnumber} "
             CHATTY(f"run_query:\n{run_query}")
-            exit()
             db_result = dbQuery( cnxn_string_map[ self.input_config.db ], run_query ).fetchall()
             candidates = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
             CHATTY(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
