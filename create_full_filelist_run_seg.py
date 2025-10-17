@@ -12,13 +12,7 @@ from sphenixdbutils import cnxn_string_map, dbQuery # type: ignore
 def main():
     slogger.setLevel("DEBUG")
     script_name = sys.argv[0]
-    if len(sys.argv) == 4 :
-        WARN(f"Deprecated usage of {script_name}. Please use this signature in the future:")
-        WARN( "usage: <dataset> <intriplet> <dsttype> <runnumber> <segment> ")
-        dsttype = sys.argv[1]
-        runnumber_str = sys.argv[2]
-        segment_str = sys.argv[3]
-    elif len(sys.argv) == 6 :
+    if len(sys.argv) == 6 :
         dataset = sys.argv[1]
         intriplet = sys.argv[2]
         dsttype = sys.argv[3]
@@ -36,25 +30,23 @@ def main():
         print(f"     : segment '{segment_str}' must be an integer.")
         sys.exit(1)
 
-    # dsttype comes as a a comma-separated list. Add ticks and parens
+    # dsttype comes as a a comma-separated list, add ticks for sql
     dsttype4sql=dsttype.replace(",","','")
 
-    # Why not the following, you ask?
+    #  The following:
     # SELECT datasets.filename,files.full_file_path
     # FROM files,datasets
     # WHERE files.lfn=datasets.filename
-    # Because it's very slow. So split it into separate queries.
+    #  is  very slow. So split it into separate queries.
     datasets_query = f"""
     SELECT filename
     FROM datasets
     WHERE datasets.dsttype in ( '{dsttype4sql}' )
     AND datasets.runnumber = {runnumber}
     AND datasets.segment = {segment} """
-    #### This should _always_ be provided. Only leaving it optional for backward  compatibility
-    if len(sys.argv) == 6 :
-        datasets_query += f"""
-      AND tag='{intriplet}'
-      AND dataset = '{dataset}'"""
+    datasets_query += f"""
+    AND tag='{intriplet}'
+    AND dataset = '{dataset}'"""
     datasets_query += ";"
 
     print (f"datasets query is {datasets_query}")
@@ -71,17 +63,19 @@ def main():
     ### Collect full paths. Note, we can make this optional for combiner jobs.
     filelist_str="','".join(filelist)
     files_query = f"""
-    SELECT full_file_path
+    SELECT full_file_path,md5,size,full_host_name
     FROM files
     WHERE lfn in ( '{filelist_str}' )
     ;"""
     print (f"files query is {files_query}")
     rows = dbQuery( cnxn_string_map['fcr'], files_query).fetchall()
-    full_path_list=[]
-    for row in rows:
-        full_path_list.append(row.full_file_path)
+    full_path_info=[]
+    for full_file_path,md5,size,full_host_name in rows:
+        full_path_info.append(f"{full_file_path} {md5} {size} {full_host_name}")
+        #full_path_info.append(f"{full_file_path} {size}")
+        #full_path_info.append(f"{full_file_path}")
 
-    if not full_path_list:
+    if not full_path_info:
         print("No files found for the given criteria.")
         exit(1)
 
@@ -96,9 +90,9 @@ def main():
 
     try:
         with open(full_path_list_filename, 'w') as f_out:
-            for fname in full_path_list:
-                # print(f"Adding {fname}")
-                f_out.write(f"{fname}\n")
+            for info in full_path_info:
+                # print(f"Adding {info}")
+                f_out.write(f"{info}\n")
     except IOError as e:
             print(f"Error writing to file {full_path_list_filename}: {e}")
 
