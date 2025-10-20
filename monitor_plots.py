@@ -170,13 +170,16 @@ def main():
         job_ad['error']=job_ad.pop('Err')
         # adjust memory request
         new_submit_ad = htcondor.Submit(dict(job_ad))
-        new_rm=int(rm)
-        new_rm=int(new_rm * 1.5)  # Increase request by 50%
-        if new_rm > args.max_memory:
-            WARN(f"Calculated new memory request {new_rm}MB exceeds maximum of {args.max_memory}MB. Skipping.")
-            #kill_suggestion.append(f"{job_ad['ClusterId']}.{job_ad['ProcId']}")
-            kill_suggestion.append(job_ad)
-            continue
+        if args.memory:
+            new_rm=int(args.memory)
+        else:
+            new_rm=int(rm)
+            new_rm=int(new_rm * 1.5)  # Increase request by 50%
+            if new_rm > args.max_memory:
+                WARN(f"Calculated new memory request {new_rm}MB exceeds maximum of {args.max_memory}MB. Skipping.")
+                #kill_suggestion.append(f"{job_ad['ClusterId']}.{job_ad['ProcId']}")
+                kill_suggestion.append(job_ad)
+                continue
         new_submit_ad['RequestMemory'] = str(new_rm)
         if args.resubmit:
             if not args.dryrun:
@@ -193,17 +196,19 @@ def main():
             else:
                 INFO(f"(Dry Run) Would remove held job {job_ad['ClusterId']}.{job_ad['ProcId']} and resubmit with RequestMemory={new_rm}MB.")
 
-    if held_memory_usage or held_request_memory:
-        dist_plot_file = f"{batch_name}_memory_distribution.png"
-        box_plot_file  = f"{batch_name}_memory_boxplot.png"
-        scatter_plot_file = f"{batch_name}_memory_scatterplot.png"
-        plot_memory_distribution(held_memory_usage, held_request_memory, dist_plot_file)
-        plot_memory_boxplot(held_memory_usage, held_request_memory, box_plot_file)
-        plot_memory_scatterplot(held_memory_usage, held_request_memory, scatter_plot_file)
+    if args.plot:
+        if held_memory_usage or held_request_memory:
+            dist_plot_file = f"{batch_name}_memory_distribution.png"
+            box_plot_file  = f"{batch_name}_memory_boxplot.png"
+            scatter_plot_file = f"{batch_name}_memory_scatterplot.png"
+            plot_memory_distribution(held_memory_usage, held_request_memory, dist_plot_file)
+            plot_memory_boxplot(held_memory_usage, held_request_memory, box_plot_file)
+            plot_memory_scatterplot(held_memory_usage, held_request_memory, scatter_plot_file)
 
-    if under_memory_hold_reasons:
-        INFO("Frequency of hold reason codes for jobs held while under memory request:")
-        pprint.pprint(dict(under_memory_hold_reasons))
+        if under_memory_hold_reasons:
+            INFO("Frequency of hold reason codes for jobs held while under memory request:")
+            pprint.pprint(dict(under_memory_hold_reasons))
+        # /if args.plot
 
     if kill_suggestion:
         INFO(f"There were {len(kill_suggestion)} jobs that could not be resubmitted due to exceeding max memory.")
