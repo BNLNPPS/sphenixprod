@@ -49,7 +49,8 @@ def main():
     FROM datasets
     WHERE datasets.dsttype in ( '{dsttype4sql}' )
     AND datasets.runnumber = {runnumber}
-    AND datasets.segment = {segment} """
+    AND datasets.segment = {segment}
+    AND datasets.status=1"""
     #### This should _always_ be provided. Only leaving it optional for backward  compatibility
     if len(sys.argv) == 6 :
         datasets_query += f"""
