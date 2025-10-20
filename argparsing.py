@@ -113,6 +113,10 @@ def monitor_args():
     # Can be used to query/manipulate the queue directly
     parser.add_argument('--base_batchname', default=None, help="Select a specific condor batch by name.")
 
+    parser.add_argument('-p', '--plot', dest='plot', default=False, action='store_true',
+                        help='Create plots for held jobs')
+    parser.add_argument('--memory', dest='memory', default=None, type=int,
+                        help='Exact memory (MB) to request for resubmitted held jobs (default: None)')
     parser.add_argument('--max-memory', dest='max_memory', default=12000, type=int,
                         help='Maximum memory (MB) to request for resubmitted held jobs (default: 12000)')
     parser.add_argument('-r', '--resubmit', dest='resubmit', default=False, action='store_true',

@@ -38,6 +38,7 @@ def main():
         exit(1)
     sql_query += f"""
     AND (daqhost = '{daqhost}' OR daqhost = 'gl1daq')
+    AND status=1
     ORDER BY filename
     """
     print(sql_query)

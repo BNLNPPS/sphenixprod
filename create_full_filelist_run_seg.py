@@ -43,7 +43,8 @@ def main():
     FROM datasets
     WHERE datasets.dsttype in ( '{dsttype4sql}' )
     AND datasets.runnumber = {runnumber}
-    AND datasets.segment = {segment} """
+    AND datasets.segment = {segment}
+    AND datasets.status=1"""
     datasets_query += f"""
     AND tag='{intriplet}'
     AND dataset = '{dataset}'"""
