@@ -17,46 +17,63 @@ if [ "$#" -eq 4 ] ; then
     md5=${2}
     size=${3}
     filesystem=${4}
-    echo "Expected md5: ${md5}"
-    echo "Expected size: ${size}"
+    # echo "Expected md5: ${md5}"
+    # echo "Expected size: ${size}"
     # [ "${filesystem}" != "sphenix" ] && [ "${filesystem}" != "gpfs" ] && 
     if [ "${filesystem}" != "lustre" ] ; then
         echo "Unsupported filesystem ${filesystem} (expect lustre). Abort."
-        exit 1
+        exit 10
     fi
 fi
 
 if [ ! -f ${distfilename} ]; then
     echo "${distfilename} not found!"
-    exit 1
+    exit 11
 fi
 
 filename=`basename ${distfilename}` # Strips the path
-action="dd if=${distfilename} of=./${filename} bs=12MB"
-echo ${action}
-eval ${action}
 
-# # Check md5sum:
-# actual_md5=`/usr/bin/env md5sum ${filename} | cut -d ' ' -f 1`
-# if [ "$#" -eq 4 ] ; then
-#     if [ "${actual_md5}" != "${md5}" ] ; then
-#         echo "Calculated md5: ${actual_md5}"
-#         echo "Expected md5: ${md5}"
-#         echo "md5sum mismatch! Abort."
-#         exit 1
-#     fi
-# fi
-
-# Check size
-actual_size=`stat -c '%s' ${filename}`
-if [ "$#" -eq 4 ] ; then
-    if [ "${actual_size}" != "${size}" ] ; then
-        echo "Calculated size: ${actual_size}"
-        echo "Expected size: ${size}"
-        echo "Size mismatch! Abort."
-        exit 1
+maxtries=3
+for i in `seq 1 $maxtries`; do
+    action="dd status=none if=${distfilename} of=./${filename} bs=12MB"
+    if [ $i -gt 1 ] ; then
+        echo "Attempt $i: ${action}"
     fi
-fi
+    eval ${action}
 
+    # Check size
+    if [ "${size}" != "-1" ] ; then
+        actual_size=`stat -c '%s' ${filename}`
+        if [ "${actual_size}" == "${size}" ] ; then
+            echo "Size check passed."
+            break # Exit loop
+        else
+            echo "Calculated size: ${actual_size}"
+            echo "Expected size: ${size}"
+            echo "Size mismatch on attempt $i."
+            if [ $i -eq $maxtries ]; then
+                rm ${filename} # clean up incomplete file
+                echo "Size mismatch after $maxtries attempts. Abort."
+                exit 12
+            fi
+            # Try again
+        fi
+    else
+        # No size check requested, assume success
+        break
+    fi
+
+    # # Check md5sum:
+    # actual_md5=`/usr/bin/env md5sum ${filename} | cut -d \' \' -f 1`
+    # if [ "${md5}" != "-1" ] ; then
+    #     if [ "${actual_md5}" != "${md5}" ] ; then
+    #         echo "Calculated md5: ${actual_md5}"
+    #         echo "Expected md5: ${md5}"
+    #         echo "md5sum mismatch! Abort."
+    #         exit 1
+    #     fi
+    # fi
+
+done
 
 exit 0
