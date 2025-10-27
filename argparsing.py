@@ -117,7 +117,7 @@ def monitor_args():
                         help='Create plots for held jobs')
     parser.add_argument('--memory', dest='memory', default=None, type=int,
                         help='Exact memory (MB) to request for resubmitted held jobs (default: None)')
-    parser.add_argument('--max-memory', dest='max_memory', default=12000, type=int,
+    parser.add_argument('--max-memory', dest='max_memory', default=13000, type=int,
                         help='Maximum memory (MB) to request for resubmitted held jobs (default: 12000)')
     parser.add_argument('-r', '--resubmit', dest='resubmit', default=False, action='store_true',
                         help='Held jobs are killed and resubmitted with adjusted memory requests')
