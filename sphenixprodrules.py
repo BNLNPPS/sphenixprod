@@ -423,7 +423,7 @@ class RuleConfig:
                 payload=",".join(payload_list),
                 comment=job_data.get("comment",None),
                 neventsper=job_data.get("neventsper"),
-                buildarg=build_string,
+                buildarg=params_data["build"],
                 tag=params_data["dbtag"],
                 outtriplet=outtriplet,
                 # pass remaining per-job parameters forward to be replaced later
