@@ -117,9 +117,6 @@ class CondorJob:
 
     # ------------------------------------------------
     @classmethod
-# glob_arguments_tmpl ="{buildarg} {dataset} {intriplet} {indsttype_str} {run} {seg} {daqhost} {inputs} "
-# glob_arguments_tmpl+="{nevents} {outdir} {histdir} {outbase} {neventsper} {dbtag} "
-# glob_arguments_tmpl+="{logbase} {logdir} {payload} "
     def make_job(cls,
                 output_file: str,
                 run: int,
