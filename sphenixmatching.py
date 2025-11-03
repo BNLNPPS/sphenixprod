@@ -82,6 +82,8 @@ class MatchConfig:
             in_types = list(input_stem.values())
         else :
             in_types = input_stem
+        if 'raw' in input_config.db:
+            in_types.insert(0,'gl1daq') # all raw daq files need an extra GL1 file
 
         return cls(
             dsttype       = dsttype,
@@ -370,9 +372,14 @@ order by runnumber
                 WARN("No runs satisfy the segment availability criteria. No jobs to submit.")
                 return {}
             INFO(f"{len(daqhosts_for_combining)} runs satisfy the segment availability criteria.")
-
-            ## Now check against production status and existing files
+            
             for runnumber in daqhosts_for_combining:
+                # GL1 is a must
+                if not 'gl1daq' in daqhosts_for_combining[runnumber]:
+                    DEBUG(f"No GL1 file(s) for run {runnumber}")
+                    continue
+                
+                ## Now check against production status and existing files
                 existing_output=self.get_files_in_db(runnumber)
                 if existing_output==[]:
                     DEBUG(f"No output files yet for run {runnumber}")
@@ -386,6 +393,8 @@ order by runnumber
                     DEBUG(f"Already have {len(existing_status)} output files in the production db")
 
                 for leaf, daqhost in self.input_stem.items():
+                    if daqhost=='gl1daq': # It needs to exist, but it doesn't need a separate job                        
+                        continue
                     if daqhost not in daqhosts_for_combining[runnumber]:
                         CHATTY(f"No inputs from {daqhost} for run {runnumber}.")
                         continue
@@ -524,7 +533,7 @@ order by runnumber
             candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
             files_for_run = { k : list(g) for
                               k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
-
+            
             # daq file lists all need GL1 files. Pull them out and add them to the others
             if ( 'gl1daq' in in_types_str ):
                 files_for_run = self.select_matches_for_combination( files_for_run, runnumber )
