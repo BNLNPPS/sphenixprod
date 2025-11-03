@@ -210,27 +210,6 @@ def main():
             pprint.pprint(dict(under_memory_hold_reasons))
         # /if args.plot
 
-    if kill_suggestion:
-        INFO(f"There were {len(kill_suggestion)} jobs that could not be resubmitted due to exceeding max memory.")
-        if args.kill:
-            INFO(f"Killing them now as per --kill option.")
-            if not args.dryrun or True:
-                schedd = htcondor.Schedd()
-                with open(f"{batch_name}_killed_jobs.pkl", "wb") as f:
-                    pickle.dump(kill_suggestion, f)
-                with open(f"{batch_name}_killed_jobs.json", "w") as f:
-                    for job_ad in kill_suggestion:
-                        json.dump(dict(job_ad), f, indent=4)
-                try:
-
-                    #schedd.act(htcondor.JobAction.Remove, kill_procs)
-                    INFO(f"Killed {len(kill_suggestion)} jobs that exceeded max memory limit of {args.max_memory}MB.")
-                except Exception as e:
-                    ERROR(f"Failed to kill jobs: {e}")
-        else:
-            kill_procs=[f"{job_ad['ClusterId']}.{job_ad['ProcId']}" for job_ad in kill_suggestion]
-            INFO(f"You may want to kill them manually: \n{', '.join(kill_procs)}")
-
 
     INFO(f"{Path(__file__).name} DONE.")
 
