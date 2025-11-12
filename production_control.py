@@ -129,6 +129,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
                  , optional=["runs", "runlist",
                              "submit", "dstspider","histspider",
                              "prodbase", "configbase",
+                             "nevents",
                              "jobmem", "jobprio",
                              "force", "force_delete",
                              ])
@@ -171,6 +172,9 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
         exit(1)
 
     ### More rare extra arguments
+    nevents=rule_data.get("nevents", None)
+    if nevents:
+        ruleargs += f" --nevents {nevents}"
     jobmem=rule_data.get("jobmem", None)
     if jobmem:
         ruleargs += f" --mem {jobmem}"
