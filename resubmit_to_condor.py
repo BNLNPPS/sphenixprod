@@ -117,7 +117,7 @@ def main():
                     ERROR(f"Failed to kill jobs: {e}")
         else:
             kill_procs=[f"{job_ad['ClusterId']}.{job_ad['ProcId']}" for job_ad in kill_suggestion]
-            INFO(f"You may want to kill them manually: \n{', '.join(kill_procs)}")
+            INFO(f"You may want to kill them manually: \n{' '.join(kill_procs)}")
 
 
     INFO(f"{Path(__file__).name} DONE.")

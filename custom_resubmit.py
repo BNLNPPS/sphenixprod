@@ -9,6 +9,7 @@ from sphenixdbutils import test_mode as dbutils_test_mode
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixmisc import setup_rot_handler
 from sphenixcondortools import base_batchname_from_args, monitor_condor_jobs
+import random
 import htcondor2 as htcondor # type: ignore
 
 def main():
@@ -39,14 +40,26 @@ def main():
     #     exit()
     # exit()
 
+    # filtered_jobs_ads = jobs.values()
     # Filter for any desired quality here
     filtered_jobs_ads = []
-    cutoff = datetime.now() - timedelta(hours=48)
+    cutoff = datetime.now() - timedelta(hours=24)
     for ad in jobs.values():
+        # if ad.get('JobStatus') == 5:
+        #     filtered_jobs_ads.append(ad)
+
         t = datetime.fromtimestamp(ad.get('EnteredCurrentStatus'))
         if t > cutoff:
             filtered_jobs_ads.append(ad)
 
+        # # Get argument from job ad
+        # args_str = ad.get('Args', '')
+        # args_list = args_str.split()
+        # segment=int(args_list[5])
+        # if segment > 100:
+        #     DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} segment {segment} > 100, skipping.")
+        #     filtered_jobs_ads.append(ad)
+    
     if not filtered_jobs_ads:
         INFO(f"Found {len(jobs)} total jobs, but none qualify.")
         return
@@ -60,8 +73,14 @@ def main():
         new_submit_ad = htcondor.Submit(dict(job_ad))
 
         # Change what you want changed. Eg, nCPU
-        new_submit_ad['RequestCpus'] = '1'
+        # new_submit_ad['RequestCpus'] = '1'
+        new_submit_ad['JobPrio'] = '2'
         if args.resubmit:
+            # Extra conditions here
+            if random.uniform(0,1) < 0.85:
+                DEBUG(f"Process {job_ad['ClusterId']}.{job_ad['ProcId']} kept running.")
+                continue
+
             if not args.dryrun:
                 schedd = htcondor.Schedd()
                 try:
@@ -70,10 +89,11 @@ def main():
                     INFO(f"Removed held job {job_ad['ClusterId']}.{job_ad['ProcId']} from queue.")
                     submit_result = schedd.submit(new_submit_ad)
                     new_queue_id = submit_result.cluster()
+                    INFO(f"   ...  and resubmitted as {new_queue_id}.")
                 except Exception as e:
                     ERROR(f"Failed to remove and resubmit job {job_ad['ClusterId']}.{job_ad['ProcId']}: {e}")
             else:
-                INFO(f"(Dry Run) Would remove held job {job_ad['ClusterId']}.{job_ad['ProcId']} and resubmit with RequestMemory={new_rm}MB.")
+                INFO(f"(Dry Run) Would remove and resubmit job {job_ad['ClusterId']}.{job_ad['ProcId']}.")
 
     INFO(f"{Path(__file__).name} DONE.")
 
