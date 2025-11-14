@@ -43,7 +43,7 @@ def main():
     # filtered_jobs_ads = jobs.values()
     # Filter for any desired quality here
     filtered_jobs_ads = []
-    cutoff = datetime.now() - timedelta(hours=24)
+    cutoff = datetime.now() - timedelta(hours=28)
     for ad in jobs.values():
         # if ad.get('JobStatus') == 5:
         #     filtered_jobs_ads.append(ad)
@@ -65,6 +65,8 @@ def main():
         return
     INFO(f"Found {len(jobs)} total jobs; filtered {len(filtered_jobs_ads)} for further treatment")
 
+    print("Change something.")
+    exit()
     for job_ad in filtered_jobs_ads:
         # Now let's kill and resubmit this job
         # Fix difference between Submit object and ClassAd keys
@@ -76,10 +78,10 @@ def main():
         # new_submit_ad['RequestCpus'] = '1'
         new_submit_ad['JobPrio'] = '2'
         if args.resubmit:
-            # Extra conditions here
-            if random.uniform(0,1) < 0.85:
-                DEBUG(f"Process {job_ad['ClusterId']}.{job_ad['ProcId']} kept running.")
-                continue
+            # # Extra conditions here
+            # if random.uniform(0,1) < 0.85:
+            #     DEBUG(f"Process {job_ad['ClusterId']}.{job_ad['ProcId']} kept running.")
+            #     continue
 
             if not args.dryrun:
                 schedd = htcondor.Schedd()
