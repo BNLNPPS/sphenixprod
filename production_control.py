@@ -17,7 +17,7 @@ from datetime import datetime
 from sphenixprodrules import check_params
 
 from collections import namedtuple
-SubmitDstHist = namedtuple('SubmitDstHist',['submit','dstspider','histspider'])
+SubmitDstHist = namedtuple('SubmitDstHist',['submit','dstspider','histspider','finishmon'])
 
 # ============================================================================================
 def main():
@@ -111,6 +111,13 @@ def main():
             if not args.dryrun:
                 subprocess.Popen(f"{execline}",shell=True)
 
+        if sdh_tuple.finishmon:
+            procline=f"monitor_finish.py {ruleargs}"
+            execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
+            DEBUG(f"Executing\n{execline}")
+            if not args.dryrun:
+                subprocess.Popen(f"{execline}",shell=True)
+
     if args.profile:
         profiler.disable()
         DEBUG("Profiling finished. Printing stats...")
@@ -128,6 +135,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
                  , required=["config"]
                  , optional=["runs", "runlist",
                              "submit", "dstspider","histspider",
+                             "finishmon",
                              "prodbase", "configbase",
                              "nevents",
                              "jobmem", "jobprio",
@@ -196,6 +204,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     sdh_tuple=SubmitDstHist(submit=rule_data.get("submit", False),
                             dstspider=rule_data.get("dstspider", True),
                             histspider=rule_data.get("histspider", True),
+                            finishmon=rule_data.get("finishmon", False)
                             )
     ## sanity
     for k,v in sdh_tuple._asdict().items():
