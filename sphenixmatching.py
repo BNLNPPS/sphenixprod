@@ -513,6 +513,7 @@ order by runnumber
             if 'TRKR_SEED' in self.dsttype:
                 for infile in candidates:
                     if infile.segment % self.input_config.cut_segment != 0:
+                        DEBUG(f"Skipping: segment {infile.segment} is not divisible by {self.input_config.cut_segment}")
                         continue
                     outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'
                     logbase= f'{outbase}-{infile.runnumber:{pRUNFMT}}-{infile.segment:{pSEGFMT}}'
