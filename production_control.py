@@ -140,6 +140,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
                              "nevents",
                              "jobmem", "jobprio",
                              "force", "force_delete",
+                             "cut_segment",
                              ])
     ### Local file location changes?
     prodbase=rule_data.get("prodbase",defaultlocations["prodbase"])
@@ -189,6 +190,9 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     jobprio=rule_data.get("jobprio", None)
     if jobprio:
         ruleargs += f" --priority {jobprio}"
+    cut_segment=rule_data.get("cut_segment", None)
+    if cut_segment:
+        ruleargs += f" --cut-segment {cut_segment}"
 
     ### Force options
     force=rule_data.get("force", False)
@@ -237,7 +241,7 @@ def setup_my_rot_handler(args):
 
     return sublogdir
 
-# ============================================================================
+# ============================================================================================
 def steering_args():
     """Handle command line tedium for steering jobs."""
     arg_parser = argparse.ArgumentParser( prog='production_control.py',
