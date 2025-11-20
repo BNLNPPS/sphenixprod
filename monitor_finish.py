@@ -12,10 +12,76 @@ import os
 import pprint # noqa F401
 
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
+from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixdbutils import dbQuery, cnxn_string_map, list_to_condition
+
+def process_chunk(chunk, production_status_table, dryrun=False):
+    """
+    Processes a single chunk of results from the file catalog.
+    Checks for existing files in production_status and generates
+    aggregated INSERT and UPDATE statements.
+    """
+    DEBUG(f"Processing chunk of {len(chunk)} files...")
+    
+    lfns_in_chunk = [item[0] for item in chunk]
+    lfn_list_for_sql = "','".join(lfns_in_chunk)
+    check_query = f"SELECT dstfile FROM {production_status_table} WHERE dstfile IN ('{lfn_list_for_sql}')"
+    
+    existing_files_cursor = dbQuery(cnxn_string_map['statr'], check_query)
+    if not existing_files_cursor:
+        ERROR("Failed to query production_status for existing files.")
+        return
+
+    existing_lfns = {row.dstfile for row in existing_files_cursor.fetchall()}
+    
+    insert_values = []
+    update_values = []
+    for lfn, time, run, seg, dsttype in chunk:
+        if lfn in existing_lfns:
+            update_values.append(f"('{lfn}', '{time}'::timestamp)")
+        else:
+            dstname = lfn.split('-', 1)[0]
+            insert_values.append(f"('{dsttype}', '{dstname}', '{lfn}', {run}, {seg}, 0, 'dbquery', 0, 0, 0, 'finished', '{time}')")
+
+    all_statements = []
+    if insert_values:
+        values_str = ",\n".join(insert_values)
+        insert_query = f"""
+        INSERT INTO {production_status_table} (
+            dsttype, dstname, dstfile, run, segment, nsegments,
+            inputs, prod_id, cluster, process, status, ended
+        ) VALUES
+        {values_str};
+        """
+        all_statements.append(insert_query)
+
+    if update_values:
+        values_str = ",\n".join(update_values)
+        update_query = f"""
+        UPDATE {production_status_table} AS ps SET
+            ended = v.ended,
+            status = 'finished'
+        FROM (VALUES {values_str}) AS v(dstfile, ended)
+        WHERE ps.dstfile = v.dstfile;
+        """
+        all_statements.append(update_query)
+
+    if all_statements:
+        update_query = "\n".join(all_statements)
+        CHATTY(update_query)
+
+        if not dryrun:
+            update_cursor = dbQuery(cnxn_string_map['statw'], update_query)
+            if update_cursor:
+                update_cursor.commit()
+                INFO(f"Processed {len(chunk)} entries in production_status.")
+            else:
+                ERROR("Failed to update/insert into production_status.")
+        else:
+            INFO("Dry run, not updating database.")
+            CHATTY(update_query)
 
 def main():
     ### digest arguments
@@ -79,77 +145,50 @@ def main():
 
     run_condition = list_to_condition(rule.runlist_int, name="d.runnumber")
 
-    query = f"""
+    recency_interval = '30 DAYS' # args.recent if args.recent else '7 DAYS'
+    base_query = f"""
     SELECT f.lfn, f.time, d.runnumber, d.segment, d.dsttype
     FROM {files_table} f
     JOIN {datasets_table} d ON f.lfn = d.filename
     WHERE d.dsttype like '{rule.dsttype}%'
     AND d.tag = '{rule.outtriplet}'
-    AND {run_condition};
+    AND {run_condition}
+    AND f.time > (NOW() - INTERVAL '{recency_interval}')
     """
 #    AND d.dataset = '{rule.dataset}'
 
-    INFO("Querying file catalog...")
-    DEBUG(f"Using query:\n{query}")
-    files_cursor = dbQuery(cnxn_string_map['fcr'], query)
-    if not files_cursor:
-        ERROR("Failed to query file catalog.")
-        exit(1)
-
-    results = files_cursor.fetchall()
-    INFO(f"Found {len(results)} files to update.")
-
-    if not results:
-        INFO("No files to update.")
-        exit(0)
-
-    chunk_size = 1000
-    chunks = make_chunks(results, chunk_size)
-    num_chunks = (len(results) + chunk_size - 1) // chunk_size
-
-    for i, chunk in enumerate(chunks):
-        INFO(f"Processing chunk {i+1}/{num_chunks}")
+    INFO("Querying file catalog in chunks...")
+    
+    last_lfn = ""
+    chunk_size = 100000
+    
+    while True:
         
-        lfns_in_chunk = [item[0] for item in chunk]
-        lfn_list_for_sql = "','".join(lfns_in_chunk)
-        check_query = f"SELECT dstfile FROM {production_status_table} WHERE dstfile IN ('{lfn_list_for_sql}')"
-        
-        existing_files_cursor = dbQuery(cnxn_string_map['statr'], check_query)
-        if not existing_files_cursor:
-            ERROR("Failed to query production_status for existing files.")
-            continue
+        paginated_query = base_query
+        if last_lfn:
+            paginated_query += f" AND f.lfn > '{last_lfn}'"
 
-        existing_lfns = {row.dstfile for row in existing_files_cursor.fetchall()}
-        
-        all_statements = []
-        for lfn, time, run, seg, dsttype in chunk:
-            if lfn in existing_lfns:
-                all_statements.append(f"UPDATE {production_status_table} SET ended = '{time}', status = 'finished' WHERE dstfile = '{lfn}';")
-            else:
-                dstname = lfn.split('-', 1)[0]
-                all_statements.append(f"""
-                INSERT INTO {production_status_table} (
-                    dsttype, dstname, dstfile, run, segment, nsegments,
-                    inputs, prod_id, cluster, process, status, ended
-                ) VALUES (
-                    '{dsttype}', '{dstname}', '{lfn}', {run}, {seg}, 0,
-                    'dbquery', 0, 0, 0, 'finished', '{time}'
-                );
-                """)
+        query = f"""
+        {paginated_query}
+        ORDER BY f.lfn
+        LIMIT {chunk_size}
+        """
 
-        if all_statements:
-            update_query = "\n".join(all_statements)
-            
-            if not args.dryrun:
-                update_cursor = dbQuery(cnxn_string_map['statw'], update_query)
-                if update_cursor:
-                    update_cursor.commit()
-                    INFO(f"Processed {len(chunk)} entries in production_status.")
-                else:
-                    ERROR("Failed to update/insert into production_status.")
-            else:
-                INFO("Dry run, not updating database.")
-                CHATTY(update_query)
+        DEBUG(f"Using query:\n{query}")
+        files_cursor = dbQuery(cnxn_string_map['fcr'], query)
+        if not files_cursor:
+            ERROR("Failed to query file catalog.")
+            break
+
+        results = files_cursor.fetchall()
+        if not results:
+            INFO("No more files to update.")
+            break
+        
+        INFO(f"Found {len(results)} files in this chunk.")
+        process_chunk(results, production_status_table, args.dryrun)
+
+        last_lfn = results[-1][0]
         
 
     if args.profile:
