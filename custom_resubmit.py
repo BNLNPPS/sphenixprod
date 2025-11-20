@@ -45,28 +45,30 @@ def main():
     filtered_jobs_ads = []
     cutoff = datetime.now() - timedelta(hours=28)
     for ad in jobs.values():
-        # if ad.get('JobStatus') == 5:
+        if ad.get('JobStatus') == 2:
+            continue  # Only consider jobs not running
+
+        # t = datetime.fromtimestamp(ad.get('EnteredCurrentStatus'))
+        # if t > cutoff:
         #     filtered_jobs_ads.append(ad)
 
-        t = datetime.fromtimestamp(ad.get('EnteredCurrentStatus'))
-        if t > cutoff:
-            filtered_jobs_ads.append(ad)
-
-        # # Get argument from job ad
-        # args_str = ad.get('Args', '')
-        # args_list = args_str.split()
-        # segment=int(args_list[5])
+        # Get argument from job ad
+        args_str = ad.get('Args', '')
+        args_list = args_str.split()
+        segment=int(args_list[5])
         # if segment > 100:
-        #     DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} segment {segment} > 100, skipping.")
-        #     filtered_jobs_ads.append(ad)
-    
+        if segment % 10 != 0:
+            DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} segment {segment} % 10 != 0, killing.")
+            filtered_jobs_ads.append(ad)
+        else:
+            DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} segment {segment} OK.")
+            pass
+        
     if not filtered_jobs_ads:
         INFO(f"Found {len(jobs)} total jobs, but none qualify.")
         return
     INFO(f"Found {len(jobs)} total jobs; filtered {len(filtered_jobs_ads)} for further treatment")
-
-    print("Change something.")
-    exit()
+    
     for job_ad in filtered_jobs_ads:
         # Now let's kill and resubmit this job
         # Fix difference between Submit object and ClassAd keys
@@ -76,7 +78,7 @@ def main():
 
         # Change what you want changed. Eg, nCPU
         # new_submit_ad['RequestCpus'] = '1'
-        new_submit_ad['JobPrio'] = '2'
+        # new_submit_ad['JobPrio'] = '2'
         if args.resubmit:
             # # Extra conditions here
             # if random.uniform(0,1) < 0.85:
@@ -89,9 +91,9 @@ def main():
                     # The transaction context manager is deprecated. The following replacement operations are not atomic.
                     schedd.act(htcondor.JobAction.Remove, [f"{job_ad['ClusterId']}.{job_ad['ProcId']}"])
                     INFO(f"Removed held job {job_ad['ClusterId']}.{job_ad['ProcId']} from queue.")
-                    submit_result = schedd.submit(new_submit_ad)
-                    new_queue_id = submit_result.cluster()
-                    INFO(f"   ...  and resubmitted as {new_queue_id}.")
+                    # submit_result = schedd.submit(new_submit_ad)
+                    # new_queue_id = submit_result.cluster()
+                    # INFO(f"   ...  and resubmitted as {new_queue_id}.")
                 except Exception as e:
                     ERROR(f"Failed to remove and resubmit job {job_ad['ClusterId']}.{job_ad['ProcId']}: {e}")
             else:
