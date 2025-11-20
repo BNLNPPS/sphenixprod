@@ -104,6 +104,7 @@ class InputConfig:
     min_run_time:     Optional[int] = None
     combine_seg0_only:          Optional[bool] = True  # For combination jobs, use only segment 0. Default is yes. No effect for downstream jobs.
     choose20:         Optional[bool] = False  # Randomly choose 20% of available files
+    cut_segment:      Optional[int] = 1       # For downstream jobs, submit only if segment % cut_segment == 0
     infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
     direct_path: Optional[str]                = None  # Make direct_path optional
@@ -246,6 +247,7 @@ class RuleConfig:
                                 "min_run_events","min_run_time",
                                 "direct_path", "dataset",
                                 "combine_seg0_only","choose20",
+                                "cut_segment",
                                 "infile_query_constraints",
                                 "status_query_constraints","physicsmode"] )
 
@@ -266,7 +268,7 @@ class RuleConfig:
         min_run_events=input_data.get("min_run_events",100000)
         min_run_time=input_data.get("min_run_time",300)
 
-        combine_seg0_only=input_data.get("combine_seg0_only",True) # Default is true
+        combine_seg0_only=input_data.get("combine_seg0_only",False) # Default is false
         # If explicitly specified, argv overrides
         argv_combine_seg0_only=param_overrides.get("combine_seg0_only")
         if argv_combine_seg0_only is not None:
@@ -276,6 +278,11 @@ class RuleConfig:
         argv_choose20=param_overrides.get("choose20")
         if argv_choose20 :
             choose20=True
+
+        cut_segment = input_data.get("cut_segment", 1)
+        argv_cut_segment = param_overrides.get("cut_segment")
+        if argv_cut_segment is not None:
+            cut_segment = argv_cut_segment
 
         ### Use choose20 only for combination jobs.
         if choose20 :
@@ -310,6 +317,7 @@ class RuleConfig:
             min_run_time=min_run_time,
             combine_seg0_only=combine_seg0_only,
             choose20=choose20,
+            cut_segment=cut_segment,
             infile_query_constraints=infile_query_constraints,
             status_query_constraints=status_query_constraints,
             direct_path=input_direct_path,
@@ -537,7 +545,7 @@ def parse_spiderstuff(filename: str) -> Tuple[str,...] :
         if 'size' in filename and 'ctime'in filename:
             lfn,_,nevents,_,first,_,last,_,md5,_,size,_,ctime,_,dbid = filename.split(':')
         else:
-            lfn,_,nevents,_,first,_,last,_,md5,_,dbid = filename.split(':')
+            lfn,_,nevents,_,first,_,last,_,mds,_,dbid = filename.split(':')
 
         lfn=Path(lfn).name
     except Exception as e:

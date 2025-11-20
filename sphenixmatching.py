@@ -122,8 +122,7 @@ eventsinrun >= {min_run_events}
  and
 EXTRACT(EPOCH FROM (ertimestamp-brtimestamp)) >={min_run_time}
 order by runnumber
-;
-"""
+;"""
         run_quality_query=run_quality_tmpl.format(
             runmin=min(self.runlist_int),
             runmax=max(self.runlist_int),
@@ -165,7 +164,7 @@ order by runnumber
             lfind = shutil.which('find')
         else:
             lfind = f'{lfind} find'
-            INFO(f'Using find={find} and lfind="{lfind}.')
+            INFO(f'Using find={find} and lfind={lfind}.')
 
         if dstlistname:
             INFO(f"Piping output to {dstlistname}")
@@ -513,6 +512,8 @@ order by runnumber
             # TODO: or 'CALOFITTING' or many other job types
             if 'TRKR_SEED' in self.dsttype:
                 for infile in candidates:
+                    if infile.segment % self.input_config.cut_segment != 0:
+                        continue
                     outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'
                     logbase= f'{outbase}-{infile.runnumber:{pRUNFMT}}-{infile.segment:{pSEGFMT}}'
                     dstfile = f'{logbase}.root'
@@ -610,7 +611,7 @@ order by runnumber
                 # select hostname from hostinfo
                 # where hostname not like 'seb%' and hostname not like 'gl1%'
                 # and runnumber={runnumber}"""
-                daqhost_query=f"""select hostname,serverid from hostinfo where runnumber={runnumber}"""
+                daqhost_query=f"select hostname,serverid from hostinfo where runnumber={runnumber}"
                 daqhost_serverid=[ (c.hostname,c.serverid) for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ]
                 available_tpc=set()
                 available_tracking=set()
@@ -702,6 +703,8 @@ order by runnumber
                 # outbase=f'{self.dsttype}_{self.outtriplet}_{self.outdataset}'
                 outbase=f'{self.dsttype}_{self.dataset}_{self.outtriplet}'
                 for seg in segments:
+                    if seg % self.input_config.cut_segment != 0:
+                        continue
                     logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
                     dstfile = f'{logbase}.root'
                     if dstfile in existing_output:
