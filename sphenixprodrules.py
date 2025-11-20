@@ -545,7 +545,7 @@ def parse_spiderstuff(filename: str) -> Tuple[str,...] :
         if 'size' in filename and 'ctime'in filename:
             lfn,_,nevents,_,first,_,last,_,md5,_,size,_,ctime,_,dbid = filename.split(':')
         else:
-            lfn,_,nevents,_,first,_,last,_,mds,_,dbid = filename.split(':')
+            lfn,_,nevents,_,first,_,last,_,md5,_,dbid = filename.split(':')
 
         lfn=Path(lfn).name
     except Exception as e:
