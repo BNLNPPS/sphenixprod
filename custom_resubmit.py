@@ -44,6 +44,7 @@ def main():
     # Filter for any desired quality here
     filtered_jobs_ads = []
     cutoff = datetime.now() - timedelta(hours=28)
+    minrun=78300
     for ad in jobs.values():
         if ad.get('JobStatus') == 2:
             continue  # Only consider jobs not running
@@ -55,14 +56,22 @@ def main():
         # Get argument from job ad
         args_str = ad.get('Args', '')
         args_list = args_str.split()
-        segment=int(args_list[5])
-        # if segment > 100:
-        if segment % 10 != 0:
-            DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} segment {segment} % 10 != 0, killing.")
+        run=int(args_list[4])
+        if run < minrun:
+            DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} run {run} < {minrun}, killing.")
             filtered_jobs_ads.append(ad)
+            continue
         else:
-            DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} segment {segment} OK.")
+            DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} run {run} OK.")
             pass
+        
+        # segment=int(args_list[5])
+        # if segment % 10 != 0:
+        #     DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} segment {segment} % 10 != 0, killing.")
+        #     filtered_jobs_ads.append(ad)
+        # else:
+        #     DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} segment {segment} OK.")
+        #     pass
         
     if not filtered_jobs_ads:
         INFO(f"Found {len(jobs)} total jobs, but none qualify.")
