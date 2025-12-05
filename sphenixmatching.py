@@ -264,7 +264,7 @@ order by runnumber
     # ------------------------------------------------
     def get_prod_status(self, runnumbers):
         ### Check production status
-        INFO('Checking for output already in production...')
+        INFO(f'Checking for output already in production for {runnumbers}')
         status_query  = f"""select dstfile,status from production_status
         where dstname like '%{self.dst_type_template}%'
         and dstname like '%{self.outtriplet}%'"""
@@ -647,7 +647,7 @@ order by runnumber
                     ### Important note: NO such requirement for cosmics. FIXME?
                     minNTPC=48
                     if len(available_tpc) < minNTPC and not self.physicsmode=='cosmics':
-                        WARN(f"Skip run. Only {len(available_tpc)} TPC detectors turned on in the run.")
+                        WARN(f"Skip run {runnumber}. Only {len(available_tpc)} TPC detectors turned on in the run.")
                         continue
                     
                     # 2. How many are TPC hosts are actually there in this run.
