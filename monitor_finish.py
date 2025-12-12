@@ -145,7 +145,7 @@ def main():
 
     run_condition = list_to_condition(rule.runlist_int, name="d.runnumber")
 
-    recency_interval = '30 DAYS' # args.recent if args.recent else '7 DAYS'
+    recency_interval = '1 DAYS' # args.recent if args.recent else '7 DAYS'
     base_query = f"""
     SELECT f.lfn, f.time, d.runnumber, d.segment, d.dsttype
     FROM {files_table} f
