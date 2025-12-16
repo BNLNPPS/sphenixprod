@@ -176,7 +176,7 @@ def main():
     # CHATTY(yaml.dump(rule.dict))
 
     filesystem = rule.job_config.filesystem
-    DEBUG(f"Filesystem: {filesystem}")
+    CHATTY(f"Filesystem: {filesystem}")
 
     ### And go
     execute_submission(rule, args)

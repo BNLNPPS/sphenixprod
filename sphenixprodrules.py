@@ -483,6 +483,9 @@ class RuleConfig:
         if param_overrides.get("request_memory",None):
             condor_job_dict["request_memory"]=param_overrides["request_memory"]
 
+        if param_overrides.get("max_jobs",None):
+            condor_job_dict["max_jobs"]=param_overrides["max_jobs"]
+
         request_memory=condor_job_dict.get("request_memory",None)         # Ensure sanity after the mem juggling act
         if not request_memory:
             raise ValueError( "Missing required field 'request_memory'.")

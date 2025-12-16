@@ -145,6 +145,10 @@ def main():
         DEBUG(f"Setting priority to {args.priority}")
         param_overrides['priority']=args.priority
 
+    if args.maxjobs is not None:
+        DEBUG(f"Setting maxjobs to {args.maxjobs}")
+        param_overrides['max_jobs']=args.maxjobs
+ 
     CHATTY(f"Rule substitutions: {param_overrides}")
     INFO("Now loading and building rule configuration.")
 
@@ -210,7 +214,8 @@ def main():
 
     INFO(f"Creating submission for {len(submittable_runs)} runs")
     ### Limit number of job files lying around
-    max_jobs=20000
+    max_jobs=rule.job_config.max_jobs
+
     # Count up what we already have
     existing_jobs=0
     sub_files=locate_submitfiles(rule,args)
@@ -227,6 +232,7 @@ def main():
     # Update existing or produce more submission files up to the given limit
     for submit_run in submittable_runs:
         if existing_jobs>max_jobs:
+            INFO(f"Reached maximum of {max_jobs} jobs waiting for submission, stopping here.")
             break
 
         ### Make the decision here whether to skip this run

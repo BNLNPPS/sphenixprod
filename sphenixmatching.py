@@ -41,11 +41,13 @@ class MatchConfig:
     physicsmode:    str
     filesystem:     Dict
     rungroup_tmpl:  str
+    job_config:     Any
 
     # Internal, derived variables
     dst_type_template: str
     in_types:          Any # Fixme, should always be List[str]
     input_stem:        Any
+
     # ------------------------------------------------
     @classmethod
     def from_rule_config(cls, rule_config: RuleConfig):
@@ -67,6 +69,7 @@ class MatchConfig:
         physicsmode   = rule_config.physicsmode
         filesystem    = rule_config.job_config.filesystem
         rungroup_tmpl = rule_config.job_config.rungroup_tmpl
+        job_config    = rule_config.job_config
         
         ## derived
         dst_type_template = f'{dsttype}'
@@ -94,10 +97,11 @@ class MatchConfig:
             physicsmode   = physicsmode,
             filesystem    = filesystem,
             rungroup_tmpl = rungroup_tmpl,
+            job_config    = job_config,
             ## derived
             dst_type_template = dst_type_template,
-            in_types=in_types,
-            input_stem=input_stem,
+            in_types = in_types,
+            input_stem = input_stem,
         )
 
     # ------------------------------------------------
@@ -481,7 +485,12 @@ order by runnumber
 
         ### Runnumber is the prime differentiator
         INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
-        for runnumber in goodruns:
+        for runnumber in reversed(goodruns):
+            # CHATTY(f"Currently to be processed: {len(rule_matches)} output files.")
+            # if len(rule_matches) > self.job_config.max_jobs:
+            #     INFO(f"Number jobs is {len(rule_matches)}; exceeds max_jobs = {self.job_config.max_jobs}. Return.")
+            #     break
+
             # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
             ## Note: Not all constraints are needed, but they may speed up the query
             existing_output=self.get_files_in_db(runnumber)
