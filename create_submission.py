@@ -16,7 +16,7 @@ if os.uname().sysname!='Darwin' :
     import htcondor # type: ignore
 
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit
+from sphenixmisc import setup_rot_handler, should_I_quit, shell_command
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixjobdicts import inputs_from_output
@@ -148,6 +148,10 @@ def main():
     if args.maxjobs is not None:
         DEBUG(f"Setting maxjobs to {args.maxjobs}")
         param_overrides['max_jobs']=args.maxjobs
+
+    if args.maxqueued is not None:
+        DEBUG(f"Setting max_queued_jobs to {args.maxqueued}")
+        param_overrides['max_queued_jobs']=args.maxqueued
  
     CHATTY(f"Rule substitutions: {param_overrides}")
     INFO("Now loading and building rule configuration.")
@@ -213,44 +217,72 @@ def main():
     submittable_runs=sorted(submittable_runs, reverse=True)
 
     INFO(f"Creating submission for {len(submittable_runs)} runs")
+
     ### Limit number of job files lying around
-    max_jobs=rule.job_config.max_jobs
+    ##### CHANGE Dec 16 2025: This should no longer be needed, as we check max_jobs in sphenixmatching.py
+    # max_jobs=rule.job_config.max_jobs
+    # # Count up what we already have
+        # existing_jobs=0
+    # sub_files=locate_submitfiles(rule,args)
+    # for sub_file in sub_files:
+    #     in_file=re.sub(r".sub$",".in",str(sub_file))
+    #     if not Path(in_file).is_file():
+    #         continue
+    #     with open(in_file,'r') as f:
+    #         existing_jobs += len(f.readlines())
+    # if existing_jobs>0:
+    #     INFO(f"We already have {existing_jobs} jobs waiting for submission.")
 
-    # Count up what we already have
-    existing_jobs=0
-    sub_files=locate_submitfiles(rule,args)
-    for sub_file in sub_files:
-        in_file=re.sub(r".sub$",".in",str(sub_file))
-        if not Path(in_file).is_file():
-            continue
-        with open(in_file,'r') as f:
-            existing_jobs += len(f.readlines())
+    ## Instead, matching has limited the number of jobs to max_jobs 
+    ## Here, we further make sure we don't exceed the number of already queued jobs
+    ## This used to be (planned) in execute_condorsubmission.py but doing it here prevents unnecessary file creation
+    max_queued_jobs=rule.job_config.max_queued_jobs
+    DEBUG(f"Maximum allowed queued jobs: {max_queued_jobs}")
 
-    if existing_jobs>0:
-        INFO(f"We already have {existing_jobs} jobs waiting for submission.")
+    # Determine what's already in "idle"
+    # Note: For this, we cannot use runnumber cuts, too difficult (and expensive) to get from condor.
+    # Bit of a clunky method. But it works and doesn't get called all that often.
+    cq_query  =  'condor_q'
+    cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
+    cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
 
-    # Update existing or produce more submission files up to the given limit
+    # # Detailed method: requires three queries
+    # run_procs = shell_command(cq_query + ' -run' )
+    # idle_procs = shell_command(cq_query + ' -idle' )
+    # held_procs = shell_command(cq_query + ' -held' )
+    # if len(run_procs) > 0:
+    #     INFO(f"We already have {len(run_procs)} jobs in the queue running.")
+    # if len(idle_procs) > 0:
+    #     INFO(f"We already have {len(idle_procs)} jobs in the queue waiting for execution.")
+    # if len(held_procs) > 0:
+    #     WARN(f"There are {len(held_procs)} held jobs that should be removed and/or resubmitted.")
+    # currently_queued_jobs= len(run_procs) + len(idle_procs) + len(held_procs)
+    
+    all_procs = shell_command(cq_query)
+    currently_queued_jobs=len(all_procs)
+
+    DEBUG(f"Currently queued jobs: {currently_queued_jobs}")
     for submit_run in submittable_runs:
-        if existing_jobs>max_jobs:
-            INFO(f"Reached maximum of {max_jobs} jobs waiting for submission, stopping here.")
+        if currently_queued_jobs>max_queued_jobs:
+            WARN(f"Reached maximum of {max_queued_jobs} queued, held, or running jobs, stopping here.")
             break
 
         ### Make the decision here whether to skip this run
         ### This will be recorded in the prod db, so subsequent calls
         ### will continue to skip the same runs unless and until their rows are deleted.
-        keep_this_run=True
-        random.seed()
-        if rule.input_config.choose20:
-            if random.uniform(0,1) > 0.21: # Nudge a bit above 20. Tests indicated we land significantly lower otherwise
-                DEBUG(f"Run {submit_run} will be skipped.")
-                keep_this_run=False
-            else:
-                DEBUG(f"Producing run {submit_run}")
+        # keep_this_run=True
+        # random.seed()
+        # if rule.input_config.choose20:
+        #         if random.uniform(0,1) > 0.21: # Nudge a bit above 20. Tests indicated we land significantly lower otherwise
+        #         DEBUG(f"Run {submit_run} will be skipped.")
+        #         keep_this_run=False
+        #     else:
+        #         DEBUG(f"Producing run {submit_run}")
 
         matches=matches_by_run[submit_run]
         INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
-        existing_jobs+=len(matches)
-        INFO(f"Total jobs waiting for submission: {existing_jobs}")
+        currently_queued_jobs += len(matches)
+        INFO(f"Total jobs waiting for submission: {currently_queued_jobs}")
 
         condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
         condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
@@ -285,7 +317,7 @@ queue log,output,error,arguments from {condor_infile}
             condor_rows.append(condor_job.condor_row())
 
             # Make sure directories exist
-            if not args.dryrun and keep_this_run:
+            if not args.dryrun : #  and keep_this_run:
                 Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
                 Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
 
@@ -298,8 +330,8 @@ queue log,output,error,arguments from {condor_infile}
             dstfile=out_file # this is much more robust and correct
             # Following is fragile, don't add spaces
             prodstate='submitting'
-            if not keep_this_run:
-                prodstate='skipped'
+            # if not keep_this_run:
+            #     prodstate='skipped'
 
             prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
                 dsttype=dsttype,
@@ -334,7 +366,7 @@ returning id
             condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
 
         # Write or update job line file
-        if not args.dryrun and keep_this_run:
+        if not args.dryrun : #  and keep_this_run:
             with open(condor_infile, "a") as f:
                 f.writelines(row+'\n' for row in condor_rows)
 

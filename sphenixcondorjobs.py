@@ -61,6 +61,7 @@ CondorJobConfig_fields = [
     ('log_tmpl',               str,            field(default=None)),
     ('rungroup_tmpl',          str,            field(default="run_{a:08d}_{b:08d}")),
     ('max_jobs',               int,            field(default=None)),
+    ('max_queued_jobs',        int,            field(default=None)),
 ]
 CondorJobConfig_fieldnames= { f[0] for f in CondorJobConfig_fields }
 
@@ -73,7 +74,7 @@ def condor_dict(self):
     - A dictionary keeps desired order (for readability) intact
     """
     all_fields = asdict(self)
-    ignore_fields = { 'neventsper','filesystem','arguments_tmpl','log_tmpl','rungroup_tmpl', 'max_jobs' }
+    ignore_fields = { 'neventsper','filesystem','arguments_tmpl','log_tmpl','rungroup_tmpl', 'max_jobs', 'max_queued_jobs' }
 
     return {key: value for key, value in all_fields.items() if key not in ignore_fields and value is not None}
 # ----------------------------------------------------------------------------

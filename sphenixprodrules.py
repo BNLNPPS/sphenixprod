@@ -278,6 +278,9 @@ class RuleConfig:
         argv_choose20=param_overrides.get("choose20")
         if argv_choose20 :
             choose20=True
+        if choose20:
+            CRITICAL("Option choose20 shouldn't be used.")
+            exit(11)
 
         cut_segment = input_data.get("cut_segment", 1)
         argv_cut_segment = param_overrides.get("cut_segment")
@@ -485,6 +488,14 @@ class RuleConfig:
 
         if param_overrides.get("max_jobs",None):
             condor_job_dict["max_jobs"]=param_overrides["max_jobs"]
+
+        if param_overrides.get("max_queued_jobs",None):
+            condor_job_dict["max_queued_jobs"]=param_overrides["max_queued_jobs"]
+            if condor_job_dict["max_jobs"] is None:
+                condor_job_dict["max_jobs"]=condor_job_dict["max_queued_jobs"]
+            if condor_job_dict["max_jobs"] > condor_job_dict["max_queued_jobs"]:
+                WARN("max_jobs exceeds max_queued_jobs. Adjusting max_jobs to match max_queued_jobs.")
+                condor_job_dict["max_jobs"]=condor_job_dict["max_queued_jobs"]
 
         request_memory=condor_job_dict.get("request_memory",None)         # Ensure sanity after the mem juggling act
         if not request_memory:

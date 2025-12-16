@@ -377,6 +377,11 @@ order by runnumber
             INFO(f"{len(daqhosts_for_combining)} runs satisfy the segment availability criteria.")
             
             for runnumber in daqhosts_for_combining:
+                CHATTY(f"Currently to be created: {len(rule_matches)} output files.")
+                if len(rule_matches) > self.job_config.max_jobs:
+                    INFO(f"Number jobs is {len(rule_matches)}; exceeds max_jobs = {self.job_config.max_jobs}. Return.")
+                    break
+
                 # GL1 is a must
                 if not 'gl1daq' in daqhosts_for_combining[runnumber]:
                     DEBUG(f"No GL1 file(s) for run {runnumber}")
@@ -486,10 +491,10 @@ order by runnumber
         ### Runnumber is the prime differentiator
         INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         for runnumber in reversed(goodruns):
-            # CHATTY(f"Currently to be processed: {len(rule_matches)} output files.")
-            # if len(rule_matches) > self.job_config.max_jobs:
-            #     INFO(f"Number jobs is {len(rule_matches)}; exceeds max_jobs = {self.job_config.max_jobs}. Return.")
-            #     break
+            CHATTY(f"Currently to be created: {len(rule_matches)} output files.")
+            if len(rule_matches) > self.job_config.max_jobs:
+                INFO(f"Number jobs is {len(rule_matches)}; exceeds max_jobs = {self.job_config.max_jobs}. Return.")
+                break
 
             # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
             ## Note: Not all constraints are needed, but they may speed up the query

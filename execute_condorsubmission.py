@@ -12,7 +12,7 @@ import pprint # noqa F401
 
 import argparse
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit, shell_command
+from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixdbutils import test_mode as dbutils_test_mode
@@ -59,24 +59,7 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool
         INFO("No submission files found.")
 
     submitted_jobs=0
-    # Determine what's already in "idle"
-    # Note: For this, we cannot use runnumber cuts, too difficult (and expensive) to get from condor.
-    # Bit of a clunky method. But it works and doesn't get called all that often.
-    cq_query  =  'condor_q'
-    cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
-    cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
-    idle_procs = shell_command(cq_query + ' -idle' ) # Select what to count (idle, held must be asked separately)
-    held_procs = shell_command(cq_query + ' -held' )
-    if len(idle_procs) > 0:
-        INFO(f"We already have {len(idle_procs)} jobs in the queue waiting for execution.")
-    if len(held_procs) > 0:
-        WARN(f"There are {len(held_procs)} held jobs that should be removed and/or resubmitted.")
-
-    max_submitted=10000
     for sub_file in sub_files:
-        if submitted_jobs>max_submitted:
-            break
-
         in_file=re.sub(r".sub$",".in",str(sub_file))
         ### Catch problems or skipped runs
         if not Path(in_file).is_file():
@@ -93,7 +76,7 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool
         except Exception as e:
             ERROR(f"Error while parsing {in_file}:\n{e}")
             exit(1)
-        submitted_jobs+=len(dbids)
+        #        submitted_jobs+=len(dbids)
         dbids_str=", ".join(dbids)
         now_str=str(datetime.now().replace(microsecond=0))
         update_prod_state = f"""
@@ -111,7 +94,10 @@ WHERE id in
         INFO(f"Submitting {sub_file}\n\t\t && Removing {in_file}")
         if not args.dryrun:
             subprocess.run(f"condor_submit {sub_file} && rm {sub_file} {in_file}",shell=True)
-            # subprocess.run(f"echo condor_submit {sub_file} && echo rm {sub_file} {in_file}",shell=True)
+            submitted_jobs+=len(dbids)
+
+    INFO(f"Received a total of {len(sub_files)} submission files.")
+    INFO(f"Submitted a total of {submitted_jobs} jobs.")
 
 
 # ============================================================================================

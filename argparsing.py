@@ -97,6 +97,7 @@ def submission_args():
     parser.add_argument('--mem', help="Override memory allocated for a job", default=None)
     parser.add_argument('--priority', help="Override condor priority for this job (more is higher)", default=None)
     parser.add_argument('--maxjobs', dest="maxjobs", help="Maximum number of jobs to create in one pass", default=100000, type=int)
+    parser.add_argument('--maxqueued', dest="maxqueued", help="Maximum number of jobs to have waiting for submission", default=100000, type=int)
     parser.add_argument('--docstring', default=None, help="Appends a documentation string to the log entry")
 
     return parse_and_set_loglevel(parser)
