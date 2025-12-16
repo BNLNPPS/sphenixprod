@@ -44,26 +44,27 @@ def main():
     # Filter for any desired quality here
     filtered_jobs_ads = []
     cutoff = datetime.now() - timedelta(hours=28)
-    minrun=78300
+    # minrun=78300
     for ad in jobs.values():
-        if ad.get('JobStatus') == 2:
-            continue  # Only consider jobs not running
+        # if ad.get('JobStatus') == 2:
+        #     continue  # Only consider jobs not running
 
         # t = datetime.fromtimestamp(ad.get('EnteredCurrentStatus'))
         # if t > cutoff:
         #     filtered_jobs_ads.append(ad)
 
-        # Get argument from job ad
-        args_str = ad.get('Args', '')
-        args_list = args_str.split()
-        run=int(args_list[4])
-        if run < minrun:
-            DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} run {run} < {minrun}, killing.")
-            filtered_jobs_ads.append(ad)
-            continue
-        else:
-            DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} run {run} OK.")
-            pass
+        filtered_jobs_ads.append(ad)
+        # # Get argument from job ad
+        # args_str = ad.get('Args', '')
+        # args_list = args_str.split()
+        # run=int(args_list[4])
+        # if run < minrun:
+        #     DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} run {run} < {minrun}, killing.")
+        #     filtered_jobs_ads.append(ad)
+        #     continue
+        # else:
+        #     DEBUG(f"Job {ad['ClusterId']}.{ad['ProcId']} run {run} OK.")
+        #     pass
         
         # segment=int(args_list[5])
         # if segment % 10 != 0:
@@ -86,7 +87,7 @@ def main():
         new_submit_ad = htcondor.Submit(dict(job_ad))
 
         # Change what you want changed. Eg, nCPU
-        # new_submit_ad['RequestCpus'] = '1'
+        new_submit_ad['RequestCpus'] = '1'
         # new_submit_ad['JobPrio'] = '2'
         if args.resubmit:
             # # Extra conditions here
@@ -100,8 +101,8 @@ def main():
                     # The transaction context manager is deprecated. The following replacement operations are not atomic.
                     schedd.act(htcondor.JobAction.Remove, [f"{job_ad['ClusterId']}.{job_ad['ProcId']}"])
                     INFO(f"Removed held job {job_ad['ClusterId']}.{job_ad['ProcId']} from queue.")
-                    # submit_result = schedd.submit(new_submit_ad)
-                    # new_queue_id = submit_result.cluster()
+                    submit_result = schedd.submit(new_submit_ad)
+                    new_queue_id = submit_result.cluster()
                     # INFO(f"   ...  and resubmitted as {new_queue_id}.")
                 except Exception as e:
                     ERROR(f"Failed to remove and resubmit job {job_ad['ClusterId']}.{job_ad['ProcId']}: {e}")
