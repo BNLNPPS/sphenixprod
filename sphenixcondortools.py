@@ -21,7 +21,9 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
     try:
         schedd = htcondor.Schedd()
 
-        batch_pattern = f'.*\\.{batch_name}$'
+        # batch_pattern = f'.*\\.{batch_name}$' ## Assumes batch_name does NOT contain 'main.' prefix
+        batch_pattern = f'.*{batch_name}$'      ## Assumes batch_name MAY contain any prefix
+
         # Query all jobs for the batch, we will filter by status locally
         constraint = f'regexp("{batch_pattern}", JobBatchName)'
         INFO(f"Querying condor with constraint: {constraint}")
