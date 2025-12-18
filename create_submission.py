@@ -28,6 +28,33 @@ import importlib.util # to resolve the path of sphenixdbutils without importing 
 from sphenixdbutils import cnxn_string_map, dbQuery
 from execute_condorsubmission import locate_submitfiles,execute_submission
 
+def get_queued_jobs(rule):
+    """
+    Determines the number of jobs currently in the condor queue for a given rule.
+    """
+    # Determine what's already in "idle"
+    # Note: For this, we cannot use runnumber cuts, too difficult (and expensive) to get from condor.
+    # Bit of a clunky method. But it works and doesn't get called all that often.
+    cq_query  =  'condor_q'
+    cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
+    cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
+
+    # # Detailed method: requires three queries
+    # run_procs = shell_command(cq_query + ' -run' )
+    # idle_procs = shell_command(cq_query + ' -idle' )
+    # held_procs = shell_command(cq_query + ' -held' )
+    # if len(run_procs) > 0:
+    #     INFO(f"We already have {len(run_procs)} jobs in the queue running.")
+    # if len(idle_procs) > 0:
+    #     INFO(f"We already have {len(idle_procs)} jobs in the queue waiting for execution.")
+    # if len(held_procs) > 0:
+    #     WARN(f"There are {len(held_procs)} held jobs that should be removed and/or resubmitted.")
+    # currently_queued_jobs= len(run_procs) + len(idle_procs) + len(held_procs)
+    
+    all_procs = shell_command(cq_query)
+    currently_queued_jobs=len(all_procs)
+    return currently_queued_jobs
+
 # ============================================================================================
 
 def main():
@@ -57,7 +84,6 @@ def main():
         exit(0)
 
     try:
-
         if args.force:
             #### For --force, we could do the file and database deletion in RuleConfig.
             # Would be kinda nice because only then we'll know what's _really_ affected, and we could use the logic there.
@@ -175,6 +201,13 @@ def main():
         CHATTY("Rule configuration:")
         CHATTY(yaml.dump(rule.dict))
 
+        max_queued_jobs=rule.job_config.max_queued_jobs
+        currently_queued_jobs = get_queued_jobs(rule)
+        if currently_queued_jobs >= max_queued_jobs:
+            WARN(f"There are already {currently_queued_jobs} jobs in the queue, which meets or exceeds the maximum of {max_queued_jobs}.")
+            WARN("Aborting submission.")
+            exit(0)
+
         #################### Rule and its subfields for input and job details now have all the information needed for submitting jobs
         INFO("Rule construction complete. Now constructing corresponding match configuration.")
 
@@ -245,27 +278,7 @@ def main():
         max_queued_jobs=rule.job_config.max_queued_jobs
         DEBUG(f"Maximum allowed queued jobs: {max_queued_jobs}")
 
-        # Determine what's already in "idle"
-        # Note: For this, we cannot use runnumber cuts, too difficult (and expensive) to get from condor.
-        # Bit of a clunky method. But it works and doesn't get called all that often.
-        cq_query  =  'condor_q'
-        cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
-        cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
-
-        # # Detailed method: requires three queries
-        # run_procs = shell_command(cq_query + ' -run' )
-        # idle_procs = shell_command(cq_query + ' -idle' )
-        # held_procs = shell_command(cq_query + ' -held' )
-        # if len(run_procs) > 0:
-        #     INFO(f"We already have {len(run_procs)} jobs in the queue running.")
-        # if len(idle_procs) > 0:
-        #     INFO(f"We already have {len(idle_procs)} jobs in the queue waiting for execution.")
-        # if len(held_procs) > 0:
-        #     WARN(f"There are {len(held_procs)} held jobs that should be removed and/or resubmitted.")
-        # currently_queued_jobs= len(run_procs) + len(idle_procs) + len(held_procs)
-        
-        all_procs = shell_command(cq_query)
-        currently_queued_jobs=len(all_procs)
+        currently_queued_jobs = get_queued_jobs(rule)
 
         DEBUG(f"Currently queued jobs: {currently_queued_jobs}")
         for submit_run in submittable_runs:
