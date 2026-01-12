@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import pyodbc
 from pathlib import Path
 import pprint # noqa: F401
@@ -6,9 +7,28 @@ import time
 from datetime import datetime
 import random
 import os
+import argparse
 
 from typing import overload, List, Union
 from collections import namedtuple
+
+def get_parser():
+    parser = argparse.ArgumentParser(description='sPHENIX DB utilities')
+    subparsers = parser.add_subparsers(dest='command', required=True)
+
+    # jobstarted subcommand
+    parser_jobstarted = subparsers.add_parser('jobstarted', help='Mark a job as started')
+    parser_jobstarted.add_argument('--dbid', required=True, type=int, help='Database ID of the job.')
+    parser_jobstarted.add_argument('--dryrun', action='store_true', help='Do not perform database updates.')
+
+    # jobended subcommand
+    parser_jobended = subparsers.add_parser('jobended', help='Mark a job as ended')
+    parser_jobended.add_argument('--dbid', required=True, type=int, help='Database ID of the job.')
+    parser_jobended.add_argument('--exit-code', required=False, type=int, default=0, help='Exit code of the job.')
+    parser_jobended.add_argument('-n','--dryrun', action='store_true', help='Do not perform database updates.')
+
+    return parser.parse_args()
+
 filedb_info = namedtuple('filedb_info', ['dsttype','run','seg','lfn','nevents','first','last','md5','size','ctime'])
 long_filedb_info = namedtuple('long_filedb_info', [
     'origfile',                                                               # for moving
@@ -28,11 +48,9 @@ Also, it needs a robust way to establish things like testbed vs. production mode
 # ============================================================================
 
 #################### Test mode? Multiple ways to turn it on
-### TODO: ".slurp" is outdated as a name, just using it for backward compatibility
 test_mode = (
         False
         or 'testbed' in str(Path(".").absolute()).lower()
-        or Path(".slurp/testbed").exists() # deprecated
         or Path(".testbed").exists()
         or Path("SPHNX_TESTBED_MODE").exists()
     )
@@ -73,20 +91,17 @@ if os.uname().sysname=='Darwin' :
         'statw'       : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=productiondb;UID=eickolja',
         'rawr'        : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=rawdatacatalogdb;READONLY=True;UID=eickolja',
     }
-    # for key in cnxn_string_map.keys() :
-    #     DEBUG(f"Changing {key} to use DSN=eickolja")
-    #     cnxn_string_map[key] = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DSN=eickolja;READONLY=True;UID=eickolja'
 
-# Hack to use local PostgreSQL database from inside a docker container
-if Path('/.dockerenv').exists() :
-    driverstring='DRIVER=PostgreSQL;SERVER=host.docker.internal;'
-    cnxn_string_map = {
-        'fcw'         : f'{driverstring}DATABASE=filecatalogdb;UID=eickolja',
-        'fcr'         : f'{driverstring}DATABASE=filecatalogdb;READONLY=True;UID=eickolja',
-        'statr'       : f'{driverstring}DATABASE=productiondb;READONLY=True;UID=eickolja',
-        'statw'       : f'{driverstring}DATABASE=productiondb;UID=eickolja',
-        'rawr'        : f'{driverstring}DATABASE=rawdatacatalogdb;READONLY=True;UID=eickolja',
-    }
+# # Hack to use local PostgreSQL database from inside a docker container
+# if Path('/.dockerenv').exists() :
+#     driverstring='DRIVER=PostgreSQL;SERVER=host.docker.internal;'
+#     cnxn_string_map = {
+#         'fcw'         : f'{driverstring}DATABASE=filecatalogdb;UID=eickolja',
+#         'fcr'         : f'{driverstring}DATABASE=filecatalogdb;READONLY=True;UID=eickolja',
+#         'statr'       : f'{driverstring}DATABASE=productiondb;READONLY=True;UID=eickolja',
+#         'statw'       : f'{driverstring}DATABASE=productiondb;UID=eickolja',
+#         'rawr'        : f'{driverstring}DATABASE=rawdatacatalogdb;READONLY=True;UID=eickolja',
+#     }
 
 # ============================================================================================
 def full_db_info(origfile: str, info: filedb_info, lfn: str, full_file_path: str, dataset: str, tag: str) -> long_filedb_info:
@@ -242,6 +257,69 @@ def update_proddb( dbid: int, filestat=None, dryrun=True ):
                 exit(1)
 
 # ============================================================================================
+def jobstarted(dbid: int, dryrun: bool = False):
+    """
+    Marks a job as started in the production database.
+    This includes setting the status to 'running', recording the start time,
+    and capturing the execution node from the Condor environment.
+    """
+    execution_node = "UNKNOWN"
+    condor_job_ad_file = os.getenv("_CONDOR_JOB_AD")
+    if condor_job_ad_file and os.path.exists(condor_job_ad_file):
+        with open(condor_job_ad_file, 'r') as f:
+            for line in f:
+                if line.startswith("RemoteHost"):
+                    execution_node = line.split(" = ")[1].strip().strip('"')
+                    # RemoteHost = "slot1@bnl-fn1.local" -> bnl-fn1.local
+                    execution_node = execution_node.split('@')[-1]
+                    break
+
+    update_sql = f"""
+        UPDATE production_status
+        SET
+            status = 'running',
+            started = '{datetime.now().replace(microsecond=0)}',
+            execution_node = '{execution_node}'
+        WHERE id = {dbid};
+    """
+    DEBUG(update_sql)
+    if not dryrun:
+        dbstring = 'statw'
+        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_sql)
+        if prodstate_curs:
+            prodstate_curs.commit()
+        else:
+            ERROR(f"Failed to update production status for {dbid} in database {dbstring}")
+            # Do not exit, as the job might still be able to run
+            # and we don't want to cause a job failure just for a DB update failure.
+            pass
+
+
+def jobended(dbid: int, exit_code: int, dryrun: bool = False):
+    """
+    Marks a job as ended in the production database.
+    The final status is determined by the exit_code.
+    """
+    status = 'finished' if exit_code == 0 else 'failed'
+    update_sql = f"""
+        UPDATE production_status
+        SET
+            status = '{status}',
+            ended = '{datetime.now().replace(microsecond=0)}'
+        WHERE id = {dbid};
+    """
+    CHATTY(update_sql)
+    if not dryrun:
+        dbstring = 'statw'
+        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_sql)
+        if prodstate_curs:
+            prodstate_curs.commit()
+        else:
+            ERROR(f"Failed to update production status for {dbid} in database {dbstring}")
+            # Do not exit, as we want to avoid causing further issues
+            # at the end of a job.
+            pass
+
 def printDbInfo( cnxn_string, title ):
     conn = pyodbc.connect( cnxn_string )
     name=conn.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
@@ -330,3 +408,17 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
 
     strlist=map(str,lst)
     return f"{name} in  ( {','.join(strlist)} )"
+
+
+def main():
+    args = get_parser()
+
+    if args.command == 'jobstarted':
+        jobstarted(args.dbid, args.dryrun)
+    elif args.command == 'jobended':
+        jobended(args.dbid, getattr(args, 'exit_code', 1), args.dryrun)
+
+
+if __name__ == '__main__':
+    main()
+
