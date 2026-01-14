@@ -15,7 +15,7 @@ inputs_from_output['DST_TRKR_MVTXME']  = list('DST_STREAMING_EVENT_' + LEAF for 
 inputs_from_output['DST_TRKR_SEED']    = ['DST_TRKR_CLUSTER']
 
 # Tracks: From clusters and seeds, i.e. 2-1
-inputs_from_output['DST_TRKR_TRACKS']  = ['DST_TRKR_CLUSTER','DST_TRKR_SEED']
+inputs_from_output['DST_TRKR_TRACKS']  = ['DST_TRKR_SEED']
 
 ### Calorimeters -
 # Physical detectors are triggered
