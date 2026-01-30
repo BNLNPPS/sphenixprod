@@ -109,10 +109,13 @@ class MatchConfig:
         return { k: str(v) for k, v in asdict(self).items() if v is not None }
 
     # ------------------------------------------------
-    def good_runlist(self) -> List[int]:
+    def good_runlist(self, subset_runlist: List[int] = None) -> List[int]:
         ### Run quality
         CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
         # Here would be a  good spot to check against golden or bad runlists and to enforce quality cuts on the runs
+
+        # Use subset if provided, otherwise use full runlist
+        runlist_to_check = subset_runlist if subset_runlist is not None else self.runlist_int
 
         INFO("Checking runlist against run quality cuts.")
         run_quality_tmpl="""
@@ -128,15 +131,15 @@ EXTRACT(EPOCH FROM (ertimestamp-brtimestamp)) >={min_run_time}
 order by runnumber
 ;"""
         run_quality_query=run_quality_tmpl.format(
-            runmin=min(self.runlist_int),
-            runmax=max(self.runlist_int),
+            runmin=min(runlist_to_check),
+            runmax=max(runlist_to_check),
             physicsmode=self.physicsmode,
             min_run_events=self.input_config.min_run_events,
             min_run_time=self.input_config.min_run_time,
         )
         goodruns=[ int(r) for (r,) in dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall() ]
         # tighten run condition now
-        runlist_int=[ run for run in self.runlist_int if run in goodruns ]
+        runlist_int=[ run for run in runlist_to_check if run in goodruns ]
         if runlist_int==[]:
             return []
         INFO(f"{len(runlist_int)} runs pass run quality cuts.")
@@ -282,11 +285,11 @@ order by runnumber
         return existing_status
 
     # ------------------------------------------------
-    def daqhosts_for_combining(self) -> Dict[int, Set[int]]:
+    def daqhosts_for_combining(self, subset_runlist: List[int] = None) -> Dict[int, Set[int]]:
         ### Which DAQ hosts have all required segments present in the file catalog for a given run?
 
         # Run quality:
-        goodruns=self.good_runlist()
+        goodruns=self.good_runlist(subset_runlist)
         if goodruns==[]:
             INFO( "No runs pass run quality cuts.")
             return {}
@@ -361,7 +364,7 @@ order by runnumber
         return daqhosts_for_combining
 
     # ------------------------------------------------
-    def devmatches(self) :
+    def devmatches(self, subset_runlist: List[int] = None) :
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # The logic for combination and downstream jobs is sufficiently different to warrant separate functions
         start=datetime.now()
@@ -370,7 +373,7 @@ order by runnumber
             segswitch="seg0fromdb"
             if not self.input_config.combine_seg0_only:
                 segswitch="allsegsfromdb"
-            daqhosts_for_combining = self.daqhosts_for_combining()
+            daqhosts_for_combining = self.daqhosts_for_combining(subset_runlist)
             if daqhosts_for_combining=={}:
                 WARN("No runs satisfy the segment availability criteria. No jobs to submit.")
                 return {}
@@ -429,10 +432,10 @@ order by runnumber
             INFO(f'[Parsing time ] {(datetime.now() - start).total_seconds():.2f} seconds')
             return rule_matches
         else:
-            return self.matches()
+            return self.matches(subset_runlist)
 
     # ------------------------------------------------
-    def matches(self) :
+    def matches(self, subset_runlist: List[int] = None) :
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
         # Despite the "like" clause, this is a fast query. Extra cuts or substitute cuts like
         # 'and runnumber>={self.runMin} and runnumber<={self.runMax}'
@@ -441,7 +444,7 @@ order by runnumber
         # Note: The db field in the yaml is for input queries only, all output queries go to the FileCatalog
 
         # TODO: Move this query and use it only for combination jobs
-        goodruns=self.good_runlist()
+        goodruns=self.good_runlist(subset_runlist)
         if goodruns==[]:
             INFO( "No runs pass run quality cuts.")
             return {}
