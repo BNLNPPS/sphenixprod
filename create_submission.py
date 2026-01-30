@@ -258,6 +258,14 @@ def main():
         CondorJob.job_config = rule.job_config
         base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
 
+        # Track queued jobs across all chunks
+        max_queued_jobs = rule.job_config.max_queued_jobs
+        DEBUG(f"Maximum allowed queued jobs: {max_queued_jobs}")
+        
+        # Get initial queue status once before processing chunks
+        currently_queued_jobs = get_queued_jobs(rule)
+        DEBUG(f"Currently queued jobs at start: {currently_queued_jobs}")
+
         # Process each chunk
         for chunk_idx, run_chunk in enumerate(run_chunks, 1):
             INFO(f"===== Processing chunk {chunk_idx}/{len(run_chunks)} with {len(run_chunk)} runs =====")
@@ -300,13 +308,9 @@ def main():
 
             ## Instead, matching has limited the number of jobs to max_jobs 
             ## Here, we further make sure we don't exceed the number of already queued jobs
-            ## This used to be (planned) in execute_condorsubmission.py but doing it here prevents unnecessary file creation
-            max_queued_jobs=rule.job_config.max_queued_jobs
-            DEBUG(f"Maximum allowed queued jobs: {max_queued_jobs}")
-
-            currently_queued_jobs = get_queued_jobs(rule)
-
-            DEBUG(f"Currently queued jobs: {currently_queued_jobs}")
+            ## Note: currently_queued_jobs is tracked across all chunks to avoid exceeding max_queued_jobs
+            
+            DEBUG(f"Currently queued/pending jobs (including previous chunks): {currently_queued_jobs}")
             for submit_run in submittable_runs:
                 if currently_queued_jobs>max_queued_jobs:
                     WARN(f"Reached maximum of {max_queued_jobs} queued, held, or running jobs, stopping here.")
@@ -419,6 +423,9 @@ def main():
             if args.andgo:
                 INFO(f"Chunk {chunk_idx}: Submitting jobs to condor")
                 execute_submission(rule, args, True)
+                # Refresh the queue count after submission since jobs are now in the queue
+                currently_queued_jobs = get_queued_jobs(rule)
+                DEBUG(f"After submission, currently queued jobs: {currently_queued_jobs}")
             
             INFO(f"===== Completed chunk {chunk_idx}/{len(run_chunks)} =====")
 
