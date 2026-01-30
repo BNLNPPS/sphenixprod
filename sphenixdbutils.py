@@ -138,7 +138,7 @@ md5=EXCLUDED.md5
 """
 
 # ---------------------------------------------------------------------------------------------
-datasets_db_line="('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{lastevent},'{tag}')"
+datasets_db_line="('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{_event},'{tag}')"
 insert_datasets_tmpl="""
 insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events,firstevent,lastevent,tag)
 values
@@ -333,8 +333,8 @@ def dbQuery( cnxn_string, query, ntries=10 ):
     CHATTY(f'[query      ]\n{query}')
 
     start=datetime.now()
-    last_exception = None
-    ntries = 1
+#    last_exception = None
+    ntries = 5
     curs=None
     # Attempt to connect up to ntries
     for itry in range(0,ntries):
@@ -343,16 +343,26 @@ def dbQuery( cnxn_string, query, ntries=10 ):
             curs = conn.cursor()
             curs.execute( query )
             break
+        except pyodbc.Error as E:
+            # last_exception = str(E)
+            #ERROR(f"Warning: Attempt {itry} failed: {last_exception}")
+            ERROR(f"Warning: Attempt {itry} failed: {E}")
+            if E.args[0] == '40001':  # replica needs updating; formally: "serialization failure" (deadlock)
+                delay = (itry + 1 ) * random.random()
+                time.sleep(delay)
+                continue
+            else:
+                ERROR(f"Non-retryable odbc error encountered: {E}")
+                curs=None
+                exit(11)
         except Exception as E:
-            ntries = ntries + 1
-            last_exception = str(E)
-            ERROR(f"Attempt {itry} failed: {last_exception}")
-            raise(E) # allow the mother process to just move on
-            exit(1)
-            delay = (itry + 1 ) * random.random()
-            time.sleep(delay)
-            DEBUG(f"Attempt {itry} failed: {last_exception}")
-    #TODO: Handle connn failure more gracefully
+            ERROR(f"Non-retryable other error encountered during database query: {E}")
+            curs=None
+            exit(11)
+    else:
+        ERROR(f"Too many attempts. Stop.")
+        # raise(E) # allow the mother process to just move on
+        exit(11)
     CHATTY(f'[query time ] {(datetime.now() - start).total_seconds():.2f} seconds' )
 
     return curs
