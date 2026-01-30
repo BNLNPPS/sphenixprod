@@ -79,10 +79,7 @@ def main():
         DEBUG("Stop.")
         exit(0)
 
-    lock_file_path = f"{sublogdir}/{args.rulename}.lock"
-    if not lock_file(lock_file_path, args.dryrun):
-        exit(0)
-
+    lock_file_path = None
     try:
         if args.force:
             #### For --force, we could do the file and database deletion in RuleConfig.
@@ -201,6 +198,14 @@ def main():
         CHATTY("Rule configuration:")
         CHATTY(yaml.dump(rule.dict))
 
+        submitdir = Path(f'{args.submitdir}').resolve()
+        if not args.dryrun:
+            Path( submitdir).mkdir( parents=True, exist_ok=True )
+
+        lock_file_path = f"{submitdir}/{args.rulename}"
+        if not lock_file(lock_file_path, args.dryrun):
+            exit(0)
+
         max_queued_jobs=rule.job_config.max_queued_jobs
         currently_queued_jobs = get_queued_jobs(rule)
         if currently_queued_jobs >= max_queued_jobs:
@@ -224,9 +229,6 @@ def main():
         rule_matches = match_config.devmatches()
         INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
 
-        submitdir = Path(f'{args.submitdir}').resolve()
-        if not args.dryrun:
-            Path( submitdir).mkdir( parents=True, exist_ok=True )
         subbase = f'{rule.dsttype}_{rule.dataset}_{rule.outtriplet}'
         INFO(f'Submission files based on {subbase}')
 
@@ -404,7 +406,8 @@ def main():
         INFO( "KTHXBYE!" )
 
     finally:
-        unlock_file(lock_file_path, args.dryrun)
+        if lock_file_path is not None:
+            unlock_file(lock_file_path, args.dryrun)
 
 # ============================================================================================
 

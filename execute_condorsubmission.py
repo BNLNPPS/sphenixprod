@@ -98,6 +98,12 @@ WHERE id in
 
     INFO(f"Received a total of {len(sub_files)} submission files.")
     INFO(f"Submitted a total of {submitted_jobs} jobs.")
+    # Remove submission directory if empty
+    # TODO: Test 
+    # INFO(f"Trying to remove {submitdir}.")
+    # if not args.dryrun:
+    #     if len(list(submitdir.iterdir())) == 0:
+    #         submitdir.rmdir()
 
 
 # ============================================================================================
