@@ -270,12 +270,12 @@ order by runnumber
         ### Check production status
         INFO(f'Checking for output already in production for {runnumbers}')
         status_query  = f"""select dstfile,status from production_status
-        where dstname like '%{self.dst_type_template}%'
-        and dstname like '%{self.outtriplet}%'"""
+        where dstname like '%{self.dst_type_template}%{self.outtriplet}%'"""
 
         run_condition=list_to_condition(runnumbers)
         if run_condition!="" :
             status_query += f"\n\tand {run_condition.replace('runnumber','run')}"
+        status_query += "\n order by run desc;"
 
         status_query += self.input_config.status_query_constraints
         existing_status = { c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
