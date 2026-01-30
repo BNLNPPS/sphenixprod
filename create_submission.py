@@ -224,11 +224,6 @@ def main():
         rule_matches = match_config.devmatches()
         INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
 
-        if os.uname().sysname=='Darwin' :
-            WARN("Running on native Mac, cannot use condor.")
-            WARN("Exiting early.")
-            exit(0)
-
         submitdir = Path(f'{args.submitdir}').resolve()
         if not args.dryrun:
             Path( submitdir).mkdir( parents=True, exist_ok=True )
