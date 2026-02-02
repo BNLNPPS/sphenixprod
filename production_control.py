@@ -207,7 +207,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     ### Booleans for what to run
     sdh_tuple=SubmitDstHist(submit=rule_data.get("submit", False),
                             dstspider=rule_data.get("dstspider", True),
-                            histspider=rule_data.get("histspider", True),
+                            histspider=rule_data.get("histspider", rule_data.get("dstspider", True)),
                             finishmon=rule_data.get("finishmon", False)
                             )
     ## sanity
