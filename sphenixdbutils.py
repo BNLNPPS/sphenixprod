@@ -138,7 +138,7 @@ md5=EXCLUDED.md5
 """
 
 # ---------------------------------------------------------------------------------------------
-datasets_db_line="('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{_event},'{tag}')"
+datasets_db_line="('{lfn}',{run},{segment},{file_size_bytes},'{dataset}','{dsttype}',{nevents},{firstevent},{lastevent},'{tag}')"
 insert_datasets_tmpl="""
 insert into {datasets_table} (filename,runnumber,segment,size,dataset,dsttype,events,firstevent,lastevent,tag)
 values
