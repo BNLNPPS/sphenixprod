@@ -202,6 +202,7 @@ def main():
         if not args.dryrun:
             Path( submitdir).mkdir( parents=True, exist_ok=True )
 
+        # TODO: submitdir is crude, this won't catch simultaneous submissions using different submission dirs
         lock_file_path = f"{submitdir}/{args.rulename}"
         if not lock_file(lock_file_path, args.dryrun):
             exit(0)
