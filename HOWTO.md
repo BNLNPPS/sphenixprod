@@ -26,6 +26,33 @@ create_submission.py \
 -vv -n
 ```
 
+#### Processing Large Run Lists in Chunks
+
+For large run lists, you can use the `--chunk-size` parameter to process runs in smaller batches. This provides faster feedback and allows submission to start sooner:
+
+```bash
+# Process runs in chunks of 100
+create_submission.py \
+--config ProdFlow/short/run3auau/v001_combining_run3_new_nocdbtag.yaml \
+--rule DST_TRIGGERED_EVENT_run3physics \
+--runs 69600 72000 \
+--chunk-size 100 \
+-vv -n
+```
+
+With `--andgo`, jobs from each chunk will be submitted as soon as that chunk completes processing:
+
+```bash
+# Process in chunks and submit each chunk automatically
+create_submission.py \
+--config config.yaml \
+--rule RULE_NAME \
+--runs 69600 72000 \
+--chunk-size 100 \
+--andgo \
+-vv
+```
+
 To run a production job for real, you need to first clean out the file catalog (FC) for your particular jobs. Jobs will not run if there are existing entries in the FC so as to not overwrite actively running jobs inadvertently
 
 ```

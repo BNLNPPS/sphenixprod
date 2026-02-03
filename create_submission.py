@@ -227,169 +227,209 @@ def main():
             eradicate_runs(match_config=match_config, dryrun=args.dryrun, delete_files=args.force_delete)
 
         # #################### Now proceed with submission
-        rule_matches = match_config.devmatches()
-        INFO(f"Matching complete. {len(rule_matches)} jobs to be submitted.")
+        # Determine chunk size for processing runs
+        chunk_size = args.chunk_size if args.chunk_size > 0 else None
+        
+        # Get the full runlist from the rule (already filtered by RuleConfig)
+        full_runlist = rule.runlist_int
+        
+        if chunk_size:
+            INFO(f"Processing {len(full_runlist)} runs in chunks of {chunk_size}")
+        else:
+            INFO(f"Processing all {len(full_runlist)} runs at once (no chunking)")
+        
+        # Create chunks of runs to process
+        if chunk_size:
+            # Sort runs newest first for chunking
+            sorted_runlist = sorted(full_runlist, reverse=True)
+            run_chunks = [sorted_runlist[i:i + chunk_size] for i in range(0, len(sorted_runlist), chunk_size)]
+        else:
+            # Process all runs at once
+            run_chunks = [full_runlist]
+        
+        INFO(f"Will process {len(run_chunks)} chunk(s) of runs")
 
+        submitdir = Path(f'{args.submitdir}').resolve()
+        if not args.dryrun:
+            Path( submitdir).mkdir( parents=True, exist_ok=True )
         subbase = f'{rule.dsttype}_{rule.dataset}_{rule.outtriplet}'
         INFO(f'Submission files based on {subbase}')
-
-        # For a fairly collision-safe identifier that could be used to not trample on existing files:
-        # import nanoid
-        # short_id = nanoid.generate(size=6)
-        # print(f"Short ID: {short_id}")
 
         # Header for all submission files
         CondorJob.job_config = rule.job_config
         base_job = htcondor.Submit(CondorJob.job_config.condor_dict())
 
-        ## Instead of same-size chunks, group submission files by runnumber
-        matchlist=list(rule_matches.items())
-        ## Brittle! Assumes value[key][3] == runnumber
-        def keyfunc(item):
-            return item[1][3]  # x[0] is outfilename, x[1] is tuple, 4th field is runnumber
-        matchlist=sorted(matchlist, key=keyfunc)
-        matches_by_run = {k : list(g) for k, g in itertools.groupby(matchlist,key=keyfunc)}
-        submittable_runs=list(matches_by_run.keys())
-        # Newest first
-        submittable_runs=sorted(submittable_runs, reverse=True)
-
-        INFO(f"Creating submission for {len(submittable_runs)} runs")
-
-        ### Limit number of job files lying around
-        ##### CHANGE Dec 16 2025: This should no longer be needed, as we check max_jobs in sphenixmatching.py
-        # max_jobs=rule.job_config.max_jobs
-        # # Count up what we already have
-            # existing_jobs=0
-        # sub_files=locate_submitfiles(rule,args)
-        # for sub_file in sub_files:
-        #     in_file=re.sub(r".sub$",".in",str(sub_file))
-        #     if not Path(in_file).is_file():
-        #         continue
-        #     with open(in_file,'r') as f:
-        #         existing_jobs += len(f.readlines())
-        # if existing_jobs>0:
-        #     INFO(f"We already have {existing_jobs} jobs waiting for submission.")
-
-        ## Instead, matching has limited the number of jobs to max_jobs 
-        ## Here, we further make sure we don't exceed the number of already queued jobs
-        ## This used to be (planned) in execute_condorsubmission.py but doing it here prevents unnecessary file creation
-        max_queued_jobs=rule.job_config.max_queued_jobs
+        # Track queued jobs across all chunks
+        max_queued_jobs = rule.job_config.max_queued_jobs
         DEBUG(f"Maximum allowed queued jobs: {max_queued_jobs}")
-
+        
+        # Get initial queue status once before processing chunks
         currently_queued_jobs = get_queued_jobs(rule)
+        DEBUG(f"Currently queued jobs at start: {currently_queued_jobs}")
 
-        DEBUG(f"Currently queued jobs: {currently_queued_jobs}")
-        for submit_run in submittable_runs:
-            if currently_queued_jobs>max_queued_jobs:
-                WARN(f"Reached maximum of {max_queued_jobs} queued, held, or running jobs, stopping here.")
-                break
+        # Process each chunk
+        for chunk_idx, run_chunk in enumerate(run_chunks, 1):
+            INFO(f"===== Processing chunk {chunk_idx}/{len(run_chunks)} with {len(run_chunk)} runs =====")
+            
+            # Match for this chunk of runs
+            rule_matches = match_config.devmatches(subset_runlist=run_chunk)
+            INFO(f"Chunk {chunk_idx}: Matching complete. {len(rule_matches)} jobs to be submitted.")
+            
+            if len(rule_matches) == 0:
+                INFO(f"Chunk {chunk_idx}: No jobs to submit, moving to next chunk")
+                continue
 
-            ### Make the decision here whether to skip this run
-            ### This will be recorded in the prod db, so subsequent calls
-            ### will continue to skip the same runs unless and until their rows are deleted.
-            # keep_this_run=True
-            # random.seed()
-            # if rule.input_config.choose20:
-            #         if random.uniform(0,1) > 0.21: # Nudge a bit above 20. Tests indicated we land significantly lower otherwise
-            #         DEBUG(f"Run {submit_run} will be skipped.")
-            #         keep_this_run=False
-            #     else:
-            #         DEBUG(f"Producing run {submit_run}")
+            ## Instead of same-size chunks, group submission files by runnumber
+            matchlist=list(rule_matches.items())
+            ## Brittle! Assumes value[key][3] == runnumber
+            def keyfunc(item):
+                return item[1][3]  # x[0] is outfilename, x[1] is tuple, 4th field is runnumber
+            matchlist=sorted(matchlist, key=keyfunc)
+            matches_by_run = {k : list(g) for k, g in itertools.groupby(matchlist,key=keyfunc)}
+            submittable_runs=list(matches_by_run.keys())
+            # Newest first
+            submittable_runs=sorted(submittable_runs, reverse=True)
 
-            matches=matches_by_run[submit_run]
-            INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
-            currently_queued_jobs += len(matches)
-            INFO(f"Total jobs waiting for submission: {currently_queued_jobs}")
+            INFO(f"Chunk {chunk_idx}: Creating submission for {len(submittable_runs)} runs")
 
-            condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
-            condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
-            if not args.dryrun: # Note: Deletion of skipped submission files is handled in execute_condorsubmission.py
-                # (Re-) create the "header" - common job parameters
-                Path(condor_subfile).unlink(missing_ok=True)
-                with open(condor_subfile, "w") as f:
-                    f.write(str(base_job))
-                    f.write(
-    f"""
-    log = $(log)
-    output = $(output)
-    error = $(error)
-    arguments = $(arguments)
-    queue log,output,error,arguments from {condor_infile}
-    """)
+            ### Limit number of job files lying around
+            ##### CHANGE Dec 16 2025: This should no longer be needed, as we check max_jobs in sphenixmatching.py
+            # max_jobs=rule.job_config.max_jobs
+            # # Count up what we already have
+                # existing_jobs=0
+            # sub_files=locate_submitfiles(rule,args)
+            # for sub_file in sub_files:
+            #     in_file=re.sub(r".sub$",".in",str(sub_file))
+            #     if not Path(in_file).is_file():
+            #         continue
+            #     with open(in_file,'r') as f:
+            #         existing_jobs += len(f.readlines())
+            # if existing_jobs>0:
+            #     INFO(f"We already have {existing_jobs} jobs waiting for submission.")
 
-            # individual lines per job
-            prod_state_rows=[]
-            condor_rows=[]
-            for out_file,(in_files, outbase, logbase, run, seg, daqhost, dsttype) in matches:
-                # Create .in file row
-                condor_job = CondorJob.make_job( output_file=out_file,
-                                                 inputs=in_files,
-                                                 outbase=outbase,
-                                                 logbase=logbase,
-                                                 leafdir=dsttype,
-                                                 run=run,
-                                                 seg=seg,
-                                                 daqhost=daqhost,
-                                                )
-                condor_rows.append(condor_job.condor_row())
+            ## Instead, matching has limited the number of jobs to max_jobs 
+            ## Here, we further make sure we don't exceed the number of already queued jobs
+            ## Note: currently_queued_jobs is tracked across all chunks to avoid exceeding max_queued_jobs
+            
+            DEBUG(f"Currently queued/pending jobs (including previous chunks): {currently_queued_jobs}")
+            for submit_run in submittable_runs:
+                if currently_queued_jobs>max_queued_jobs:
+                    WARN(f"Reached maximum of {max_queued_jobs} queued, held, or running jobs, stopping here.")
+                    break
 
-                # Make sure directories exist
+                ### Make the decision here whether to skip this run
+                ### This will be recorded in the prod db, so subsequent calls
+                ### will continue to skip the same runs unless and until their rows are deleted.
+                # keep_this_run=True
+                # random.seed()
+                # if rule.input_config.choose20:
+                #         if random.uniform(0,1) > 0.21: # Nudge a bit above 20. Tests indicated we land significantly lower otherwise
+                #         DEBUG(f"Run {submit_run} will be skipped.")
+                #         keep_this_run=False
+                #     else:
+                #         DEBUG(f"Producing run {submit_run}")
+
+                matches=matches_by_run[submit_run]
+                INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
+                currently_queued_jobs += len(matches)
+                INFO(f"Total jobs waiting for submission: {currently_queued_jobs}")
+
+                condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
+                condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
+                if not args.dryrun: # Note: Deletion of skipped submission files is handled in execute_condorsubmission.py
+                    # (Re-) create the "header" - common job parameters
+                    Path(condor_subfile).unlink(missing_ok=True)
+                    with open(condor_subfile, "w") as f:
+                        f.write(str(base_job))
+                        f.write(
+        f"""
+        log = $(log)
+        output = $(output)
+        error = $(error)
+        arguments = $(arguments)
+        queue log,output,error,arguments from {condor_infile}
+        """)
+
+                # individual lines per job
+                prod_state_rows=[]
+                condor_rows=[]
+                for out_file,(in_files, outbase, logbase, run, seg, daqhost, dsttype) in matches:
+                    # Create .in file row
+                    condor_job = CondorJob.make_job( output_file=out_file,
+                                                     inputs=in_files,
+                                                     outbase=outbase,
+                                                     logbase=logbase,
+                                                     leafdir=dsttype,
+                                                     run=run,
+                                                     seg=seg,
+                                                     daqhost=daqhost,
+                                                    )
+                    condor_rows.append(condor_job.condor_row())
+
+                    # Make sure directories exist
+                    if not args.dryrun : #  and keep_this_run:
+                        Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
+                        Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
+
+                        # stdout, stderr, and condorlog locations, usually on sphenix02:
+                        for file_in_dir in condor_job.output, condor_job.error, condor_job.log :
+                            Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
+
+                    # Add to production database
+                    dsttype=logbase.split(f'_{rule.dataset}')[0]
+                    dstfile=out_file # this is much more robust and correct
+                    # Following is fragile, don't add spaces
+                    prodstate='submitting'
+                    # if not keep_this_run:
+                    #     prodstate='skipped'
+
+                    prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
+                        dsttype=dsttype,
+                        dstname=outbase,
+                        dstfile=dstfile,
+                        run=run, segment=seg,
+                        nsegments=0, # CHECKME
+                        inputs='dbquery',
+                        prod_id=0, # CHECKME
+                        cluster=0, process=0,
+                        status=prodstate,
+                        timestamp=str(datetime.now().replace(microsecond=0)),
+                        host=os.uname().nodename.split('.')[0]
+                    ))
+                    # end of collecting job lines for this run
+
+                comma_prod_state_rows=',\n'.join(prod_state_rows)
+                insert_prod_state = f"""
+        insert into production_status
+        ( dsttype, dstname, dstfile, run, segment, nsegments, inputs, prod_id, cluster, process, status, submitting, submission_host )
+        values
+        {comma_prod_state_rows}
+        returning id
+        """
+                # Commit "submitting" or "skipped" to db
+                if not args.dryrun:
+                    # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
+                    prod_curs = dbQuery( cnxn_string_map['statw'], insert_prod_state )
+                    prod_curs.commit()
+                    ids=[str(id) for (id,) in prod_curs.fetchall()]
+                    CHATTY(f"Inserted {len(ids)} rows into production_status, IDs: {ids}")
+                    condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
+
+                # Write or update job line file
                 if not args.dryrun : #  and keep_this_run:
-                    Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
-                    Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
+                    with open(condor_infile, "a") as f:
+                        f.writelines(row+'\n' for row in condor_rows)
 
-                    # stdout, stderr, and condorlog locations, usually on sphenix02:
-                    for file_in_dir in condor_job.output, condor_job.error, condor_job.log :
-                        Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
+            # After processing this chunk, optionally submit if --andgo is specified
+            if args.andgo:
+                INFO(f"Chunk {chunk_idx}: Submitting jobs to condor")
+                execute_submission(rule, args, True)
+                # Refresh the queue count after submission since jobs are now in the queue
+                currently_queued_jobs = get_queued_jobs(rule)
+                DEBUG(f"After submission, currently queued jobs: {currently_queued_jobs}")
+            
+            INFO(f"===== Completed chunk {chunk_idx}/{len(run_chunks)} =====")
 
-                # Add to production database
-                dsttype=logbase.split(f'_{rule.dataset}')[0]
-                dstfile=out_file # this is much more robust and correct
-                # Following is fragile, don't add spaces
-                prodstate='submitting'
-                # if not keep_this_run:
-                #     prodstate='skipped'
-
-                prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
-                    dsttype=dsttype,
-                    dstname=outbase,
-                    dstfile=dstfile,
-                    run=run, segment=seg,
-                    nsegments=0, # CHECKME
-                    inputs='dbquery',
-                    prod_id=0, # CHECKME
-                    cluster=0, process=0,
-                    status=prodstate,
-                    timestamp=str(datetime.now().replace(microsecond=0)),
-                    host=os.uname().nodename.split('.')[0]
-                ))
-                # end of collecting job lines for this run
-
-            comma_prod_state_rows=',\n'.join(prod_state_rows)
-            insert_prod_state = f"""
-    insert into production_status
-    ( dsttype, dstname, dstfile, run, segment, nsegments, inputs, prod_id, cluster, process, status, submitting, submission_host )
-    values
-    {comma_prod_state_rows}
-    returning id
-    """
-            # Commit "submitting" or "skipped" to db
-            if not args.dryrun:
-                # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
-                prod_curs = dbQuery( cnxn_string_map['statw'], insert_prod_state )
-                prod_curs.commit()
-                ids=[str(id) for (id,) in prod_curs.fetchall()]
-                CHATTY(f"Inserted {len(ids)} rows into production_status, IDs: {ids}")
-                condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
-
-            # Write or update job line file
-            if not args.dryrun : #  and keep_this_run:
-                with open(condor_infile, "a") as f:
-                    f.writelines(row+'\n' for row in condor_rows)
-
-        ### And submit, if so desired
-        if args.andgo:
-            execute_submission(rule, args, True)
 
         if args.profile:
             profiler.disable()
