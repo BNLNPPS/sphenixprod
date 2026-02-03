@@ -148,7 +148,7 @@ order by runnumber
 
     # ------------------------------------------------
     def get_files_in_db(self, runnumbers: Any) :
-
+        ## Note: Not all constraints are needed, but they may speed up the query
         exist_query  = f"""select filename from datasets
         where tag='{self.outtriplet}'
         and dataset='{self.dataset}'
@@ -266,14 +266,12 @@ order by runnumber
 
         return files_for_run
 
-
-
     # ------------------------------------------------
     def get_prod_status(self, runnumbers):
         ### Check production status
         INFO(f'Checking for output already in production for {runnumbers}')
-        status_query  = f"""select dstfile,status from production_status
-        where dstname like '%{self.dst_type_template}%{self.outtriplet}%'"""
+        status_query  = f"""select dstfile,status from production_status        
+        where dstname like '{self.dst_type_template}%{self.outtriplet}'"""
 
         run_condition=list_to_condition(runnumbers)
         if run_condition!="" :
@@ -493,25 +491,11 @@ order by runnumber
 
         ### Runnumber is the prime differentiator
         INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
-        for runnumber in reversed(goodruns):
+        for runnumber in sorted(goodruns, reverse=True):
             CHATTY(f"Currently to be created: {len(rule_matches)} output files.")
             if len(rule_matches) > self.job_config.max_jobs:
                 INFO(f"Number jobs is {len(rule_matches)}; exceeds max_jobs = {self.job_config.max_jobs}. Return.")
                 break
-
-            # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
-            ## Note: Not all constraints are needed, but they may speed up the query
-            existing_output=self.get_files_in_db(runnumber)
-            if existing_output==[]:
-                DEBUG(f"No output files yet for run {runnumber}")
-            else:
-                DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")
-
-            existing_status=self.get_prod_status(runnumber)
-            if existing_status=={}:
-                DEBUG(f"No output files yet in the production db for run {runnumber}")
-            else:   
-                DEBUG(f"Already have {len(existing_status)} output files in the production db")
 
             # Potential input files for this run
             run_query = infile_query + f"\n\t and runnumber={runnumber} "
@@ -523,6 +507,19 @@ order by runnumber
                 DEBUG(f"No input files found for run {runnumber}. Skipping run.")
                 continue
             DEBUG(f"Found {len(candidates)} input files for run {runnumber}.")
+
+            # Files to be created are checked against this list. Could use various attributes but most straightforward is just the filename
+            existing_output=self.get_files_in_db(runnumber)
+            if existing_output==[]:
+                DEBUG(f"No output files yet for run {runnumber}")
+            else:
+                DEBUG(f"Already have {len(existing_output)} output files for run {runnumber}")
+
+            existing_status=self.get_prod_status(runnumber)
+            if existing_status=={}:
+                DEBUG(f"No output files yet in the production db for run {runnumber}")
+            else:   
+                DEBUG(f"Already have {len(existing_status)} output files in the production db")
 
             ### Simplest case, 1-to-1:For every segment, there is exactly one output file, and exactly one input file from the previous step
             # If the output doesn't exist yet, use input files to create the job
