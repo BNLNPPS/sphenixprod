@@ -349,9 +349,9 @@ order by runnumber
         ## For a given host, all segments must be present
         daqhosts_for_combining = {}
         for r, hosts in run_segs.items():
-            WARN(f"Produced segments for run {r}: {hosts}")
+            CHATTY(f"Produced segments for run {r}: {hosts}")
             if r in lustre_segs:
-                WARN(f"Available on lustre for run {r}: {lustre_segs[r]}")
+                CHATTY(f"Available on lustre for run {r}: {lustre_segs[r]}")
                 for h, s in hosts.items():
                     if h in lustre_segs[r]:
                         if s == lustre_segs[r][h]:
@@ -379,7 +379,7 @@ order by runnumber
                 return {}
             INFO(f"{len(daqhosts_for_combining)} runs satisfy the segment availability criteria.")
             
-            for runnumber in daqhosts_for_combining:
+            for runnumber in sorted(daqhosts_for_combining, reverse=True):
                 CHATTY(f"Currently to be created: {len(rule_matches)} output files.")
                 if len(rule_matches) > self.job_config.max_jobs:
                     INFO(f"Number jobs is {len(rule_matches)}; exceeds max_jobs = {self.job_config.max_jobs}. Return.")

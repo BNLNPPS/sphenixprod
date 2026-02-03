@@ -401,14 +401,14 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
     if length==0:
         return ""
 
-    if length>100000:
-        ERROR(f"List has {length} entries. Not a good idea. Bailing out.")
+    if length>20000:
+        ERROR(f"Run list has {length} entries. Not a good idea. Bailing out.")
         exit(-1)
 
     if length==1:
         return f"{name}={lst[0]}"
 
-    sorted_lst=sorted(lst)
+    sorted_lst=sorted(lst, reverse=True)
     if (sorted_lst != lst):
         WARN("Original list isn't sorted, that shouldn't happen. Proceeding anyway.")
 
