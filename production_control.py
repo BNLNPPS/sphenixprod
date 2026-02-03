@@ -141,6 +141,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
                              "jobmem", "jobprio",
                              "force", "force_delete",
                              "cut_segment",
+                             "chunk-size",
                              ])
     ### Local file location changes?
     prodbase=rule_data.get("prodbase",defaultlocations["prodbase"])
@@ -193,6 +194,8 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     cut_segment=rule_data.get("cut_segment", None)
     if cut_segment:
         ruleargs += f" --cut-segment {cut_segment}"
+    chunk_size=rule_data.get("chunk-size", 100)
+    ruleargs += f" --chunk-size {chunk_size}"
 
     ### Force options
     force=rule_data.get("force", False)

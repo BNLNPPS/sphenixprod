@@ -408,17 +408,14 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
     if length==1:
         return f"{name}={lst[0]}"
 
-    sorted_lst=sorted(lst, reverse=True)
-    if (sorted_lst != lst):
-        WARN("Original list isn't sorted, that shouldn't happen. Proceeding anyway.")
-
-    # range or list with gaps?
-    if list(range(min(lst),max(lst)+1)) == sorted_lst:
+    # range?
+    if length==2:
+        lst=sorted(lst) # fix user error
         return f"{name}>={lst[0]} and {name}<={lst[-1]}"
 
+    # --> list, possibly with gaps
     strlist=map(str,lst)
     return f"{name} in  ( {','.join(strlist)} )"
-
 
 def main():
     args = get_parser()
