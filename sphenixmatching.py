@@ -279,8 +279,8 @@ order by runnumber
          {run_condition} 
          and dstname like '{self.dst_type_template}%{self.outtriplet}' {self.input_config.status_query_constraints}
         order by run desc;"""
-        now=datetime.now()
-        
+
+        now=datetime.now()        
         existing_status = { c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
         INFO(f'Query took {(datetime.now() - now).total_seconds():.2f} seconds.')
         return existing_status
@@ -449,6 +449,14 @@ order by runnumber
         ####################################################################################
         # TODO: Support rule.printquery
 
+        # Return early if there are no viable runs
+        goodruns=self.good_runlist(subset_runlist)
+        if goodruns==[]:
+            INFO( "No runs pass run quality cuts.")
+            return {}
+        DEBUG(f"{len(goodruns)} runs pass run quality cuts.")
+        CHATTY(f"Runlist: {goodruns}")
+
         # Manipulate the input types to match the database
         in_types=self.in_types # local copy, member is frozen
         
@@ -472,13 +480,6 @@ order by runnumber
         rule_matches = {}
 
         ### Runnumber is the prime differentiator
-        goodruns=self.good_runlist(subset_runlist)
-        if goodruns==[]:
-            INFO( "No runs pass run quality cuts.")
-            return {}
-        DEBUG(f"{len(goodruns)} runs pass run quality cuts.")
-        CHATTY(f"Runlist: {goodruns}")
-
         INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         for runnumber in sorted(goodruns, reverse=True):
             CHATTY(f"Currently to be created: {len(rule_matches)} output files.")
@@ -488,7 +489,9 @@ order by runnumber
 
             # Potential input files for this run
             run_query = infile_query + f"\n\t and runnumber={runnumber} "
+            qnow=datetime.now()
             db_result = dbQuery( cnxn_string_map[ self.input_config.db ], run_query ).fetchall()
+            INFO(f'Infile query took {(datetime.now() - qnow).total_seconds():.2f} seconds.')
             candidates = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
             CHATTY(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
             if len(candidates) == 0 :
