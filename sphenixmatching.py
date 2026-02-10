@@ -580,6 +580,30 @@ order by runnumber
             CHATTY(f"{available_seb}")
             ### Here we could enforce both mandatory and masked hosts
 
+            # Calo hardcoding
+            minSEB=20
+            if 'CALOFITTING' in self.dsttype:
+                # 1. How many SEB hosts are turned on in this run according to the daq db?
+                if len(available_seb) < minSEB and not self.physicsmode=='cosmics':
+                    WARN(f"Skip run {runnumber}. Only {len(available_seb)} SEB hosts turned on in the run.")
+                    continue
+                
+                # 2. How many are SEB host files have been produced and are currently available in this run.
+                present_seb_files=set()
+                for host in files_for_run:
+                    for available in available_seb:
+                        if available in host:
+                            present_seb_files.add(host)
+                            continue
+                if len(present_seb_files) < minSEB and not self.physicsmode=='cosmics':
+                    WARN(f"Skip run {runnumber}. Only {len(present_seb_files)} SEB detectors actually in the run.")
+                    missing_hosts = [host for host in available_seb if not any(host in present for present in present_seb_files)]
+                    if missing_hosts:
+                        CHATTY(f"Missing SEB hosts: {missing_hosts}")
+                    continue
+                DEBUG (f"Found {len(present_seb_files)} SEB files in the catalog")
+
+
             # TPC hardcoding
             if 'TRKR_CLUSTER' in self.dsttype:
                 # 1. require at least N=30 out of the 48 ebdc_[0-24]_[01] to be turned on in the run
