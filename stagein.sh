@@ -17,8 +17,6 @@ if [ "$#" -eq 4 ] ; then
     md5=${2}
     size=${3}
     filesystem=${4}
-    # echo "Expected md5: ${md5}"
-    # echo "Expected size: ${size}"
     # [ "${filesystem}" != "sphenix" ] && [ "${filesystem}" != "gpfs" ] && 
     if [ "${filesystem}" != "lustre" ] ; then
         echo "Unsupported filesystem ${filesystem} (expect lustre). Abort."
