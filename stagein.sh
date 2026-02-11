@@ -60,20 +60,25 @@ for i in `seq 1 $maxtries`; do
         fi
     else
         # No size check requested, assume success
+        echo "No size check requested, assume success"
         break
     fi
-
-    # # Check md5sum:
-    # actual_md5=`/usr/bin/env md5sum ${filename} | cut -d \' \' -f 1`
-    # if [ "${md5}" != "-1" ] ; then
-    #     if [ "${actual_md5}" != "${md5}" ] ; then
-    #         echo "Calculated md5: ${actual_md5}"
-    #         echo "Expected md5: ${md5}"
-    #         echo "md5sum mismatch! Abort."
-    #         exit 1
-    #     fi
-    # fi
-
 done
+# Once the size is okay, md5sum has to be too, otherwise the problem is more profound than transfer issues.
+
+# Check md5sum:
+actual_md5=`/usr/bin/env md5sum ${filename} | cut -d ' ' -f 1`
+
+if [ "${md5}" != "-1" ] ; then
+    if [ "${actual_md5}" != "${md5}" ] ; then
+        echo "Calculated md5: ${actual_md5}"
+        echo "Expected md5  : ${md5}"
+        echo "md5sum mismatch! Abort."
+        exit 1
+    fi
+    echo "Md5sum check passed."
+else 
+    echo "No md5sum check requested, assume success"
+fi
 
 exit 0
