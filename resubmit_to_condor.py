@@ -76,7 +76,8 @@ def main():
             new_rm=int(args.memory)
         else:
             new_rm=int(rm)
-            new_rm=int(new_rm * 1.5)  # Increase request by 50%
+            new_rm=int(new_rm * args.memory_scale_factor)
+
             if new_rm > args.max_memory:
                 WARN(f"Calculated new memory request {new_rm}MB exceeds maximum of {args.max_memory}MB. Skipping.")
                 #kill_suggestion.append(f"{job_ad['ClusterId']}.{job_ad['ProcId']}")
