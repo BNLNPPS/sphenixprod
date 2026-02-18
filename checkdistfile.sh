@@ -4,11 +4,15 @@ if [ "$#" -ne 1 ] && [ "$#" -ne 4 ] ; then
     echo "Unsupported call:"
     echo $0 $@
     echo Abort.
-    exit 0
+    exit 10
 fi
 
 distfilename=${1}
 echo "Checking health of file ${distfilename}"
+if [ "$#" -eq 1 ] ; then
+    echo "No md5 or size check requested, assume success"
+    exit 0
+fi
 
 md5=-1
 size=-1
