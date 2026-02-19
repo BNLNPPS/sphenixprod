@@ -307,7 +307,7 @@ order by runnumber
             # Which hosts have a segment 0 in the file catalog?
             lustre_query =   "select runnumber,daqhost from datasets"
             lustre_query += f" WHERE {run_condition}"
-            lustre_query += f" AND segment=0 AND status::int > 0;"
+            lustre_query += f" AND segment=0 AND status::int > 0"
             lustre_query += f" AND daqhost in {tuple(self.in_types)}"
             lustre_result = dbQuery( cnxn_string_map[ self.input_config.db ], lustre_query ).fetchall()
             daqhosts_for_combining = {}
