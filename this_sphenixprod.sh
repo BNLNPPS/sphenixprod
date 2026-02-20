@@ -29,7 +29,7 @@ parse_git_branch() {
 
     local branch_color_status="\e[31m" # red is dangerous
     if [[ "$branch" == "main" ]] ; then
-        branch_color_status="\e[32m" # green is safe
+        branch_color_status="\e[42m" # Blue is safe (green (31) is ugly)
     fi
 
     # bold font if there are uncommitted changes
@@ -38,15 +38,7 @@ parse_git_branch() {
     else
         branch_color_status="$branch_color_status\e[1m"
     fi
-
-    # # decide color based on whether we're in main, and whether there are uncommited changes
-    # local branch_color_status="\e[31m" # red is dangerous
-
-
-    # if [ -z "$(git -C ${SCRIPT_DIR} status --porcelain -uno)" ]; then
-    #    branch_color_status="\e[32m" # green is good
-    # fi
-
+    gitstatus="${branch_color_status} git:${branch}\e[0m"
 
 #    pbranch=""
 #    pstatus=""
@@ -61,14 +53,14 @@ parse_git_branch() {
 #       pstatus="\e[31m"
 #   fi
 
-    gitstatus="${branch_color_status} git:${branch}\e[0m"
     # if [ -n "$pbranch" ]; then
     #     #status="${status} \e[0;33mprodflow:${pbranch}\e[0m"
     #     # gitstatus="${gitstatus} ${pstatus} prodflow:${pbranch}"
     #     gitstatus="${gitstatus} ${pstatus}"
     # fi
-    echo -e "${gitstatus}\e[0m"
+
     #echo -e "\[${branch_color_status}\]prod:${branch}\[\e[0m\] \[${pstatus}\]prodflow:${pbranch}\[\e[0m\]"
+    echo -e "${gitstatus}\e[0m"
 }
 #Could also use PROMPT_COMMAND=parse_git_branch
 #PS1="\u@\h $(parse_git_branch) \W> "
