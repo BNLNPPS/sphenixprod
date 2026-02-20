@@ -29,7 +29,7 @@ parse_git_branch() {
 
     local branch_color_status="\e[31m" # red is dangerous
     if [[ "$branch" == "main" ]] ; then
-        branch_color_status="\e[42m" # Blue is safe (green (31) is ugly)
+        branch_color_status="\e[34m" # Blue is safe (green (31) is ugly)
     fi
 
     # bold font if there are uncommitted changes
