@@ -38,28 +38,8 @@ parse_git_branch() {
     else
         branch_color_status="$branch_color_status\e[1m"
     fi
+    
     gitstatus="${branch_color_status} git:${branch}\e[0m"
-
-#    pbranch=""
-#    pstatus=""
-#    if [ -e ProdFlow ]; then
-#       pbranch=$( git -C ./ProdFlow rev-parse --abbrev-ref HEAD  2> /dev/null )
-#       pstatus="\e[31m"
-#       if [ -z "$(git -C ./ProdFlow status --porcelain -uno)" ]; then
-#          pstatus="\e[32m"
-#       fi
-#    else
-#       pbranch=""
-#       pstatus="\e[31m"
-#   fi
-
-    # if [ -n "$pbranch" ]; then
-    #     #status="${status} \e[0;33mprodflow:${pbranch}\e[0m"
-    #     # gitstatus="${gitstatus} ${pstatus} prodflow:${pbranch}"
-    #     gitstatus="${gitstatus} ${pstatus}"
-    # fi
-
-    #echo -e "\[${branch_color_status}\]prod:${branch}\[\e[0m\] \[${pstatus}\]prodflow:${pbranch}\[\e[0m\]"
     echo -e "${gitstatus}\e[0m"
 }
 #Could also use PROMPT_COMMAND=parse_git_branch
