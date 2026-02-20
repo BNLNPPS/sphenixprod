@@ -1,5 +1,5 @@
-if ! echo "$SHELL" | grep -q "bash"; then
-   echo "This script must be run in bash"
+if [ -z "$BASH_VERSION" ]; then
+   echo "This script must be sourced in bash"
    return 1
 fi
 
@@ -105,4 +105,3 @@ if [[ `ssh-add -l` =~ "eickolja" ]] ; then
     bind '"\e[B": history-search-forward'
 
 fi
-
