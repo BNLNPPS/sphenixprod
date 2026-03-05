@@ -37,7 +37,8 @@ CondorJobConfig_fields = [
 
     # --- Job Lifecycle and Policy ---
     ('requirements',           str,            field(default=None)),
-    ('periodichold',           str,            field(default="(NumJobStarts>=1 && JobStatus == 1)")),
+    # ('periodichold',           str,            field(default="(NumJobStarts>=1 && JobStatus == 1)")),
+    ('periodichold',           str,            field(default="(NumJobStarts>=1 && JobStatus == 1 && !(ON_EVICT_CHECK_RequestMemory_REQUIREMENTS))")),
     ('periodicremove',         str,            field(default=None)),
     ('on_exit_hold',           str,            field(default=None)),
     ('on_exit_remove',         str,            field(default=None)),
