@@ -103,7 +103,7 @@ def main():
 
     ### Use or create a list file containing all the existing files to work on.
     ### This reduces memory footprint and repeated slow `find` commands for large amounts of files
-    dstlistname=filesystem['logdir']
+    dstlistname=filesystem['histdir']
     dstlistname=dstlistname.split("{")[0]
     while dstlistname.endswith("/"):
         dstlistname=dstlistname[0:-1]
