@@ -61,8 +61,8 @@ CondorJobConfig_fields = [
     ('arguments_tmpl',         str,            field(default=None)),
     ('log_tmpl',               str,            field(default=None)),
     ('rungroup_tmpl',          str,            field(default="run_{a:08d}_{b:08d}")),
-    ('max_jobs',               int,            field(default=None)),
-    ('max_queued_jobs',        int,            field(default=None)),
+    ('max_jobs',               int,            field(default=0)),
+    ('max_queued_jobs',        int,            field(default=0)),
 ]
 CondorJobConfig_fieldnames= { f[0] for f in CondorJobConfig_fields }
 

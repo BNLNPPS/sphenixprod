@@ -484,12 +484,11 @@ class RuleConfig:
         if param_overrides.get("request_memory",None):
             condor_job_dict["request_memory"]=param_overrides["request_memory"]
 
-        if param_overrides.get("max_jobs",None):
-            condor_job_dict["max_jobs"]=param_overrides["max_jobs"]
+        condor_job_dict["max_jobs"]=param_overrides.get("max_jobs",0)
 
-        if param_overrides.get("max_queued_jobs",None):
+        if param_overrides.get("max_queued_jobs",0):
             condor_job_dict["max_queued_jobs"]=param_overrides["max_queued_jobs"]
-            if condor_job_dict["max_jobs"] is None:
+            if condor_job_dict["max_jobs"] ==0:
                 condor_job_dict["max_jobs"]=condor_job_dict["max_queued_jobs"]
             if condor_job_dict["max_jobs"] > condor_job_dict["max_queued_jobs"]:
                 WARN("max_jobs exceeds max_queued_jobs. Adjusting max_jobs to match max_queued_jobs.")

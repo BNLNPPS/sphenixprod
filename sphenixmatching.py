@@ -382,7 +382,7 @@ order by runnumber
             
             for runnumber in sorted(daqhosts_for_combining, reverse=True):
                 CHATTY(f"Currently to be created: {len(rule_matches)} output files.")
-                if len(rule_matches) > self.job_config.max_jobs:
+                if self.job_config.max_jobs>0 and len(rule_matches) > self.job_config.max_jobs:
                     INFO(f"Number jobs is {len(rule_matches)}; exceeds max_jobs = {self.job_config.max_jobs}. Return.")
                     break
 
@@ -483,7 +483,7 @@ order by runnumber
         INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         for runnumber in sorted(goodruns, reverse=True):
             CHATTY(f"Currently to be created: {len(rule_matches)} output files.")
-            if len(rule_matches) > self.job_config.max_jobs:
+            if self.job_config.max_jobs>0 and len(rule_matches) > self.job_config.max_jobs:
                 INFO(f"Number jobs is {len(rule_matches)}; exceeds max_jobs = {self.job_config.max_jobs}. Return.")
                 break
 
