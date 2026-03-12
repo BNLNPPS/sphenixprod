@@ -357,12 +357,13 @@ class RuleConfig:
         DEBUG(f'List of payload items is {payload_list}')
 
         # Filesystem paths
-        filesystem = job_data.get("filesystem",None)
-        if filesystem:
-            WARN("Using custom filesystem paths from YAML file")
+        filesystem = _default_filesystem.copy()
+        custom_fs = job_data.get("filesystem",None)
+        if custom_fs:
+            INFO("Updating default filesystem paths with custom paths from YAML file")
+            filesystem.update(custom_fs)
         else:
             INFO("Using default filesystem paths")
-            filesystem = _default_filesystem
 
         # Partially substitute placeholders.
         for key in filesystem:
