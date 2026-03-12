@@ -599,7 +599,7 @@ order by runnumber
                     WARN(f"Skip run {runnumber}. Only {len(present_seb_files)} SEB detectors actually in the run.")
                     missing_hosts = [host for host in available_seb if not any(host in present for present in present_seb_files)]
                     if missing_hosts:
-                        CHATTY(f"Missing SEB hosts: {missing_hosts}")
+                        WARN(f"Missing SEB hosts: {missing_hosts}")
                     continue
                 DEBUG (f"Found {len(present_seb_files)} SEB files in the catalog")
 
