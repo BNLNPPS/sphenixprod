@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os
 import sys
 from datetime import datetime
 import yaml
@@ -170,9 +171,6 @@ def main():
     else: # Original behavior: single plot for all runs, now for each time unit
         run_condition = list_to_condition(rule.runlist_int, name="run")
         time_diffs_seconds = get_time_diffs(run_condition, rule.dsttype)
-
-        if len(rule.runlist_int) > 2:
-            run_str = f"Runs in [{rule.runlist_int[0]},...,{rule.runlist_int[-1]}]"
         if time_diffs_seconds is None:
             sys.exit(1) # Error occurred in get_time_diffs
         if not time_diffs_seconds:
@@ -180,6 +178,12 @@ def main():
             sys.exit(0)
 
         run_str = f"Run(s): {rule.runlist_int}"
+        # if len(rule.runlist_int) > 2:
+        #     run_str = f"Runs $\in$ [{min(rule.runlist_int)},...,{max(rule.runlist_int)}]"
+        if rule.runlist is not None:
+            #run_str = f"Runs from file: {rule.runlist}"
+            run_str = f"Runs from file: {os.path.basename(rule.runlist)}"
+
         base_title = f'Job Time Distribution for {args.rulename}\n{run_str}'
         
         for unit in ['hours', 'minutes', 'seconds']:

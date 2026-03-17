@@ -124,6 +124,7 @@ class RuleConfig:
     version_string: str # v000
     outtriplet: str     # new_2025p000_v000
     runlist_int: List[int] # name chosen to differentiate it from --runlist which points to a text file
+    runlist: str           # The filename of the runlist, or an empty string
 
     # Nested dataclasses
     input_config: InputConfig
@@ -183,26 +184,26 @@ class RuleConfig:
 
         ### Which runs to process?
         runs=param_overrides["runs"]
-        runlist=param_overrides["runlist"]
+        runlist_filename=param_overrides["runlist"]
         INFO(f"runs = {runs}")
-        INFO(f"runlist = {runlist}")
+        INFO(f"runlist = {runlist_filename}")
         runlist_int=None
         ## By default, run over "physics" runs in run3
         default_runmin=66456
         default_runmax=90000
-        if runlist: # white-space separated numbers from a file
-            INFO(f"Processing runs from file: {runlist}")
+        if runlist_filename: # white-space separated numbers from a file
+            INFO(f"Processing runs from file: {runlist_filename}")
             try:
-                with open(runlist, 'r') as file:
+                with open(runlist_filename, 'r') as file:
                     content = file.read()
             except FileNotFoundError:
-                ERROR(f"Error: Runlist file not found at {runlist}")
+                ERROR(f"Error: Runlist file not found at {runlist_filename}")
                 exit(-1)
             try:
                 number_strings = re.findall(r"[-+]?\d+", content)
                 runlist_int=[int(runstr) for runstr in number_strings]
             except Exception as e:
-                ERROR(f"Error: Exception parsing runlist file {runlist}: {e}")
+                ERROR(f"Error: Exception parsing runlist file {runlist_filename}: {e}")
         else: # Use "--runs". 0 for all default runs; 1, 2 numbers for a single run or a range; 3+ for an explicit list
             INFO(f"Processing runs argument: {runs}")
             if not runs:
@@ -519,6 +520,7 @@ class RuleConfig:
             version_string=version_string,
             outtriplet=outtriplet,
             runlist_int=runlist_int,
+            runlist=runlist_filename or "",
             input_config=input_config,
             job_config=job_config,
         )
