@@ -114,7 +114,7 @@ def main():
     """
     args = submission_args()
     
-    plt.rcParams.update({'font.size': 20})
+    plt.rcParams.update({'font.size': 16})
 
     sublogdir = setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
