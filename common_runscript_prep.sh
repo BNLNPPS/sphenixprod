@@ -3,6 +3,8 @@
 ## Logging details
 echo Hostname: `hostname`
 echo Working directory: $_CONDOR_SCRATCH_DIR
+echo Timestamp at start of script
+echo $(date)
 echo "Calling script is $0"
 echo "This script is ${BASH_SOURCE[0]}"
 echo "Full argument list:"
@@ -48,6 +50,7 @@ dbid=${1:--1};shift            # for prod db, -1 means no dbid (should produce a
 export PRODDB_DBID=$dbid
 
 # Variables for all run scripts
+echo "---------------------------------------------"
 echo "Processing job with the following parameters:"
 echo "---------------------------------------------"
 echo "Environment:"
