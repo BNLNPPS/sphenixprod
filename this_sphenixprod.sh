@@ -46,8 +46,6 @@ parse_git_branch() {
 #PS1="\u@\h $(parse_git_branch) \W> "
 PS1="\h:\w\$(parse_git_branch)> "
 
-# PS1="\u@\h \W> "
-
 if [[ "$-" == *i* ]]; then
    # echo "Interactive shell"
    : # nop
@@ -72,13 +70,13 @@ if [[ `ssh-add -l` =~ "eickolja" ]] ; then
     #git config --global push.default simple
     git config --global push.autoSetupRemote true
 
-    if [[ -n "$_CONDOR_SCRATCH_DIR" ]]; then
-	echo "_CONDOR_SCRATCH_DIR = $_CONDOR_SCRATCH_DIR"
-    else
-	echo "_CONDOR_SCRATCH_DIR is not defined."
-	export _CONDOR_SCRATCH_DIR=~/devkolja/condorscratch
-	echo " ... now set to $_CONDOR_SCRATCH_DIR"
-    fi
+    # if [[ -n "$_CONDOR_SCRATCH_DIR" ]]; then
+	# echo "_CONDOR_SCRATCH_DIR = $_CONDOR_SCRATCH_DIR"
+    # else
+	# echo "_CONDOR_SCRATCH_DIR is not defined."
+	# export _CONDOR_SCRATCH_DIR=~/devkolja/condorscratch
+	# echo " ... now set to $_CONDOR_SCRATCH_DIR"
+    # fi
 
     # zsh-style history search
     bind '"\e[A": history-search-backward'
