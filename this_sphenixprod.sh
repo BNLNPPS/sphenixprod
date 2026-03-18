@@ -23,28 +23,22 @@ export PATH=${PATH}:${SCRIPT_DIR}
 
 echo Using $(python --version)
 
-parse_git_branch() {
+set_bash_prompt() {
     #branch name
-    branch=$( git -C ${SCRIPT_DIR} rev-parse --abbrev-ref HEAD  2> /dev/null )
+    local branch=$( git -C ${SCRIPT_DIR} rev-parse --abbrev-ref HEAD  2> /dev/null )
 
-    local branch_color_status="\e[31m" # red is dangerous
+    local branch_color_status="\[\e[31m\]" # red is dangerous
     if [[ "$branch" == "main" ]] ; then
-        branch_color_status="\e[34m" # Blue is safe (green (31) is ugly)
+        branch_color_status="\[\e[34m\]" # Blue is safe (green (31) is ugly)
     fi
 
     # bold font if there are uncommitted changes
-    if [ -z "$(git -C ${SCRIPT_DIR} status --porcelain -uno)" ]; then
-        : # nop
-    else
-        branch_color_status="$branch_color_status\e[1m"
+    if [ -n "$(git -C ${SCRIPT_DIR} status --porcelain -uno)" ]; then
+        branch_color_status="${branch_color_status}\[\e[1m\]"
     fi
-    
-    gitstatus="${branch_color_status} git:${branch}\e[0m"
-    echo -e "${gitstatus}\e[0m"
+    PS1="\h:\w${branch_color_status} git:${branch}\[\e[0m\]> "
 }
-#Could also use PROMPT_COMMAND=parse_git_branch
-#PS1="\u@\h $(parse_git_branch) \W> "
-PS1="\h:\w\$(parse_git_branch)> "
+PROMPT_COMMAND=set_bash_prompt
 
 if [[ "$-" == *i* ]]; then
    # echo "Interactive shell"
