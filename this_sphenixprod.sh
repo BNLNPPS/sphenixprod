@@ -1,5 +1,5 @@
-if ! echo "$SHELL" | grep -q "bash"; then
-   echo "This script must be run in bash"
+if [ -z "$BASH_VERSION" ]; then
+   echo "This script must be sourced in bash"
    return 1
 fi
 
@@ -18,47 +18,33 @@ source /opt/sphenix/core/bin/sphenix_setup.sh -n new
 export PATH=${PATH}:${HOME}/bin:./bin
 export ODBCINI=./.odbc.ini
 
-# if [[ $OS =~ "Alma" ]]; then
-#    export PATH=/usr/bin:${PATH}
-#    export PYTHONPATH=/opt/sphenix/core/lib/python3.9/site-packages
-#    alias python=/usr/bin/python
-#    alias pip=/opt/sphenix/core/bin/pip3.9
-# fi
-
 export PYTHONPATH=${PYTHONPATH}:${SCRIPT_DIR}
 export PATH=${PATH}:${SCRIPT_DIR}
 
 echo Using $(python --version)
 
-# parse_git_branch() {
-#    branch=$( git -C ${SCRIPT_DIR} rev-parse --abbrev-ref HEAD  2> /dev/null )
-#    local branch_color_status="\e[31m" # red is bad
-#    if [ -z "$(git -C ${SCRIPT_DIR} status --porcelain -uno)" ]; then
-#       branch_color_status="\e[32m" # green is good
-#    fi
-#    pbranch=""
-#    pstatus=""
-#    if [ -e ProdFlow ]; then
-#       pbranch=$( git -C ./ProdFlow rev-parse --abbrev-ref HEAD  2> /dev/null )
-#       pstatus="\e[31m"
-#       if [ -z "$(git -C ./ProdFlow status --porcelain -uno)" ]; then
-#          pstatus="\e[32m"
-#       fi
-#    else
-#       pbranch=""
-#       pstatus="\e[31m"
-#   fi
+parse_git_branch() {
+    #branch name
+    branch=$( git -C ${SCRIPT_DIR} rev-parse --abbrev-ref HEAD  2> /dev/null )
 
-#    gitstatus="${branch_color_status} prod:${branch}\e[0m"
-#    if [ -n "$pbranch" ]; then
-#       #status="${status} \e[0;33mprodflow:${pbranch}\e[0m"
-#       gitstatus="${gitstatus} ${pstatus} prodflow:${pbranch}"
-#    fi
-#    echo -e "${gitstatus}\e[0m"
-#    #echo -e "\[${branch_color_status}\]prod:${branch}\[\e[0m\] \[${pstatus}\]prodflow:${pbranch}\[\e[0m\]"
-# }
-# PS1="\u@\h $(parse_git_branch) \W> "
-PS1="\u@\h \W> "
+    local branch_color_status="\e[31m" # red is dangerous
+    if [[ "$branch" == "main" ]] ; then
+        branch_color_status="\e[34m" # Blue is safe (green (31) is ugly)
+    fi
+
+    # bold font if there are uncommitted changes
+    if [ -z "$(git -C ${SCRIPT_DIR} status --porcelain -uno)" ]; then
+        : # nop
+    else
+        branch_color_status="$branch_color_status\e[1m"
+    fi
+    
+    gitstatus="${branch_color_status} git:${branch}\e[0m"
+    echo -e "${gitstatus}\e[0m"
+}
+#Could also use PROMPT_COMMAND=parse_git_branch
+#PS1="\u@\h $(parse_git_branch) \W> "
+PS1="\h:\w\$(parse_git_branch)> "
 
 if [[ "$-" == *i* ]]; then
    # echo "Interactive shell"
@@ -84,17 +70,16 @@ if [[ `ssh-add -l` =~ "eickolja" ]] ; then
     #git config --global push.default simple
     git config --global push.autoSetupRemote true
 
-    if [[ -n "$_CONDOR_SCRATCH_DIR" ]]; then
-	echo "_CONDOR_SCRATCH_DIR = $_CONDOR_SCRATCH_DIR"
-    else
-	echo "_CONDOR_SCRATCH_DIR is not defined."
-	export _CONDOR_SCRATCH_DIR=~/devkolja/condorscratch
-	echo " ... now set to $_CONDOR_SCRATCH_DIR"
-    fi
+    # if [[ -n "$_CONDOR_SCRATCH_DIR" ]]; then
+	# echo "_CONDOR_SCRATCH_DIR = $_CONDOR_SCRATCH_DIR"
+    # else
+	# echo "_CONDOR_SCRATCH_DIR is not defined."
+	# export _CONDOR_SCRATCH_DIR=~/devkolja/condorscratch
+	# echo " ... now set to $_CONDOR_SCRATCH_DIR"
+    # fi
 
     # zsh-style history search
     bind '"\e[A": history-search-backward'
     bind '"\e[B": history-search-forward'
 
 fi
-
