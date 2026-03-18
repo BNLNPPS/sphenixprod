@@ -124,8 +124,7 @@ class RuleConfig:
     version_string: str # v000
     outtriplet: str     # new_2025p000_v000
     runlist_int: List[int] # name chosen to differentiate it from --runlist which points to a text file
-    runlist: str           # The filename of the runlist, or an empty string
-
+    
     # Nested dataclasses
     input_config: InputConfig
     job_config:   Any  # CondorJobConfig created dynamically via make_dataclass
@@ -133,6 +132,7 @@ class RuleConfig:
     ### Optional fields have to be down here to allow for default values
     physicsmode: str     # cosmics, commissioning, physics (default: physics)
     dataset: str         # run3cosmics for 'DST_STREAMING_EVENT_%_run3cosmics' in run3auau root directory (default: period)
+    runlist: str = ""
 
     # ------------------------------------------------
     def dict(self) -> Dict[str, Any]:
@@ -184,7 +184,7 @@ class RuleConfig:
 
         ### Which runs to process?
         runs=param_overrides["runs"]
-        runlist_filename=param_overrides["runlist"]
+        runlist_filename=param_overrides.get("runlist")
         INFO(f"runs = {runs}")
         INFO(f"runlist = {runlist_filename}")
         runlist_int=None
