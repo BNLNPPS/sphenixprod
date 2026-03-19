@@ -19,12 +19,14 @@ BEGIN
 END$$;
 
 CREATE TABLE production_jobs (
-    job_id                SERIAL                  PRIMARY KEY,
+    id                    SERIAL                  PRIMARY KEY,
     ClusterId             BIGINT,
     ProcId                INT,
     rulename              TEXT                    NOT NULL,
     tag                   TEXT                    NOT NULL,
+    dataset               TEXT                    NOT NULL,
     dsttype               TEXT                    NOT NULL,
+    filename              TEXT,
     run                   INT                     NOT NULL,
     segment               INT,
     status                prodstate,
@@ -44,7 +46,7 @@ CREATE TABLE production_jobs (
     intriplet             TEXT,
     indsttype_str         TEXT,
     xferslots             INT,
-    request_memory        INT,
+    request_memory        INT[],
     request_disk          INT,
     request_cpus          INT,
     neventsper            INT
@@ -52,12 +54,14 @@ CREATE TABLE production_jobs (
 
 -- Add comments to the table and columns to explain their purpose.
 COMMENT ON TABLE production_jobs IS 'Table to store information about individual production jobs.';
-COMMENT ON COLUMN production_jobs.job_id IS 'Unique identifier for each job record in this table.';
+COMMENT ON COLUMN production_jobs.id IS 'Unique identifier for each job record in this table.';
 COMMENT ON COLUMN production_jobs.ClusterId IS 'The cluster ID assigned by the batch system (e.g., HTCondor).';
 COMMENT ON COLUMN production_jobs.ProcId IS 'The process ID within the cluster assigned by the batch system.';
 COMMENT ON COLUMN production_jobs.rulename IS 'The name of the production rule from the YAML configuration.';
 COMMENT ON COLUMN production_jobs.tag IS 'The output triplet (e.g., new_2025p000_v000) for the production.';
+COMMENT ON COLUMN production_jobs.dataset IS 'The dataset identifier (e.g., run3auau or run3cosmics).';
 COMMENT ON COLUMN production_jobs.dsttype IS 'The type of data being produced (e.g., DST_CALOFITTING).';
+COMMENT ON COLUMN production_jobs.filename IS 'The name of the output file (dstfile).';
 COMMENT ON COLUMN production_jobs.run IS 'The run number being processed.';
 COMMENT ON COLUMN production_jobs.segment IS 'The segment number of the data file being processed.';
 COMMENT ON COLUMN production_jobs.status IS 'The production status of the job.';
@@ -77,7 +81,7 @@ COMMENT ON COLUMN production_jobs.out IS 'Path to the primary output file produc
 COMMENT ON COLUMN production_jobs.intriplet IS 'For input data provenance.';
 COMMENT ON COLUMN production_jobs.indsttype_str IS 'For input data provenance.';
 COMMENT ON COLUMN production_jobs.xferslots IS 'To log requested resources for debugging and planning.';
-COMMENT ON COLUMN production_jobs.request_memory IS 'To log requested resources for debugging and planning.';
+COMMENT ON COLUMN production_jobs.request_memory IS 'To log requested resources for debugging and planning. Array of integers in MB.';
 COMMENT ON COLUMN production_jobs.request_disk IS 'To log requested resources for debugging and planning.';
 COMMENT ON COLUMN production_jobs.request_cpus IS 'To log requested resources for debugging and planning.';
 COMMENT ON COLUMN production_jobs.neventsper IS 'To record the number of events processed per job.';

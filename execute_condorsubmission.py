@@ -67,16 +67,21 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool
             Path(sub_file).unlink()
 
         ### Update production database
-        # Extract dbids
+        # Extract dbids and filenames
         dbids=[]
+        filenames=[]
         try:
             with open(in_file,'r') as f:
                 for line in f:
-                    dbids.append(str(line.strip().split(" ")[-1]))
+                    parts = line.strip().rsplit(" ", 1)
+                    dbids.append(str(parts[-1]))
+                    # Filename is derived from the log file (first element in the CSV-like arguments)
+                    if len(parts) > 0:
+                        log_file = parts[0].split(",", 1)[0]
+                        filenames.append(Path(log_file).stem + ".root")
         except Exception as e:
             ERROR(f"Error while parsing {in_file}:\n{e}")
             exit(1)
-        #        submitted_jobs+=len(dbids)
         dbids_str=", ".join(dbids)
         now_str=str(datetime.now().replace(microsecond=0))
         update_prod_state = f"""
@@ -91,19 +96,48 @@ WHERE id in
         prod_curs = dbQuery( cnxn_string_map['statw'], update_prod_state )
         prod_curs.commit()
 
-        INFO(f"Submitting {sub_file}\n\t\t && Removing {in_file}")
+        INFO(f"Submitting {sub_file}")
+        cluster = 0
         if not args.dryrun:
-            subprocess.run(f"condor_submit {sub_file} && rm {sub_file} {in_file}",shell=True)
-            submitted_jobs+=len(dbids)
+            try:
+                # Capture output to get cluster ID
+                res = subprocess.run(f"condor_submit {sub_file}", shell=True, check=True, capture_output=True, text=True)
+                # Parse Cluster ID
+                for line in res.stdout.splitlines():
+                    if "submitted to cluster" in line:
+                        match = re.search(r"cluster (\d+)", line)
+                        if match:
+                            cluster = int(match.group(1))
+                INFO(f"Submitted {sub_file} to cluster {cluster}")
+                
+                # Cleanup files
+                Path(sub_file).unlink()
+                Path(in_file).unlink()
+                submitted_jobs+=len(dbids)
+            except subprocess.CalledProcessError as e:
+                ERROR(f"Submission failed for {sub_file}: {e.stderr}")
+                continue
+
+        # Update production_jobs using filename lookup
+        if not args.dryrun and cluster > 0 and filenames:
+            filenames_str = "'" + "','".join(filenames) + "'"
+            get_ids_query = f"SELECT id FROM production_jobs WHERE filename IN ({filenames_str})"
+            try:
+                job_ids_curs = dbQuery(cnxn_string_map['statw'], get_ids_query)
+                job_ids = [str(row.id) for row in job_ids_curs.fetchall()]
+                if job_ids:
+                    job_ids_str = ", ".join(job_ids)
+                    update_jobs_query = f"UPDATE production_jobs SET status='submitted', submitted='{now_str}', ClusterId={cluster} WHERE id IN ({job_ids_str})"
+                    dbQuery(cnxn_string_map['statw'], update_jobs_query).commit()
+            except Exception as e:
+                ERROR(f"Failed to update production_jobs: {e}")
 
     INFO(f"Received a total of {len(sub_files)} submission files.")
     INFO(f"Submitted a total of {submitted_jobs} jobs.")
     # Remove submission directory if empty
-    # TODO: Test 
-    # INFO(f"Trying to remove {submitdir}.")
-    # if not args.dryrun:
-    #     if len(list(submitdir.iterdir())) == 0:
-    #         submitdir.rmdir()
+    submitdir = Path(f'{args.submitdir}').resolve()
+    if not args.dryrun and submitdir.is_dir() and not any(submitdir.iterdir()):
+        submitdir.rmdir()
 
 
 # ============================================================================================

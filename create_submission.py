@@ -28,6 +28,34 @@ import importlib.util # to resolve the path of sphenixdbutils without importing 
 from sphenixdbutils import cnxn_string_map, dbQuery
 from execute_condorsubmission import locate_submitfiles,execute_submission
 
+def parse_to_mb(s):
+    """Parses a memory string (potentially a list) into a list of integers in MB."""
+    def _parse_single(val):
+        if not val: return 0
+        if isinstance(val, (int, float)): return int(val)
+        val = str(val).upper().strip()
+        if val.endswith('MB'): return int(float(val[:-2]))
+        if val.endswith('GB'): return int(float(val[:-2]) * 1024)
+        if val.endswith('KB'): return int(float(val[:-2]) / 1024)
+        try: return int(float(val))
+        except ValueError: return 0
+
+    if isinstance(s, list):
+        return [_parse_single(x) for x in s]
+    s_str = str(s) if s is not None else ""
+    # Split by comma for strings like "2500MB, 4GB"
+    return [_parse_single(x) for x in s_str.split(',')]
+
+def parse_to_kb(s):
+    if not s: return 0
+    if isinstance(s, (int, float)): return int(s)
+    s = str(s).upper().strip()
+    if s.endswith('KB'): return int(float(s[:-2]))
+    if s.endswith('MB'): return int(float(s[:-2]) * 1024)
+    if s.endswith('GB'): return int(float(s[:-2]) * 1024 * 1024)
+    try: return int(float(s))
+    except ValueError: return 0
+
 def get_queued_jobs(rule):
     """
     Determines the number of jobs currently in the condor queue for a given rule.
@@ -352,7 +380,17 @@ def main():
 
                 # individual lines per job
                 prod_state_rows=[]
+                prod_jobs_rows=[]
                 condor_rows=[]
+
+                req_mem_list = parse_to_mb(rule.job_config.request_memory)
+                req_disk = parse_to_kb(rule.job_config.request_disk)
+                req_cpus = int(rule.job_config.request_cpus or 1)
+                req_xferslots = int(rule.job_config.request_xferslots or 0)
+                neventsper = int(rule.job_config.neventsper or 0)
+                indsttype_str = rule.input_config.indsttype_str or ''
+                intriplet = rule.input_config.intriplet or 'N/A'
+
                 for out_file,(in_files, outbase, logbase, run, seg, daqhost, dsttype) in matches:
                     # Create .in file row
                     condor_job = CondorJob.make_job( output_file=out_file,
@@ -396,6 +434,29 @@ def main():
                         timestamp=str(datetime.now().replace(microsecond=0)),
                         host=os.uname().nodename.split('.')[0]
                     ))
+                    
+                    prod_jobs_rows.append("('{rulename}', '{tag}', '{dataset}', '{dsttype}', '{filename}', {run}, {segment}, '{status}', '{submitted}', '{host}', '{log}', '{err}', '{out}', '{intriplet}', '{indsttype_str}', {xferslots}, {request_memory}, {request_disk}, {request_cpus}, {neventsper})".format(
+                        rulename=args.rulename,
+                        tag=rule.outtriplet,
+                        dataset=rule.dataset,
+                        dsttype=dsttype,
+                        filename=dstfile,
+                        run=run,
+                        segment=seg,
+                        status='submitting',
+                        submitted=str(datetime.now().replace(microsecond=0)),
+                        host=os.uname().nodename.split('.')[0],
+                        log=condor_job.log,
+                        err=condor_job.error,
+                        out=condor_job.output,
+                        intriplet=intriplet,
+                        indsttype_str=indsttype_str,
+                        xferslots=req_xferslots,
+                        request_memory=f"ARRAY{req_mem_list}",
+                        request_disk=req_disk,
+                        request_cpus=req_cpus,
+                        neventsper=neventsper
+                    ))                    
                     # end of collecting job lines for this run
 
                 comma_prod_state_rows=',\n'.join(prod_state_rows)
@@ -406,6 +467,14 @@ def main():
         {comma_prod_state_rows}
         returning id
         """
+                
+                comma_prod_jobs_rows=',\n'.join(prod_jobs_rows)
+                insert_prod_jobs = f"""
+        insert into production_jobs
+        ( rulename, tag, dataset, dsttype, filename, run, segment, status, submitted, submission_host, log, err, out, intriplet, indsttype_str, xferslots, request_memory, request_disk, request_cpus, neventsper )
+        values
+        {comma_prod_jobs_rows}
+        """
                 # Commit "submitting" or "skipped" to db
                 if not args.dryrun:
                     # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
@@ -414,6 +483,9 @@ def main():
                     ids=[str(id) for (id,) in prod_curs.fetchall()]
                     CHATTY(f"Inserted {len(ids)} rows into production_status, IDs: {ids}")
                     condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
+
+                    prod_jobs_curs = dbQuery( cnxn_string_map['statw'], insert_prod_jobs )
+                    prod_jobs_curs.commit()
 
                 # Write or update job line file
                 if not args.dryrun : #  and keep_this_run:
