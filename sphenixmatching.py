@@ -365,10 +365,11 @@ order by runnumber
         return daqhosts_for_combining
 
     # ------------------------------------------------
-    def devmatches(self, subset_runlist: List[int] = None) :
+    def matches(self, subset_runlist: List[int] = None) :
         ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
-        # The logic for combination and downstream jobs is sufficiently different to warrant separate functions
         start=datetime.now()
+
+        # ---- Raw DAQ / combining path ----
         if 'raw' in self.input_config.db:
             rule_matches = {}
             segswitch="seg0fromdb"
@@ -379,7 +380,7 @@ order by runnumber
                 WARN("No runs satisfy the segment availability criteria. No jobs to submit.")
                 return {}
             INFO(f"{len(daqhosts_for_combining)} runs satisfy the segment availability criteria.")
-            
+
             for runnumber in sorted(daqhosts_for_combining, reverse=True):
                 CHATTY(f"Currently to be created: {len(rule_matches)} output files.")
                 if self.job_config.max_jobs>0 and len(rule_matches) > self.job_config.max_jobs:
@@ -390,7 +391,7 @@ order by runnumber
                 if not 'gl1daq' in daqhosts_for_combining[runnumber]:
                     DEBUG(f"No GL1 file(s) for run {runnumber}")
                     continue
-                
+
                 ## Now check against production status and existing files
                 existing_output=self.get_files_in_db(runnumber)
                 if existing_output==[]:
@@ -401,11 +402,11 @@ order by runnumber
                 existing_status=self.get_prod_status(runnumber)
                 if existing_status=={}:
                     DEBUG(f"No output files yet in the production db for run {runnumber}")
-                else:   
+                else:
                     DEBUG(f"Already have {len(existing_status)} output files in the production db")
 
                 for leaf, daqhost in self.input_stem.items():
-                    if daqhost=='gl1daq': # It needs to exist, but it doesn't need a separate job                        
+                    if daqhost=='gl1daq': # It needs to exist, but it doesn't need a separate job
                         continue
                     if daqhost not in daqhosts_for_combining[runnumber]:
                         CHATTY(f"No inputs from {daqhost} for run {runnumber}.")
@@ -420,24 +421,16 @@ order by runnumber
                     if dstfile in existing_output:
                         CHATTY(f"Output file {dstfile} already exists. Not submitting.")
                         continue
-
                     if dstfile in existing_status:
                         WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                         continue
-
-                    # DEBUG(f"Creating {dstfile} for run {runnumber} with {len(files_for_run[daqhost])} input segments")
                     DEBUG(f"Creating {dstfile} for run {runnumber}.")
-
                     rule_matches[dstfile] = [segswitch], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
 
             INFO(f'[Parsing time ] {(datetime.now() - start).total_seconds():.2f} seconds')
             return rule_matches
-        else:
-            return self.matches(subset_runlist)
 
-    # ------------------------------------------------
-    def matches(self, subset_runlist: List[int] = None) :
-        ### Match parameters are set, now build up the list of inputs and construct corresponding output file names
+        # ---- Downstream / non-raw path ----
         # Despite the "like" clause, this is a fast query. Extra cuts or substitute cuts like
         # 'and runnumber>={self.runMin} and runnumber<={self.runMax}'
         # can be added if the need arises.
@@ -476,7 +469,6 @@ order by runnumber
         infile_query += self.input_config.infile_query_constraints
 
         #### Now build up potential output files from what's available
-        start=datetime.now()
         rule_matches = {}
 
         ### Runnumber is the prime differentiator

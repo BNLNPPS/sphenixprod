@@ -300,7 +300,7 @@ def main():
             INFO(f"===== Processing chunk {chunk_idx}/{len(run_chunks)} with {len(run_chunk)} runs =====")
             
             # Match for this chunk of runs
-            rule_matches = match_config.devmatches(subset_runlist=run_chunk)
+            rule_matches = match_config.matches(subset_runlist=run_chunk)
             INFO(f"Chunk {chunk_idx}: Matching complete. {len(rule_matches)} jobs to be submitted.")
             
             if len(rule_matches) == 0:
