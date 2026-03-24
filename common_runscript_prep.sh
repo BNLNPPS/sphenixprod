@@ -147,6 +147,10 @@ if [ -e sPHENIX_newcdb_test.json ]; then
 fi
 echo NOPAYLOADCLIENT_CONF=${NOPAYLOADCLIENT_CONF}
 
+## Mark job as started in the production database
+echo "Marking job dbid=${PRODDB_DBID} as started in production DB"
+python sphenixdbutils.py jobstarted
+
 echo "---------------------------------------------"
 echo "Offline main "${OFFLINE_MAIN}
 echo pwd is `pwd`

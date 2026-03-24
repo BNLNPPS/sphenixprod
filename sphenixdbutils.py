@@ -18,12 +18,12 @@ def get_parser():
 
     # jobstarted subcommand
     parser_jobstarted = subparsers.add_parser('jobstarted', help='Mark a job as started')
-    parser_jobstarted.add_argument('--dbid', required=True, type=int, help='Database ID of the job.')
+    parser_jobstarted.add_argument('--dbid', required=False, type=int, default=None, help='Database ID of the job. Defaults to $PRODDB_DBID.')
     parser_jobstarted.add_argument('--dryrun', action='store_true', help='Do not perform database updates.')
 
     # jobended subcommand
     parser_jobended = subparsers.add_parser('jobended', help='Mark a job as ended')
-    parser_jobended.add_argument('--dbid', required=True, type=int, help='Database ID of the job.')
+    parser_jobended.add_argument('--dbid', required=False, type=int, default=None, help='Database ID of the job. Defaults to $PRODDB_DBID.')
     parser_jobended.add_argument('--exit-code', required=False, type=int, default=0, help='Exit code of the job.')
     parser_jobended.add_argument('-n','--dryrun', action='store_true', help='Do not perform database updates.')
 
@@ -255,26 +255,36 @@ def jobstarted(dbid: int, dryrun: bool = False):
     """
     Marks a job as started in the production database.
     This includes setting the status to 'running', recording the start time,
-    and capturing the execution node from the Condor environment.
+    and capturing execution node and ProcId from the Condor job ad.
     """
     execution_node = "UNKNOWN"
+    proc_id = None
     condor_job_ad_file = os.getenv("_CONDOR_JOB_AD")
     if condor_job_ad_file and os.path.exists(condor_job_ad_file):
         with open(condor_job_ad_file, 'r') as f:
             for line in f:
                 if line.startswith("RemoteHost"):
-                    execution_node = line.split(" = ")[1].strip().strip('"')
+                    val = line.split(" = ", 1)[1].strip().strip('"')
                     # RemoteHost = "slot1@bnl-fn1.local" -> bnl-fn1.local
-                    execution_node = execution_node.split('@')[-1]
-                    break
+                    execution_node = val.split('@')[-1]
+                elif line.startswith("ProcId"):
+                    try:
+                        proc_id = int(line.split(" = ", 1)[1].strip())
+                    except ValueError:
+                        pass
 
     now = str(datetime.now().replace(microsecond=0))
+    set_clauses = [
+        "status = 'running'",
+        f"started = '{now}'",
+        f"execution_node = '{execution_node}'",
+    ]
+    if proc_id is not None:
+        set_clauses.append(f"ProcId = {proc_id}")
+
     update_jobs_sql = f"""
         UPDATE production_jobs
-        SET
-            status = 'running',
-            started = '{now}',
-            execution_node = '{execution_node}'
+        SET {', '.join(set_clauses)}
         WHERE id = {dbid};
     """
     DEBUG(update_jobs_sql)
@@ -413,10 +423,15 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
 def main():
     args = get_parser()
 
+    dbid = args.dbid if args.dbid is not None else int(os.getenv("PRODDB_DBID", -1))
+    if dbid < 0:
+        ERROR("No dbid provided via --dbid and PRODDB_DBID is not set.")
+        exit(1)
+
     if args.command == 'jobstarted':
-        jobstarted(args.dbid, args.dryrun)
+        jobstarted(dbid, args.dryrun)
     elif args.command == 'jobended':
-        jobended(args.dbid, getattr(args, 'exit_code', 1), args.dryrun)
+        jobended(dbid, getattr(args, 'exit_code', 1), args.dryrun)
 
 
 if __name__ == '__main__':

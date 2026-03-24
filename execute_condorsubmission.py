@@ -92,12 +92,12 @@ WHERE id in
 ( {dbids_str} )
 ;
 """
-        INFO(f"Updating db for {sub_file}")
+        DEBUG(f"Updating db for {sub_file}")
         CHATTY(f"{update_prod_jobs}")
         prod_jobs_curs = dbQuery( cnxn_string_map['statw'], update_prod_jobs )
         prod_jobs_curs.commit()
 
-        INFO(f"Submitting {sub_file}")
+        DEBUG(f"Submitting {sub_file}")
         cluster = 0
         if not args.dryrun:
             try:
@@ -109,7 +109,7 @@ WHERE id in
                         match = re.search(r"cluster (\d+)", line)
                         if match:
                             cluster = int(match.group(1))
-                INFO(f"Submitted {sub_file} to cluster {cluster}")
+                DEBUG(f"Submitted {sub_file} to cluster {cluster}")
 
                 # Cleanup files
                 Path(sub_file).unlink()
