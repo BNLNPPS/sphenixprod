@@ -274,16 +274,25 @@ order by runnumber
         if run_condition!="" :
             run_condition = f"and {run_condition.replace('runnumber','run')}"
 
-        status_query  = f"""select dstfile,status from production_status
-        where status!='finished'
-         {run_condition} 
-         and dstname like '{self.dst_type_template}%{self.outtriplet}' {self.input_config.status_query_constraints}
+        # 'finished' jobs _should_ be in the files db. "where status!='finished'"
+        jobs_query  = f"""select filename,status from production_jobs
+        where tag='{self.outtriplet}'
+            and dsttype like '{self.dst_type_template}'
+            {run_condition} {self.input_config.status_query_constraints}
         order by run desc;"""
 
-        now=datetime.now()        
-        existing_status = { c.dstfile : c.status for c in dbQuery( cnxn_string_map['statr'], status_query ) }
+        # Also query production_status for jobs submitted by older code
+        legacy_query = f"""select dstfile,status from production_status
+        where dstname like '{self.dst_type_template}%{self.outtriplet}'
+            {run_condition} {self.input_config.status_query_constraints}
+        order by run desc;"""
+
+        now=datetime.now()
+        existing_status = { c.filename : c.status for c in dbQuery( cnxn_string_map['statr'], jobs_query ) }
+        legacy_status   = { c.dstfile  : c.status for c in dbQuery( cnxn_string_map['statr'], legacy_query ) }
         INFO(f'Query took {(datetime.now() - now).total_seconds():.2f} seconds.')
-        return existing_status
+        # production_jobs takes precedence; legacy fills in any gaps
+        return { **legacy_status, **existing_status }
 
     # ------------------------------------------------
     def daqhosts_for_combining(self, subset_runlist: List[int] = None) -> Dict[int, Set[int]]:

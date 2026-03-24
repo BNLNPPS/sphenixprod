@@ -42,6 +42,9 @@ def shell_command(command: str) -> List[str]:
 # ============================================================================================
 
 def main():
+    ERROR("dstlakespider.py is a development-only script and is not maintained. Exiting.")
+    sys.exit(1)
+
     ### digest arguments
     args = submission_args()
 

@@ -113,7 +113,7 @@ def main():
             #### For --force, we could do the file and database deletion in RuleConfig.
             # Would be kinda nice because only then we'll know what's _really_ affected, and we could use the logic there.
             # Instead, ensure that the rule logic needs no special cases, set everything up here.
-            WARN('Got "--force": Override existing output in files, datasets, and production_status DBs.')
+            WARN('Got "--force": Override existing output in files, datasets, and production_jobs DB.')
             WARN('               Note that it\'s YOUR job to ensure there\'s no job in the queue or file in the DST lake which will overwrite this later!')
             if args.force_delete:
                 WARN('               Also got "--force-delete": Deleting existing files that are reproduced.')
@@ -379,7 +379,6 @@ def main():
         """)
 
                 # individual lines per job
-                prod_state_rows=[]
                 prod_jobs_rows=[]
                 condor_rows=[]
 
@@ -416,25 +415,7 @@ def main():
                     # Add to production database
                     dsttype=logbase.split(f'_{rule.dataset}')[0]
                     dstfile=out_file # this is much more robust and correct
-                    # Following is fragile, don't add spaces
-                    prodstate='submitting'
-                    # if not keep_this_run:
-                    #     prodstate='skipped'
 
-                    prod_state_rows.append ("('{dsttype}','{dstname}','{dstfile}',{run},{segment},{nsegments},'{inputs}',{prod_id},{cluster},{process},'{status}','{timestamp}','{host}')".format(
-                        dsttype=dsttype,
-                        dstname=outbase,
-                        dstfile=dstfile,
-                        run=run, segment=seg,
-                        nsegments=0, # CHECKME
-                        inputs='dbquery',
-                        prod_id=0, # CHECKME
-                        cluster=0, process=0,
-                        status=prodstate,
-                        timestamp=str(datetime.now().replace(microsecond=0)),
-                        host=os.uname().nodename.split('.')[0]
-                    ))
-                    
                     prod_jobs_rows.append("('{rulename}', '{tag}', '{dataset}', '{dsttype}', '{filename}', {run}, {segment}, '{status}', '{submitted}', '{host}', '{log}', '{err}', '{out}', '{intriplet}', '{indsttype_str}', {xferslots}, {request_memory}, {request_disk}, {request_cpus}, {neventsper})".format(
                         rulename=args.rulename,
                         tag=rule.outtriplet,
@@ -459,33 +440,22 @@ def main():
                     ))                    
                     # end of collecting job lines for this run
 
-                comma_prod_state_rows=',\n'.join(prod_state_rows)
-                insert_prod_state = f"""
-        insert into production_status
-        ( dsttype, dstname, dstfile, run, segment, nsegments, inputs, prod_id, cluster, process, status, submitting, submission_host )
-        values
-        {comma_prod_state_rows}
-        returning id
-        """
-                
                 comma_prod_jobs_rows=',\n'.join(prod_jobs_rows)
                 insert_prod_jobs = f"""
         insert into production_jobs
         ( rulename, tag, dataset, dsttype, filename, run, segment, status, submitted, submission_host, log, err, out, intriplet, indsttype_str, xferslots, request_memory, request_disk, request_cpus, neventsper )
         values
         {comma_prod_jobs_rows}
+        returning id
         """
                 # Commit "submitting" or "skipped" to db
                 if not args.dryrun:
-                    # Register in the db, hand the ids the condor job (for faster db access; usually passed through to head node daemons)
-                    prod_curs = dbQuery( cnxn_string_map['statw'], insert_prod_state )
-                    prod_curs.commit()
-                    ids=[str(id) for (id,) in prod_curs.fetchall()]
-                    CHATTY(f"Inserted {len(ids)} rows into production_status, IDs: {ids}")
-                    condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
-
+                    # Register in the primary table (production_jobs), get IDs for the condor job (passed through to head node daemons)
                     prod_jobs_curs = dbQuery( cnxn_string_map['statw'], insert_prod_jobs )
                     prod_jobs_curs.commit()
+                    ids=[str(id) for (id,) in prod_jobs_curs.fetchall()]
+                    CHATTY(f"Inserted {len(ids)} rows into production_jobs, IDs: {ids}")
+                    condor_rows=[ f"{x} {y}" for x,y in list(zip(condor_rows, ids))]
 
                 # Write or update job line file
                 if not args.dryrun : #  and keep_this_run:

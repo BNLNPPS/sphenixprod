@@ -18,12 +18,12 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 
 def get_time_diffs(run_condition, dsttype):
     query = f"""
-    SELECT submitting, ended
-    FROM production_status
+    SELECT submitted, ended
+    FROM production_jobs
     WHERE {run_condition}
       AND dsttype like '{dsttype}%'
       AND status = 'finished'
-      AND submitting IS NOT NULL
+      AND submitted IS NOT NULL
       AND ended IS NOT NULL
     """
     
@@ -39,13 +39,13 @@ def get_time_diffs(run_condition, dsttype):
         return []
 
     time_diffs_seconds = []
-    for submitting, ended in results:
-        if isinstance(submitting, str):
-            submitting = datetime.fromisoformat(submitting)
+    for submitted, ended in results:
+        if isinstance(submitted, str):
+            submitted = datetime.fromisoformat(submitted)
         if isinstance(ended, str):
             ended = datetime.fromisoformat(ended)
-            
-        time_diffs_seconds.append((ended - submitting).total_seconds())
+
+        time_diffs_seconds.append((ended - submitted).total_seconds())
     
     return time_diffs_seconds
 

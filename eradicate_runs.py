@@ -86,25 +86,25 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True, delete_files: b
     existing_status=list(existing_status.keys())
     INFO(f"Found {len(existing_status)} output files in the production db")
 
-    ### 2a. Delete from production db.
+    ### 2a. Delete from production_jobs.
     dbstring = 'statw'
-    status_query="SELECT id" if dryrun else "DELETE"
-    status_query+="""
-    FROM production_status
+    jobs_query = "SELECT id" if dryrun else "DELETE"
+    jobs_query += """
+    FROM production_jobs
         WHERE
-    dstfile in
+    filename in
     """
     chunksize=5000
     statusmax=len(existing_status)
     for i,statuschunk in enumerate(make_chunks(existing_status,chunksize)):
         statuschunk_str="','".join(statuschunk)
-        
-        DEBUG( f'Removing file #{i*chunksize}/{statusmax} from database production_status')
-        prod_curs = dbQuery( cnxn_string_map[ dbstring ], status_query+f"( '{statuschunk_str}' )" )
-        if prod_curs:
-            prod_curs.commit()
+
+        DEBUG( f'Removing file #{i*chunksize}/{statusmax} from database production_jobs')
+        jobs_curs = dbQuery( cnxn_string_map[ dbstring ], jobs_query+f"( '{statuschunk_str}' )" )
+        if jobs_curs:
+            jobs_curs.commit()
         else:
-            ERROR("Failed to delete file(s) from production database")
+            ERROR("Failed to delete file(s) from production_jobs")
             exit(1)
     
         

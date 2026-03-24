@@ -17,68 +17,47 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 from sphenixprodrules import RuleConfig
 from sphenixdbutils import dbQuery, cnxn_string_map, list_to_condition
 
-def process_chunk(chunk, production_status_table, dryrun=False):
+def process_chunk(chunk, dryrun=False):
     """
     Processes a single chunk of results from the file catalog.
-    Checks for existing files in production_status and generates
-    aggregated INSERT and UPDATE statements.
+    Updates production_jobs for all files already tracked there.
     """
     DEBUG(f"Processing chunk of {len(chunk)} files...")
-    
+
     lfns_in_chunk = [item[0] for item in chunk]
     lfn_list_for_sql = "','".join(lfns_in_chunk)
-    check_query = f"SELECT dstfile FROM {production_status_table} WHERE dstfile IN ('{lfn_list_for_sql}')"
-    
-    existing_files_cursor = dbQuery(cnxn_string_map['statr'], check_query)
-    if not existing_files_cursor:
-        ERROR("Failed to query production_status for existing files.")
-        return
 
-    existing_lfns = {row.dstfile for row in existing_files_cursor.fetchall()}
-    
-    insert_values = []
+    check_jobs_query = f"SELECT filename FROM production_jobs WHERE filename IN ('{lfn_list_for_sql}')"
+    jobs_cursor = dbQuery(cnxn_string_map['statr'], check_jobs_query)
+    if not jobs_cursor:
+        ERROR("Failed to query production_jobs for existing files.")
+        return
+    existing_in_jobs = {row.filename for row in jobs_cursor.fetchall()}
+
     update_values = []
     for lfn, time, run, seg, dsttype in chunk:
-        if lfn in existing_lfns:
+        if lfn in existing_in_jobs:
             update_values.append(f"('{lfn}', '{time}'::timestamp)")
         else:
-            dstname = lfn.split('-', 1)[0]
-            insert_values.append(f"('{dsttype}', '{dstname}', '{lfn}', {run}, {seg}, 0, 'dbquery', 0, 0, 0, 'finished', '{time}')")
-
-    all_statements = []
-    if insert_values:
-        values_str = ",\n".join(insert_values)
-        insert_query = f"""
-        INSERT INTO {production_status_table} (
-            dsttype, dstname, dstfile, run, segment, nsegments,
-            inputs, prod_id, cluster, process, status, ended
-        ) VALUES
-        {values_str};
-        """
-        all_statements.append(insert_query)
+            DEBUG(f"File {lfn} not found in production_jobs, skipping.")
 
     if update_values:
         values_str = ",\n".join(update_values)
         update_query = f"""
-        UPDATE {production_status_table} AS ps SET
+        UPDATE production_jobs AS pj SET
             ended = v.ended,
             status = 'finished'
-        FROM (VALUES {values_str}) AS v(dstfile, ended)
-        WHERE ps.dstfile = v.dstfile;
+        FROM (VALUES {values_str}) AS v(filename, ended)
+        WHERE pj.filename = v.filename;
         """
-        all_statements.append(update_query)
-
-    if all_statements:
-        update_query = "\n".join(all_statements)
         CHATTY(update_query)
-
         if not dryrun:
             update_cursor = dbQuery(cnxn_string_map['statw'], update_query)
             if update_cursor:
                 update_cursor.commit()
-                INFO(f"Processed {len(chunk)} entries in production_status.")
+                INFO(f"Marked {len(update_values)} entries as finished in production_jobs.")
             else:
-                ERROR("Failed to update/insert into production_status.")
+                ERROR("Failed to update production_jobs.")
         else:
             INFO("Dry run, not updating database.")
             CHATTY(update_query)
@@ -141,7 +120,6 @@ def main():
 
     files_table = 'test_files' if test_mode else 'files'
     datasets_table = 'test_datasets' if test_mode else 'datasets'
-    production_status_table = 'production_status'
 
     run_condition = list_to_condition(rule.runlist_int, name="d.runnumber")
 
@@ -186,7 +164,7 @@ def main():
             break
         
         INFO(f"Found {len(results)} files in this chunk.")
-        process_chunk(results, production_status_table, args.dryrun)
+        process_chunk(results, args.dryrun)
 
         last_lfn = results[-1][0]
         

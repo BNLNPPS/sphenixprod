@@ -84,17 +84,18 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool
             exit(1)
         dbids_str=", ".join(dbids)
         now_str=str(datetime.now().replace(microsecond=0))
-        update_prod_state = f"""
-UPDATE production_status
-   SET status='submitted',submitted='{now_str}'
+        # Update production_jobs (primary) before condor_submit to mark as submitted
+        update_prod_jobs = f"""
+UPDATE production_jobs
+   SET status='submitted', submitted='{now_str}'
 WHERE id in
 ( {dbids_str} )
 ;
 """
         INFO(f"Updating db for {sub_file}")
-        CHATTY(f"{update_prod_state}")
-        prod_curs = dbQuery( cnxn_string_map['statw'], update_prod_state )
-        prod_curs.commit()
+        CHATTY(f"{update_prod_jobs}")
+        prod_jobs_curs = dbQuery( cnxn_string_map['statw'], update_prod_jobs )
+        prod_jobs_curs.commit()
 
         INFO(f"Submitting {sub_file}")
         cluster = 0
@@ -109,7 +110,7 @@ WHERE id in
                         if match:
                             cluster = int(match.group(1))
                 INFO(f"Submitted {sub_file} to cluster {cluster}")
-                
+
                 # Cleanup files
                 Path(sub_file).unlink()
                 Path(in_file).unlink()
@@ -118,19 +119,13 @@ WHERE id in
                 ERROR(f"Submission failed for {sub_file}: {e.stderr}")
                 continue
 
-        # Update production_jobs using filename lookup
-        if not args.dryrun and cluster > 0 and filenames:
-            filenames_str = "'" + "','".join(filenames) + "'"
-            get_ids_query = f"SELECT id FROM production_jobs WHERE filename IN ({filenames_str})"
+        # After successful submission, add ClusterId to production_jobs
+        if not args.dryrun and cluster > 0:
             try:
-                job_ids_curs = dbQuery(cnxn_string_map['statw'], get_ids_query)
-                job_ids = [str(row.id) for row in job_ids_curs.fetchall()]
-                if job_ids:
-                    job_ids_str = ", ".join(job_ids)
-                    update_jobs_query = f"UPDATE production_jobs SET status='submitted', submitted='{now_str}', ClusterId={cluster} WHERE id IN ({job_ids_str})"
-                    dbQuery(cnxn_string_map['statw'], update_jobs_query).commit()
+                dbQuery(cnxn_string_map['statw'],
+                        f"UPDATE production_jobs SET ClusterId={cluster} WHERE id IN ({dbids_str})").commit()
             except Exception as e:
-                ERROR(f"Failed to update production_jobs: {e}")
+                ERROR(f"Failed to update ClusterId in production_jobs: {e}")
 
     INFO(f"Received a total of {len(sub_files)} submission files.")
     INFO(f"Submitted a total of {submitted_jobs} jobs.")

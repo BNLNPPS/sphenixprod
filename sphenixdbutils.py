@@ -231,29 +231,23 @@ def upsert_filecatalog(fullinfos: Union[long_filedb_info,List[long_filedb_info]]
 
 # ============================================================================================
 
-update_prodstate_tmpl = """
-update production_status
-set status='{status}', ended='{ended}'
-where
-id={dbid}
-;
-"""
 # ---------------------------------------------------------------------------------------------
 def update_proddb( dbid: int, filestat=None, dryrun=True ):
-        # for "files"
-        update_prodstate=update_prodstate_tmpl.format(
-            dbid=dbid,
-            status='finished',
-            ended=datetime.fromtimestamp(filestat.st_ctime) if filestat else str(datetime.now().replace(microsecond=0)),
-        )
-        CHATTY(update_prodstate)
+        ended = datetime.fromtimestamp(filestat.st_ctime) if filestat else str(datetime.now().replace(microsecond=0))
+        update_jobs = f"""
+update production_jobs
+set status='finished', ended='{ended}'
+where id={dbid}
+;
+"""
+        CHATTY(update_jobs)
         if not dryrun:
             dbstring = 'statw'
-            prodstate_curs = dbQuery( cnxn_string_map[ dbstring ], update_prodstate )
-            if prodstate_curs:
-                prodstate_curs.commit()
+            jobs_curs = dbQuery( cnxn_string_map[ dbstring ], update_jobs )
+            if jobs_curs:
+                jobs_curs.commit()
             else:
-                ERROR(f"Failed to update production status for {dbid} in database {dbstring}")
+                ERROR(f"Failed to update production_jobs for id={dbid} in database {dbstring}")
                 exit(1)
 
 # ============================================================================================
@@ -274,25 +268,25 @@ def jobstarted(dbid: int, dryrun: bool = False):
                     execution_node = execution_node.split('@')[-1]
                     break
 
-    update_sql = f"""
-        UPDATE production_status
+    now = str(datetime.now().replace(microsecond=0))
+    update_jobs_sql = f"""
+        UPDATE production_jobs
         SET
             status = 'running',
-            started = '{datetime.now().replace(microsecond=0)}',
+            started = '{now}',
             execution_node = '{execution_node}'
         WHERE id = {dbid};
     """
-    DEBUG(update_sql)
+    DEBUG(update_jobs_sql)
     if not dryrun:
         dbstring = 'statw'
-        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_sql)
+        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql)
         if prodstate_curs:
             prodstate_curs.commit()
         else:
-            ERROR(f"Failed to update production status for {dbid} in database {dbstring}")
+            ERROR(f"Failed to update production_jobs for id={dbid} in database {dbstring}")
             # Do not exit, as the job might still be able to run
             # and we don't want to cause a job failure just for a DB update failure.
-            pass
 
 
 def jobended(dbid: int, exit_code: int, dryrun: bool = False):
@@ -301,24 +295,23 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False):
     The final status is determined by the exit_code.
     """
     status = 'finished' if exit_code == 0 else 'failed'
-    update_sql = f"""
-        UPDATE production_status
+    now = str(datetime.now().replace(microsecond=0))
+    update_jobs_sql = f"""
+        UPDATE production_jobs
         SET
             status = '{status}',
-            ended = '{datetime.now().replace(microsecond=0)}'
+            ended = '{now}'
         WHERE id = {dbid};
     """
-    CHATTY(update_sql)
+    CHATTY(update_jobs_sql)
     if not dryrun:
         dbstring = 'statw'
-        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_sql)
+        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql)
         if prodstate_curs:
             prodstate_curs.commit()
         else:
-            ERROR(f"Failed to update production status for {dbid} in database {dbstring}")
-            # Do not exit, as we want to avoid causing further issues
-            # at the end of a job.
-            pass
+            ERROR(f"Failed to update production_jobs for id={dbid} in database {dbstring}")
+            # Do not exit, as we want to avoid causing further issues at the end of a job.
 
 def printDbInfo( cnxn_string, title ):
     conn = pyodbc.connect( cnxn_string )
