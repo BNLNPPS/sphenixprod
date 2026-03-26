@@ -27,7 +27,7 @@ CREATE TABLE production_jobs (
     dataset               TEXT                    NOT NULL,
     dsttype               TEXT                    NOT NULL,
     filename              TEXT,
-    run                   INT                     NOT NULL,
+    runnumber             INT                     NOT NULL,
     segment               INT,
     status                prodstate,
     submitted             TIMESTAMP WITH TIME ZONE  DEFAULT CURRENT_TIMESTAMP,
@@ -62,7 +62,7 @@ COMMENT ON COLUMN production_jobs.tag IS 'The output triplet (e.g., new_2025p000
 COMMENT ON COLUMN production_jobs.dataset IS 'The dataset identifier (e.g., run3auau or run3cosmics).';
 COMMENT ON COLUMN production_jobs.dsttype IS 'The type of data being produced (e.g., DST_CALOFITTING).';
 COMMENT ON COLUMN production_jobs.filename IS 'The name of the output file (dstfile).';
-COMMENT ON COLUMN production_jobs.run IS 'The run number being processed.';
+COMMENT ON COLUMN production_jobs.runnumber IS 'The run number being processed.';
 COMMENT ON COLUMN production_jobs.segment IS 'The segment number of the data file being processed.';
 COMMENT ON COLUMN production_jobs.status IS 'The production status of the job.';
 COMMENT ON COLUMN production_jobs.submitted IS 'Timestamp when the job was submitted to the batch system. From Condor''s QDate attribute.';
@@ -87,7 +87,7 @@ COMMENT ON COLUMN production_jobs.request_cpus IS 'Number of requested CPUs.';
 COMMENT ON COLUMN production_jobs.neventsper IS 'Number of events per job.';
 
 -- Create indexes on frequently queried columns for better performance.
-CREATE INDEX ON production_jobs (run);
+CREATE INDEX ON production_jobs (runnumber);
 CREATE INDEX ON production_jobs (status);
 CREATE INDEX ON production_jobs (rulename);
 CREATE INDEX ON production_jobs (tag);

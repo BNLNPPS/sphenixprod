@@ -443,7 +443,7 @@ def main():
                 comma_prod_jobs_rows=',\n'.join(prod_jobs_rows)
                 insert_prod_jobs = f"""
         insert into production_jobs
-        ( rulename, tag, dataset, dsttype, filename, run, segment, status, submitted, submission_host, log, err, out, intriplet, indsttype_str, xferslots, request_memory, request_disk, request_cpus, neventsper )
+        ( rulename, tag, dataset, dsttype, filename, runnumber, segment, status, submitted, submission_host, log, err, out, intriplet, indsttype_str, xferslots, request_memory, request_disk, request_cpus, neventsper )
         values
         {comma_prod_jobs_rows}
         returning id
