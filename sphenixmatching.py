@@ -269,7 +269,7 @@ order by runnumber
     # ------------------------------------------------
     def get_prod_status(self, runnumbers):
         ### Check production status
-        INFO(f'Checking for output already in production for {runnumbers}')
+        DEBUG(f'Checking for output already in production for {runnumbers}')
         run_condition=list_to_condition(runnumbers)
         if run_condition!="" :
             run_condition = f"and {run_condition.replace('runnumber','run')}"
@@ -290,7 +290,8 @@ order by runnumber
         now=datetime.now()
         existing_status = { c.filename : c.status for c in dbQuery( cnxn_string_map['statr'], jobs_query ) }
         legacy_status   = { c.dstfile  : c.status for c in dbQuery( cnxn_string_map['statr'], legacy_query ) }
-        INFO(f'Query took {(datetime.now() - now).total_seconds():.2f} seconds.')
+        elapsed = (datetime.now() - now).total_seconds()
+        (WARN if elapsed > 60 else DEBUG)(f'Query took {elapsed:.2f} seconds.')
         # production_jobs takes precedence; legacy fills in any gaps
         return { **legacy_status, **existing_status }
 
@@ -483,6 +484,7 @@ order by runnumber
         ### Runnumber is the prime differentiator
         INFO(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
         for runnumber in sorted(goodruns, reverse=True):
+            INFO(f"Processing run {runnumber}.")
             CHATTY(f"Currently to be created: {len(rule_matches)} output files.")
             if self.job_config.max_jobs>0 and len(rule_matches) > self.job_config.max_jobs:
                 INFO(f"Number jobs is {len(rule_matches)}; exceeds max_jobs = {self.job_config.max_jobs}. Return.")
@@ -492,7 +494,8 @@ order by runnumber
             run_query = infile_query + f"\n\t and runnumber={runnumber} "
             qnow=datetime.now()
             db_result = dbQuery( cnxn_string_map[ self.input_config.db ], run_query ).fetchall()
-            INFO(f'Infile query took {(datetime.now() - qnow).total_seconds():.2f} seconds.')
+            elapsed = (datetime.now() - qnow).total_seconds()
+            (WARN if elapsed > 60 else DEBUG)(f'Infile query took {elapsed:.2f} seconds.')
             candidates = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
             CHATTY(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
             if len(candidates) == 0 :

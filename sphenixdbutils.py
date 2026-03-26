@@ -236,7 +236,7 @@ def update_proddb( dbid: int, filestat=None, dryrun=True ):
         ended = datetime.fromtimestamp(filestat.st_ctime) if filestat else str(datetime.now().replace(microsecond=0))
         update_jobs = f"""
 update production_jobs
-set status='finished', ended='{ended}'
+set status='finished', finished='{ended}'
 where id={dbid}
 ;
 """
@@ -290,7 +290,7 @@ def jobstarted(dbid: int, dryrun: bool = False):
     DEBUG(update_jobs_sql)
     if not dryrun:
         dbstring = 'statw'
-        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql)
+        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql, maintenance_wait=1500)
         if prodstate_curs:
             prodstate_curs.commit()
         else:
@@ -302,21 +302,50 @@ def jobstarted(dbid: int, dryrun: bool = False):
 def jobended(dbid: int, exit_code: int, dryrun: bool = False):
     """
     Marks a job as ended in the production database.
-    The final status is determined by the exit_code.
+    The final status is determined by the exit_code. Resource usage metrics
+    are read from the Condor job ad if available.
     """
     status = 'finished' if exit_code == 0 else 'failed'
     now = str(datetime.now().replace(microsecond=0))
+
+    # Parse resource metrics from the condor job ad
+    ad_floats = {'RemoteUserCpu': None, 'RemoteSysCpu': None}
+    ad_ints   = {'MemoryUsage': None, 'DiskUsage': None, 'ExitCode': None}
+    condor_job_ad_file = os.getenv("_CONDOR_JOB_AD")
+    if condor_job_ad_file and os.path.exists(condor_job_ad_file):
+        with open(condor_job_ad_file, 'r') as f:
+            for line in f:
+                key, _, val = line.partition(" = ")
+                key = key.strip()
+                val = val.strip().strip('"')
+                if key in ad_floats:
+                    try: ad_floats[key] = float(val)
+                    except ValueError: pass
+                elif key in ad_ints:
+                    try: ad_ints[key] = int(val)
+                    except ValueError: pass
+
+    set_clauses = [
+        f"status = '{status}'",
+        f"finished = '{now}'",
+        f"ExitCode = {exit_code}",
+    ]
+    for col, val in ad_floats.items():
+        if val is not None:
+            set_clauses.append(f"{col} = {val}")
+    for col, val in ad_ints.items():
+        if val is not None and col != 'ExitCode':  # ExitCode already set from arg
+            set_clauses.append(f"{col} = {val}")
+
     update_jobs_sql = f"""
         UPDATE production_jobs
-        SET
-            status = '{status}',
-            ended = '{now}'
+        SET {', '.join(set_clauses)}
         WHERE id = {dbid};
     """
     CHATTY(update_jobs_sql)
     if not dryrun:
         dbstring = 'statw'
-        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql)
+        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql, maintenance_wait=1500)
         if prodstate_curs:
             prodstate_curs.commit()
         else:
@@ -330,44 +359,63 @@ def printDbInfo( cnxn_string, title ):
     print(f"with {cnxn_string}\n   connected {name} from {serv} as {title}")
 
 # ============================================================================================
-def dbQuery( cnxn_string, query, ntries=10 ):
+def dbQuery( cnxn_string, query, ntries=5, maintenance_wait=0 ):
+    """
+    Execute a query with retry logic for transient errors.
 
+    Args:
+        ntries:            Maximum number of attempts per phase.
+        maintenance_wait:  If >0 and all ntries attempts fail, sleep this many seconds
+                           (to ride out a DB maintenance window) then retry ntries more
+                           times before giving up. Set to 0 (default) for fast failure.
+    """
     CHATTY(f'[cnxn_string] {cnxn_string}')
     CHATTY(f'[query      ]\n{query}')
 
-    start=datetime.now()
-#    last_exception = None
-    ntries = 5
-    curs=None
-    # Attempt to connect up to ntries
-    for itry in range(0,ntries):
-        try:
-            conn = pyodbc.connect( cnxn_string )
-            curs = conn.cursor()
-            curs.execute( query )
-            break
-        except pyodbc.Error as E:
-            # last_exception = str(E)
-            #ERROR(f"Warning: Attempt {itry} failed: {last_exception}")
-            ERROR(f"Warning: Attempt {itry} failed: {E}")
-            if E.args[0] == '40001':  # replica needs updating; formally: "serialization failure" (deadlock)
-                delay = (itry + 1 ) * random.random()
-                time.sleep(delay)
-                continue
-            else:
-                ERROR(f"Non-retryable odbc error encountered: {E}")
-                curs=None
-                exit(11)
-        except Exception as E:
-            ERROR(f"Non-retryable other error encountered during database query: {E}")
-            curs=None
-            exit(11)
-    else:
-        ERROR(f"Too many attempts. Stop.")
-        # raise(E) # allow the mother process to just move on
-        exit(11)
-    CHATTY(f'[query time ] {(datetime.now() - start).total_seconds():.2f} seconds' )
+    # SQLSTATE codes that are transient and worth retrying
+    retryable_states = {
+        '40001',  # serialization failure (deadlock)
+        '53300',  # too_many_connections
+        '57P03',  # cannot_connect_now (DB starting up)
+        '08006',  # connection failure
+        '08001',  # unable to establish connection
+    }
 
+    def attempt_query(phase):
+        for itry in range(ntries):
+            try:
+                conn = pyodbc.connect( cnxn_string )
+                curs = conn.cursor()
+                curs.execute( query )
+                return curs
+            except pyodbc.Error as E:
+                state = E.args[0]
+                ERROR(f"Phase {phase}, attempt {itry+1}/{ntries} failed: {E}")
+                if state in retryable_states:
+                    delay = min(60, (2 ** itry) * (0.5 + random.random()))
+                    WARN(f"Retrying in {delay:.1f}s...")
+                    time.sleep(delay)
+                else:
+                    ERROR(f"Non-retryable odbc error: {E}")
+                    exit(11)
+            except Exception as E:
+                ERROR(f"Non-retryable error during database query: {E}")
+                exit(11)
+        return None
+
+    start = datetime.now()
+    curs = attempt_query(phase=1)
+
+    if curs is None and maintenance_wait > 0:
+        WARN(f"All {ntries} attempts failed. Waiting {maintenance_wait}s for maintenance window to pass...")
+        time.sleep(maintenance_wait)
+        curs = attempt_query(phase=2)
+
+    if curs is None:
+        ERROR(f"Exhausted all attempts. Stop.")
+        exit(11)
+
+    CHATTY(f'[query time ] {(datetime.now() - start).total_seconds():.2f} seconds' )
     return curs
 
 # ============================================================================================

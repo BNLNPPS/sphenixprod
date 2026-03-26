@@ -78,13 +78,13 @@ COMMENT ON COLUMN production_jobs.execution_node IS 'The hostname of the node wh
 COMMENT ON COLUMN production_jobs.log IS 'Path to the standard output log file.';
 COMMENT ON COLUMN production_jobs.err IS 'Path to the standard error log file.';
 COMMENT ON COLUMN production_jobs.out IS 'Path to the primary output file produced by the job.';
-COMMENT ON COLUMN production_jobs.intriplet IS 'For input data provenance.';
-COMMENT ON COLUMN production_jobs.indsttype_str IS 'For input data provenance.';
-COMMENT ON COLUMN production_jobs.xferslots IS 'To log requested resources for debugging and planning.';
-COMMENT ON COLUMN production_jobs.request_memory IS 'To log requested resources for debugging and planning. Array of integers in MB.';
-COMMENT ON COLUMN production_jobs.request_disk IS 'To log requested resources for debugging and planning.';
-COMMENT ON COLUMN production_jobs.request_cpus IS 'To log requested resources for debugging and planning.';
-COMMENT ON COLUMN production_jobs.neventsper IS 'To record the number of events processed per job.';
+COMMENT ON COLUMN production_jobs.intriplet IS 'produdctionTag_cdbTag_version.';
+COMMENT ON COLUMN production_jobs.indsttype_str IS 'Input DST types.';
+COMMENT ON COLUMN production_jobs.xferslots IS 'Special resource to regulate I/O throughput.';
+COMMENT ON COLUMN production_jobs.request_memory IS 'Array of integers in MB.';
+COMMENT ON COLUMN production_jobs.request_disk IS 'Requested disk space, in KB.';
+COMMENT ON COLUMN production_jobs.request_cpus IS 'Number of requested CPUs.';
+COMMENT ON COLUMN production_jobs.neventsper IS 'Number of events per job.';
 
 -- Create indexes on frequently queried columns for better performance.
 CREATE INDEX ON production_jobs (run);
