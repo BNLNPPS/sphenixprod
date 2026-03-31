@@ -1,5 +1,6 @@
 import yaml
 import re
+import glob
 from typing import Dict, List, Tuple, Any, Optional
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -176,6 +177,20 @@ class RuleConfig:
         check_params(params_data
                     , required=["dsttype", "period","build", "dbtag", "version"]
                     , optional=["dataset", "physicsmode"] )
+
+        ### Verify build tag exists on cvmfs before going further
+        build_tag = params_data["build"]
+        cvmfs_matches = glob.glob(
+            f"/cvmfs/sphenix.sdcc.bnl.gov/alma9.2-gcc-14.2.0/release/release_*/{build_tag}"
+        )
+        if not cvmfs_matches:
+            CRITICAL(
+                f"Build tag '{build_tag}' not found under "
+                f"/cvmfs/sphenix.sdcc.bnl.gov/alma9.2-gcc-14.2.0/release/release_*/ — "
+                f"check spelling or cvmfs availability."
+            )
+            exit(2)
+        INFO(f"Build tag '{build_tag}' found: {cvmfs_matches[0]}")
 
         ### Fill derived data fields
         build_string=params_data["build"].replace(".","")
