@@ -59,12 +59,6 @@ def submission_args():
                                      description='"Production script to submit jobs to the batch system for sPHENIX."')
     parser = _base_arguments(parser)
 
-    # General arguments
-    parser.add_argument("--force", "-f", dest="force", help="Override existing output in file and prod db.",
-                        action="store_true")
-    parser.add_argument("--force-delete", "-fd", dest="force_delete", help="Set --force and delete existing files that are reproduced.",
-                        action="store_true")
-
     parser.add_argument('--print-query', dest='printquery', help="Print the query after parameter substitution and exit",
                         action="store_true")
     parser.add_argument('--andgo', dest='andgo', help="Submit condor jobs at the end", action="store_true")

@@ -21,7 +21,6 @@ from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # 
 from sphenixprodrules import RuleConfig
 from sphenixjobdicts import inputs_from_output
 from sphenixmatching import MatchConfig
-from eradicate_runs import eradicate_runs
 from sphenixcondorjobs import CondorJob
 from sphenixdbutils import test_mode as dbutils_test_mode
 import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
@@ -88,8 +87,6 @@ def get_queued_jobs(rule):
 def main():
     ### digest arguments
     args = submission_args()
-    args.force = args.force_delete or args.force # -fd implies -f
-
     #################### Test mode?
     test_mode = (
             dbutils_test_mode
@@ -103,25 +100,12 @@ def main():
     slogger.setLevel(args.loglevel)
 
     # Exit without fuss if we are already running
-    if should_I_quit(args=args, myname=sys.argv[0]) and not args.force:
+    if should_I_quit(args=args, myname=sys.argv[0]):
         DEBUG("Stop.")
         exit(0)
 
     lock_file_path = None
     try:
-        if args.force:
-            #### For --force, we could do the file and database deletion in RuleConfig.
-            # Would be kinda nice because only then we'll know what's _really_ affected, and we could use the logic there.
-            # Instead, ensure that the rule logic needs no special cases, set everything up here.
-            WARN('Got "--force": Override existing output in files, datasets, and production_jobs DB.')
-            WARN('               Note that it\'s YOUR job to ensure there\'s no job in the queue or file in the DST lake which will overwrite this later!')
-            if args.force_delete:
-                WARN('               Also got "--force-delete": Deleting existing files that are reproduced.')
-            # answer = input("Do you want to continue? (yes/no): ")
-            # if answer.lower() != "yes":
-            #     print("Exiting. Smart.")
-            #     exit(0)
-            WARN("Here we go then.")
 
         INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
@@ -249,10 +233,6 @@ def main():
         match_config = MatchConfig.from_rule_config(rule)
         CHATTY("Match configuration:")
         CHATTY(yaml.dump(match_config.dict))
-
-        # #################### With the matching rules constructed, first remove all traces of the given runs
-        if args.force:
-            eradicate_runs(match_config=match_config, dryrun=args.dryrun, delete_files=args.force_delete)
 
         # #################### Now proceed with submission
         # Determine chunk size for processing runs
