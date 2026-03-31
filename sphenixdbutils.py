@@ -13,7 +13,10 @@ from typing import overload, List, Union
 from collections import namedtuple
 
 def get_parser():
+    import logging
     parser = argparse.ArgumentParser(description='sPHENIX DB utilities')
+    parser.add_argument('-v', '--verbose', action='count', default=0,
+                        help='Verbosity: -v=INFO, -vv=DEBUG, -vvv=CHATTY')
     subparsers = parser.add_subparsers(dest='command', required=True)
 
     # jobstarted subcommand
@@ -25,6 +28,10 @@ def get_parser():
     parser_jobended = subparsers.add_parser('jobended', help='Mark a job as ended')
     parser_jobended.add_argument('--dbid', required=False, type=int, default=None, help='Database ID of the job. Defaults to $PRODDB_DBID.')
     parser_jobended.add_argument('--exit-code', required=False, type=int, default=0, help='Exit code of the job.')
+    parser_jobended.add_argument('--user-cpu', required=False, type=float, default=None, help='User CPU time (seconds), from /usr/bin/time -v.')
+    parser_jobended.add_argument('--sys-cpu', required=False, type=float, default=None, help='System CPU time (seconds), from /usr/bin/time -v.')
+    parser_jobended.add_argument('--memory-kb', required=False, type=int, default=None, help='Peak RSS (KB), from /usr/bin/time -v. Stored as MB.')
+    parser_jobended.add_argument('--disk-kb', required=False, type=int, default=None, help='Peak scratch disk usage (KB), from stageout polling.')
     parser_jobended.add_argument('-n','--dryrun', action='store_true', help='Do not perform database updates.')
 
     return parser.parse_args()
@@ -36,7 +43,7 @@ long_filedb_info = namedtuple('long_filedb_info', [
     'run','seg','dataset','dsttype','nevents','first','last','status','tag',  # addtl. for datasets
 ])
 
-from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY  # noqa: E402, F401
+from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY, slogger, CHATTY_LEVEL_NUM  # noqa: E402, F401
 
 """
 This module provides an interface to the sPHENIX databases.
@@ -299,7 +306,9 @@ def jobstarted(dbid: int, dryrun: bool = False):
             # and we don't want to cause a job failure just for a DB update failure.
 
 
-def jobended(dbid: int, exit_code: int, dryrun: bool = False):
+def jobended(dbid: int, exit_code: int, dryrun: bool = False,
+             user_cpu: float = None, sys_cpu: float = None, memory_kb: int = None,
+             disk_kb: int = None):
     """
     Marks a job as ended in the production database.
     The final status is determined by the exit_code. Resource usage metrics
@@ -308,9 +317,13 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False):
     status = 'finished' if exit_code == 0 else 'failed'
     now = str(datetime.now().replace(microsecond=0))
 
-    # Parse resource metrics from the condor job ad
+    # Parse resource metrics from the condor job ad.
+    # Note: _CONDOR_JOB_AD is written at job start; resource usage fields are stale
+    # initial values (CPU=0, ImageSize=2). MemoryProvisioned reflects the actual
+    # memory slot the job ran in (MB), including any escalation retries.
     ad_floats = {'RemoteUserCpu': None, 'RemoteSysCpu': None}
-    ad_ints   = {'MemoryUsage': None, 'DiskUsage': None, 'ExitCode': None}
+    ad_ints   = {'MemoryProvisioned': None, 'DiskUsage': None, 'ExitCode': None,
+                 'NumShadowStarts': None}
     condor_job_ad_file = os.getenv("_CONDOR_JOB_AD")
     if condor_job_ad_file and os.path.exists(condor_job_ad_file):
         with open(condor_job_ad_file, 'r') as f:
@@ -318,23 +331,49 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False):
                 key, _, val = line.partition(" = ")
                 key = key.strip()
                 val = val.strip().strip('"')
+                CHATTY(f"  job ad: {key!r} = {val!r}")
                 if key in ad_floats:
                     try: ad_floats[key] = float(val)
                     except ValueError: pass
                 elif key in ad_ints:
                     try: ad_ints[key] = int(val)
                     except ValueError: pass
+    else:
+        WARN(f"_CONDOR_JOB_AD not set or not found ('{condor_job_ad_file}')")
 
     set_clauses = [
         f"status = '{status}'",
         f"finished = '{now}'",
         f"ExitCode = {exit_code}",
     ]
+    # Prefer /usr/bin/time values over the (always-stale) job ad CPU fields
+    if user_cpu is not None:
+        set_clauses.append(f"RemoteUserCpu = {user_cpu}")
+    if sys_cpu is not None:
+        set_clauses.append(f"RemoteSysCpu = {sys_cpu}")
+    if memory_kb is not None:
+        set_clauses.append(f"MemoryUsage = {memory_kb // 1024}")
+    if disk_kb is None:
+        # Try to read peak disk usage written by stageout.sh
+        diskpeak_file = os.path.join(os.getenv("_CONDOR_SCRATCH_DIR", "/tmp"), "sphenixprod_diskpeak")
+        try:
+            with open(diskpeak_file) as f:
+                disk_kb = int(f.read().strip())
+        except (OSError, ValueError):
+            pass
+    if disk_kb is not None:
+        set_clauses.append(f"DiskUsage = {disk_kb}")
     for col, val in ad_floats.items():
-        if val is not None:
+        if val is not None and col not in ('RemoteUserCpu', 'RemoteSysCpu'):
             set_clauses.append(f"{col} = {val}")
     for col, val in ad_ints.items():
-        if val is not None and col != 'ExitCode':  # ExitCode already set from arg
+        if val is None or col == 'ExitCode':  # ExitCode already set from arg
+            continue
+        if col == 'MemoryProvisioned':
+            set_clauses.append(f"MemoryProvisioned = {val}")
+        elif col == 'NumShadowStarts':
+            set_clauses.append(f"jobstarts = {val}")
+        else:
             set_clauses.append(f"{col} = {val}")
 
     update_jobs_sql = f"""
@@ -469,7 +508,11 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
     return f"{name} in  ( {','.join(strlist)} )"
 
 def main():
+    import logging
     args = get_parser()
+
+    level = {0: logging.WARNING, 1: logging.INFO, 2: logging.DEBUG}.get(args.verbose, CHATTY_LEVEL_NUM)
+    slogger.setLevel(level)
 
     dbid = args.dbid if args.dbid is not None else int(os.getenv("PRODDB_DBID", -1))
     if dbid < 0:
@@ -479,7 +522,9 @@ def main():
     if args.command == 'jobstarted':
         jobstarted(dbid, args.dryrun)
     elif args.command == 'jobended':
-        jobended(dbid, getattr(args, 'exit_code', 1), args.dryrun)
+        jobended(dbid, getattr(args, 'exit_code', 1), args.dryrun,
+                 user_cpu=args.user_cpu, sys_cpu=args.sys_cpu, memory_kb=args.memory_kb,
+                 disk_kb=args.disk_kb)
 
 
 if __name__ == '__main__':

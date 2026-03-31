@@ -66,6 +66,15 @@ destname="${destname}:size:${size}"
 destname="${destname}:ctime:${ctime}"
 destname="${destname}:dbid:${dbid}"
 
+# Track peak scratch disk usage across all stageout calls.
+# $_CONDOR_SCRATCH_DIR is job-local; fall back to /tmp for interactive runs.
+diskpeak_file=${_CONDOR_SCRATCH_DIR:-/tmp}/sphenixprod_diskpeak
+current_kb=$(du -sk . | awk '{print $1}')
+stored_kb=$(cat "${diskpeak_file}" 2>/dev/null || echo 0)
+if [ "${current_kb}" -gt "${stored_kb}" ]; then
+    echo "${current_kb}" > "${diskpeak_file}"
+fi
+
 action="dd if=${filename} of=${destination}/${destname} bs=12MB && rm -v ${filename}"
 # action="cp -v ${filename} ${destination}/${destname} && rm -v ${filename}"
 echo ${action}
