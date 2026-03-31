@@ -369,6 +369,8 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False,
     for col, val in ad_ints.items():
         if val is None or col == 'ExitCode':  # ExitCode already set from arg
             continue
+        if col == 'DiskUsage' and disk_kb is not None:  # stageout value takes precedence
+            continue
         if col == 'MemoryProvisioned':
             set_clauses.append(f"MemoryProvisioned = {val}")
         elif col == 'NumShadowStarts':
