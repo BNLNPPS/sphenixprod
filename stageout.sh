@@ -75,10 +75,27 @@ if [ "${current_kb}" -gt "${stored_kb}" ]; then
     echo "${current_kb}" > "${diskpeak_file}"
 fi
 
-action="dd if=${filename} of=${destination}/${destname} bs=12MB && rm -v ${filename}"
-# action="cp -v ${filename} ${destination}/${destname} && rm -v ${filename}"
-echo ${action}
-echo
-eval ${action}
+mkdir -p "${destination}"
+
+dd_dest="${destination}/${destname}"
+dd_action="dd if=${filename} of=${dd_dest} bs=12MB"
+max_tries=2
+
+for try in $(seq 1 ${max_tries}); do
+    echo ${dd_action}
+    eval ${dd_action}
+    dest_size=$(stat -c '%s' "${dd_dest}" 2>/dev/null)
+    if [ "${dest_size}" = "${size}" ]; then
+        break
+    fi
+    echo "Size mismatch on attempt ${try}/${max_tries} (expected ${size}, got ${dest_size:-<missing>})."
+    rm -f "${dd_dest}"
+    if [ ${try} -eq ${max_tries} ]; then
+        echo "ERROR: All ${max_tries} attempts failed. Giving up."
+        exit 0 # Fom Jason: stageout should never propagate a failed error code
+    fi
+done
+
+rm -v "${filename}"
 
 exit 0 # Fom Jason: stageout should never propagate a failed error code
