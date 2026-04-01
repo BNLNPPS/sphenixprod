@@ -266,19 +266,26 @@ def jobstarted(dbid: int, dryrun: bool = False):
     """
     execution_node = "UNKNOWN"
     proc_id = None
+    memory_provisioned = None
+    num_job_starts = None
     condor_job_ad_file = os.getenv("_CONDOR_JOB_AD")
     if condor_job_ad_file and os.path.exists(condor_job_ad_file):
         with open(condor_job_ad_file, 'r') as f:
             for line in f:
-                if line.startswith("RemoteHost"):
-                    val = line.split(" = ", 1)[1].strip().strip('"')
-                    # RemoteHost = "slot1@bnl-fn1.local" -> bnl-fn1.local
+                key, _, val = line.partition(" = ")
+                key = key.strip()
+                val = val.strip().strip('"')
+                if key == "RemoteHost":
                     execution_node = val.split('@')[-1]
-                elif line.startswith("ProcId"):
-                    try:
-                        proc_id = int(line.split(" = ", 1)[1].strip())
-                    except ValueError:
-                        pass
+                elif key == "ProcId":
+                    try: proc_id = int(val)
+                    except ValueError: pass
+                elif key == "MemoryProvisioned":
+                    try: memory_provisioned = int(val)
+                    except ValueError: pass
+                elif key == "NumJobStarts":
+                    try: num_job_starts = int(val)
+                    except ValueError: pass
 
     now = str(datetime.now().replace(microsecond=0))
     set_clauses = [
@@ -288,6 +295,10 @@ def jobstarted(dbid: int, dryrun: bool = False):
     ]
     if proc_id is not None:
         set_clauses.append(f"ProcId = {proc_id}")
+    if memory_provisioned is not None:
+        set_clauses.append(f"MemoryProvisioned = {memory_provisioned}")
+    if num_job_starts is not None:
+        set_clauses.append(f"jobstarts = {num_job_starts}")
 
     update_jobs_sql = f"""
         UPDATE production_jobs
@@ -323,7 +334,7 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False,
     # memory slot the job ran in (MB), including any escalation retries.
     ad_floats = {'RemoteUserCpu': None, 'RemoteSysCpu': None}
     ad_ints   = {'MemoryProvisioned': None, 'DiskUsage': None, 'ExitCode': None,
-                 'NumShadowStarts': None}
+                 'NumJobStarts': None}
     condor_job_ad_file = os.getenv("_CONDOR_JOB_AD")
     if condor_job_ad_file and os.path.exists(condor_job_ad_file):
         with open(condor_job_ad_file, 'r') as f:
@@ -373,7 +384,7 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False,
             continue
         if col == 'MemoryProvisioned':
             set_clauses.append(f"MemoryProvisioned = {val}")
-        elif col == 'NumShadowStarts':
+        elif col == 'NumJobStarts':
             set_clauses.append(f"jobstarts = {val}")
         else:
             set_clauses.append(f"{col} = {val}")
