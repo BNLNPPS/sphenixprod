@@ -76,7 +76,7 @@ COMMENT ON COLUMN production_jobs.MemoryUsage IS 'Peak memory usage of the job, 
 COMMENT ON COLUMN production_jobs.DiskUsage IS 'Peak disk usage of the job, in KB. From Condor''s DiskUsage attribute.';
 COMMENT ON COLUMN production_jobs.ExitCode IS 'The exit code of the job process. From Condor''s ExitCode attribute.';
 COMMENT ON COLUMN production_jobs.MemoryProvisioned IS 'Memory slot provisioned for the job (MB), reflecting any memory-escalation retries. From Condor''s MemoryProvisioned attribute.';
-COMMENT ON COLUMN production_jobs.jobstarts IS 'Number of times a shadow process was started for this job (evictions + final run). From Condor''s NumShadowStarts attribute.';
+COMMENT ON COLUMN production_jobs.jobstarts IS 'Number of times the job has started on a worker node. From Condor''s NumJobStarts attribute.';
 COMMENT ON COLUMN production_jobs.submission_host IS 'The hostname of the machine where the job was submitted from.';
 COMMENT ON COLUMN production_jobs.execution_node IS 'The hostname of the node where the job ran. From Condor''s RemoteHost attribute.';
 COMMENT ON COLUMN production_jobs.log IS 'Path to the standard output log file.';
