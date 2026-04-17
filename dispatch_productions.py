@@ -75,9 +75,11 @@ def main():
         command = [ "production_control.py", "--steerfile", str(steer_file), f"--loglevel={args.loglevel}" ]
         
         INFO(f"Dispatching: {' '.join(command)}")
-        subprocess.Popen(command)
+        result = subprocess.run(command)
 
-        if args.stagger > 0 and i < len(steer_files) - 1:
+        if result.returncode == 2:
+            DEBUG(f"production_control exited with 2 (host not in steer file), skipping stagger.")
+        elif args.stagger > 0 and i < len(steer_files) - 1:
             INFO(f"Waiting for {args.stagger} seconds before next dispatch.")
             time.sleep(args.stagger)
 
