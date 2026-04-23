@@ -12,7 +12,6 @@ import json
 import pprint # noqa F401
 
 from argparsing import monitor_args
-from sphenixdbutils import test_mode as dbutils_test_mode
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixmisc import setup_rot_handler
 from sphenixcondortools import base_batchname_from_args, monitor_condor_jobs
@@ -114,23 +113,12 @@ def plot_memory_scatterplot(memory_usage, request_memory, output_file):
 
 def main():
     args = monitor_args()
-    #################### Test mode?
-    test_mode = (
-            dbutils_test_mode
-            or args.test_mode
-            # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
-        )
 
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
-
-    if test_mode:
-        INFO("Running in testbed mode.")
-        args.mangle_dirpath = 'production-testbed'
-    else:
-        INFO("Running in production mode.")
+    INFO("Running in production mode.")
 
     batch_name=base_batchname_from_args(args)
     jobs=monitor_condor_jobs(batch_name=batch_name, dryrun=args.dryrun)

@@ -4,7 +4,6 @@ from pathlib import Path
 import pprint # noqa F401
 
 from argparsing import monitor_args
-from sphenixdbutils import test_mode as dbutils_test_mode
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
@@ -110,23 +109,12 @@ def base_batchname_from_args(args: argparse.Namespace) -> str:
 
 def main():
     args = monitor_args()
-    #################### Test mode?
-    test_mode = (
-            dbutils_test_mode
-            or args.test_mode
-            # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
-        )
 
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
- 
-    if test_mode:
-        INFO("Running in testbed mode.")
-        args.mangle_dirpath = 'production-testbed'
-    else:
-        INFO("Running in production mode.")
+    INFO("Running in production mode.")
 
     monitor_condor_jobs(batch_name=base_batchname_from_args(args), dryrun=args.dryrun)
     INFO(f"{Path(__file__).name} DONE.")

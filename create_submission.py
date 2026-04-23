@@ -22,7 +22,6 @@ from sphenixprodrules import RuleConfig
 from sphenixjobdicts import inputs_from_output
 from sphenixmatching import MatchConfig
 from sphenixcondorjobs import CondorJob
-from sphenixdbutils import test_mode as dbutils_test_mode
 import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
 from sphenixdbutils import cnxn_string_map, dbQuery
 from execute_condorsubmission import locate_submitfiles,execute_submission
@@ -87,12 +86,6 @@ def get_queued_jobs(rule):
 def main():
     ### digest arguments
     args = submission_args()
-    #################### Test mode?
-    test_mode = (
-            dbutils_test_mode
-            or args.test_mode
-            # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
-        )
 
     #################### Set up submission logging before going any further
     # Set up submission logging before going any further
@@ -114,11 +107,7 @@ def main():
             profiler = cProfile.Profile()
             profiler.enable()
 
-        if test_mode:
-            INFO("Running in testbed mode.")
-            args.mangle_dirpath = 'production-testbed'
-        else:
-            INFO("Running in production mode.")
+        INFO("Running in production mode.")
 
         #################### Rule has steering parameters and two subclasses for input and job specifics
         # Rule is instantiated via the yaml reader.
@@ -149,10 +138,6 @@ def main():
         payload_list += [ f"{script_path}/create_filelist_run_daqhost.py" ]
         payload_list += [ f"{script_path}/create_filelist_run_seg.py" ]
         payload_list += [ f"{script_path}/create_full_filelist_run_seg.py" ]
-
-        # .testbed: indicate test mode -- Search in the _submission_ directory
-        if Path(".testbed").exists():
-            payload_list += [str(Path('.testbed').resolve())]
 
         # from command line - the order means these can overwrite the default files from above
         if args.append2rsync:

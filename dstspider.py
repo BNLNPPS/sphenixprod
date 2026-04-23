@@ -17,7 +17,6 @@ from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig, parse_lfn, parse_spiderstuff
-from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect,shell_command,lock_file,unlock_file
 
@@ -26,13 +25,6 @@ from sphenixmisc import binary_contains_bisect,shell_command,lock_file,unlock_fi
 def main():
     ### digest arguments
     args = submission_args()
-
-    #################### Test mode?
-    test_mode = (
-            dbutils_test_mode
-            or args.test_mode
-            # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
-        )
 
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
@@ -52,11 +44,7 @@ def main():
     INFO("Starting dstspider.")
     INFO(sys.argv)
 
-    if test_mode:
-        INFO("Running in testbed mode.")
-        args.mangle_dirpath = 'production-testbed'
-    else:
-        INFO("Running in production mode.")
+    INFO("Running in production mode.")
 
     #################### Rule has steering parameters and two subclasses for input and job specifics
     # Rule is instantiated via the yaml reader.

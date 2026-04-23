@@ -6,7 +6,6 @@ import subprocess
 import bisect # for binary search in sorted lists
 
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixdbutils import test_mode as dbutils_test_mode
 
 # ============================================================================================
 def shell_command(command: str) -> List[str]:
@@ -25,16 +24,8 @@ def shell_command(command: str) -> List[str]:
 
 # ============================================================================================
 def setup_rot_handler(args):
-    #################### Test mode?
-    test_mode = (
-        dbutils_test_mode
-        or args.test_mode
-    )
     if not args.sublogdir:
-        if test_mode:
-            sublogdir='/tmp/testbed/sphenixprod/'
-        else:
-            sublogdir='/tmp/sphenixprod/sphenixprod/'
+        sublogdir='/tmp/sphenixprod/sphenixprod/'
     sublogdir += f"{args.rulename}".replace('.yaml','')
     Path(sublogdir).mkdir( parents=True, exist_ok=True )
     RotFileHandler = RotatingFileHandler(

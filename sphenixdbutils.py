@@ -54,22 +54,10 @@ Also, it needs a robust way to establish things like testbed vs. production mode
 
 # ============================================================================
 
-#################### Test mode? Multiple ways to turn it on
-test_mode = (
-        False
-        or 'testbed' in str(Path(".").absolute()).lower()
-        or Path(".testbed").exists()
-        or Path("SPHNX_TESTBED_MODE").exists()
-    )
-
 prod_mode = Path("SPHNX_PRODUCTION_MODE").exists()
 if ( prod_mode ):
     dsnprodr = 'Production_read'
     dsnprodw = 'Production_write'
-    dsnfilec = 'FileCatalog'
-elif ( test_mode ):
-    dsnprodr = 'ProductionStatus'
-    dsnprodw = 'ProductionStatusWrite'
     dsnfilec = 'FileCatalog'
 else:
     INFO("Neither production nor testbed mode set. Default to PRODUCTION.  YMMV.")
@@ -208,19 +196,19 @@ def upsert_filecatalog(fullinfos: Union[long_filedb_info,List[long_filedb_info]]
 
     files_db_lines = ",\n".join(files_db_lines)
     insert_files=insert_files_tmpl.format(
-        files_table='test_files' if test_mode else 'files',
+        files_table='files',
         files_db_lines = files_db_lines,
     )
     CHATTY(insert_files)
 
     datasets_db_lines=",\n".join(datasets_db_lines)
     insert_datasets=insert_datasets_tmpl.format(
-        datasets_table='test_datasets' if test_mode else 'datasets',
+        datasets_table='datasets',
         datasets_db_lines=datasets_db_lines,
     )
     CHATTY(insert_datasets)
     if not dryrun:
-        dbstring = 'testw' if test_mode else 'fcw'
+        dbstring = 'fcw'
         files_curs = dbQuery( cnxn_string_map[ dbstring ], insert_files )
         if files_curs:
             files_curs.commit()
@@ -542,4 +530,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

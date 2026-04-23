@@ -66,9 +66,6 @@ def main():
     ### digest arguments
     args = submission_args()
 
-    #################### Test mode?
-    test_mode = args.test_mode
-
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
@@ -87,11 +84,7 @@ def main():
     INFO(f"Starting {sys.argv[0]}.")
     INFO(sys.argv)
 
-    if test_mode:
-        INFO("Running in testbed mode.")
-        args.mangle_dirpath = 'production-testbed'
-    else:
-        INFO("Running in production mode.")
+    INFO("Running in production mode.")
 
     param_overrides = {}
     param_overrides["runs"]=args.runs
@@ -118,8 +111,8 @@ def main():
     CHATTY("Rule configuration:")
     CHATTY(yaml.dump(rule.dict))
 
-    files_table = 'test_files' if test_mode else 'files'
-    datasets_table = 'test_datasets' if test_mode else 'datasets'
+    files_table = 'files'
+    datasets_table = 'datasets'
 
     run_condition = list_to_condition(rule.runlist_int, name="d.runnumber")
 
