@@ -16,8 +16,6 @@ def _base_arguments(parser):
     # General arguments
     parser.add_argument('--dryrun', '--no-submit', '-n',
                         help="Job will not be submitted, DBs not updated. Just print things", dest="dryrun", action="store_true")
-    parser.add_argument('--test-mode', dest="test_mode", default=False,
-                        help="Sets testing mode, which will mangle DST names and directory paths.", action="store_true")
     parser.add_argument('--profile', help="Enable profiling", action="store_true")
 
     # sPHENIX files have specific names and locations. Override for testing or special purposes.
@@ -127,4 +125,3 @@ def monitor_args():
     return parse_and_set_loglevel(parser)
 
 # ============================================================================================
-

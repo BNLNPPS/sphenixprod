@@ -8,7 +8,6 @@ from argparsing import monitor_args
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixmisc import setup_rot_handler
 from sphenixcondortools import base_batchname_from_args, monitor_condor_jobs
-import random
 import htcondor2 as htcondor # type: ignore
 
 def main():

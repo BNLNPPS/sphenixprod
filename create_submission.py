@@ -136,7 +136,6 @@ def main():
         payload_list += [ f"{script_path}/GetEntriesAndEventNr.C" ]
         payload_list += [ f"{script_path}/common_runscript_prep.sh" ]
         payload_list += [ f"{script_path}/create_filelist_run_daqhost.py" ]
-        payload_list += [ f"{script_path}/create_filelist_run_seg.py" ]
         payload_list += [ f"{script_path}/create_full_filelist_run_seg.py" ]
 
         # from command line - the order means these can overwrite the default files from above

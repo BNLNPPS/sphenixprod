@@ -9,7 +9,6 @@ from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
 from sphenixmisc import setup_rot_handler, should_I_quit
 import htcondor2 as htcondor  # type: ignore
-import classad2 as classad # type: ignore
 
 def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
     """

@@ -41,14 +41,8 @@ def main():
     exclusive_vgroup.add_argument('--loglevel', dest='loglevel', default='INFO',
                                   help="Specific logging level (CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL)")
 
-    args = parser.parse_args()
-
-    if args.verbose == 1:
-        args.loglevel = 'INFO'
-    if args.debug or args.verbose == 2:
-        args.loglevel = 'DEBUG'
-    if args.chatty or args.verbose == 3:
-        args.loglevel = 'CHATTY'
+    from argparsing import parse_and_set_loglevel
+    args = parse_and_set_loglevel(parser)
 
     setup_dispatcher_logging(args)
 
