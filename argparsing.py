@@ -81,6 +81,9 @@ def submission_args():
     parser.add_argument('--cut-segment', dest='cut_segment', default=1, type=int,
                         help="Only submit jobs for segments where segment %% cut_segment == 0.")
 
+    parser.add_argument('--check-legacy', action=argparse.BooleanOptionalAction, default=True,
+                        help="Check the legacy production_status table (default: True)")
+
     # parser.add_argument("--dbinput", default=True, action="store_true",
     #                     help="Passes input filelist through the production status db rather than the argument list of the production script.")
     # parser.add_argument("--no-dbinput", dest="dbinput", action="store_false", help="Unsets dbinput flag.")

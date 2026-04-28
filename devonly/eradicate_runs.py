@@ -186,6 +186,7 @@ def main():
     param_overrides["runs"] = args.runs
     param_overrides["runlist"] = args.runlist
     param_overrides["nevents"] = 0 # Not relevant for eradication, but RuleConfig expects it.
+    param_overrides["check_legacy"] = args.check_legacy
 
     if args.physicsmode is not None:
         param_overrides["physicsmode"] = args.physicsmode

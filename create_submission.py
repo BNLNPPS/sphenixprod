@@ -154,6 +154,7 @@ def main():
         param_overrides["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case
         param_overrides["choose20"]          = args.choose20  # default is False
         param_overrides["prodmode"]          = "production"
+        param_overrides["check_legacy"]      = args.check_legacy
         # For testing, "production" (close to the root of all paths) in the default filesystem) can be replaced
         if args.mangle_dirpath:
             param_overrides["prodmode"] = args.mangle_dirpath

@@ -272,7 +272,6 @@ order by runnumber
         DEBUG(f'Checking for output already in production for {runnumbers}')
         run_condition=list_to_condition(runnumbers)
         jobs_run_condition   = f"and {run_condition}" if run_condition != "" else ""
-        legacy_run_condition = f"and {run_condition.replace('runnumber','run')}" if run_condition != "" else ""
 
         # 'finished' jobs _should_ be in the files db. "where status!='finished'"
         jobs_query  = f"""select filename,status from production_jobs
@@ -281,15 +280,18 @@ order by runnumber
             {jobs_run_condition} {self.input_config.status_query_constraints}
         order by runnumber desc;"""
 
-        # Also query production_status for jobs submitted by older code
-        legacy_query = f"""select dstfile,status from production_status
-        where dstname like '{self.dst_type_template}%{self.outtriplet}'
-            {legacy_run_condition} {self.input_config.status_query_constraints}
-        order by run desc;"""
-
         now=datetime.now()
         existing_status = { c.filename : c.status for c in dbQuery( cnxn_string_map['statr'], jobs_query ) }
-        legacy_status   = { c.dstfile  : c.status for c in dbQuery( cnxn_string_map['statr'], legacy_query ) }
+        legacy_status = {}
+        if getattr(self.input_config, 'check_legacy', True):
+            legacy_run_condition = f"and {run_condition.replace('runnumber','run')}" if run_condition != "" else ""
+            # Also query production_status for jobs submitted by older code
+            legacy_query = f"""select dstfile,status from production_status
+            where dstname like '{self.dst_type_template}%{self.outtriplet}'
+                {legacy_run_condition} {self.input_config.status_query_constraints}
+            order by run desc;"""
+            legacy_status   = { c.dstfile  : c.status for c in dbQuery( cnxn_string_map['statr'], legacy_query ) }
+
         elapsed = (datetime.now() - now).total_seconds()
         (WARN if elapsed > 60 else DEBUG)(f'Query took {elapsed:.2f} seconds.')
         # production_jobs takes precedence; legacy fills in any gaps
