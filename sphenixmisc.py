@@ -23,6 +23,38 @@ def shell_command(command: str) -> List[str]:
     return ret
 
 # ============================================================================================
+def parse_to_mb(s):
+    """Parses a memory string (potentially a list) into a list of integers in MB."""
+    def _parse_single(val):
+        if not val: return 0
+        if isinstance(val, (int, float)): return int(val)
+        val = str(val).upper().strip()
+        if val.endswith('MB'): return int(float(val[:-2]))
+        if val.endswith('GB'): return int(float(val[:-2]) * 1024)
+        if val.endswith('KB'): return int(float(val[:-2]) / 1024)
+        try: return int(float(val))
+        except ValueError: return 0
+
+    if isinstance(s, list):
+        return [_parse_single(x) for x in s]
+    s_str = str(s) if s is not None else ""
+    # Split by comma for strings like "2500MB, 4GB"
+    return [_parse_single(x) for x in s_str.split(',')]
+
+# ============================================================================================
+def parse_to_kb(s):
+    if not s: return 0
+    if isinstance(s, (int, float)): return int(s)
+    s = str(s).upper().strip()
+    if s.endswith('KB'): return int(float(s[:-2]))
+    if s.endswith('MB'): return int(float(s[:-2]) * 1024)
+    if s.endswith('GB'): return int(float(s[:-2]) * 1024 * 1024)
+    try: return int(float(s))
+    except ValueError: return 0
+
+# ============================================================================================
+
+# ============================================================================================
 def setup_rot_handler(args):
     if not args.sublogdir:
         sublogdir='/tmp/sphenixprod/sphenixprod/'

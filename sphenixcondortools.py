@@ -5,9 +5,9 @@ import pprint # noqa F401
 
 from argparsing import monitor_args
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig
+from sphenixprodrules import RuleConfig # New import
 from sphenixmatching import MatchConfig
-from sphenixmisc import setup_rot_handler, should_I_quit
+from sphenixmisc import setup_rot_handler, should_I_quit, shell_command # Modified import
 import htcondor2 as htcondor  # type: ignore
 
 def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
@@ -65,6 +65,26 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
         ad_by_dbid[dbid] = ad
     INFO(f"Mapped {len(ad_by_dbid)} jobs by dbid.")
     return ad_by_dbid
+
+# ============================================================================================
+def get_queued_jobs(rule: RuleConfig):
+    """
+    Determines the number of jobs currently in the condor queue for a given rule.
+    """
+    # Determine what's already in "idle"
+    # Note: For this, we cannot use runnumber cuts, too difficult (and expensive) to get from condor.
+    # Bit of a clunky method. But it works and doesn't get called all that often.
+    cq_query  =  'condor_q'
+    cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
+    cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
+
+    all_procs = shell_command(cq_query)
+    currently_queued_jobs=len(all_procs)
+    return currently_queued_jobs
+
+# ============================================================================================
+
+
 
 # ============================================================================================
 def base_batchname_from_args(args: argparse.Namespace) -> str:

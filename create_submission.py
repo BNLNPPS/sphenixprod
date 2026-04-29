@@ -16,71 +16,16 @@ if os.uname().sysname!='Darwin' :
     import htcondor # type: ignore
 
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit, shell_command, lock_file, unlock_file
+from sphenixmisc import setup_rot_handler, should_I_quit, shell_command, lock_file, unlock_file, parse_to_mb, parse_to_kb # Modified import
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixjobdicts import inputs_from_output
 from sphenixmatching import MatchConfig
+from sphenixcondortools import get_queued_jobs # New import
 from sphenixcondorjobs import CondorJob
 import importlib.util # to resolve the path of sphenixdbutils without importing it as a whole
-from sphenixdbutils import cnxn_string_map, dbQuery
+from sphenixdbutils import cnxn_string_map, dbQuery # type: ignore
 from execute_condorsubmission import locate_submitfiles,execute_submission
-
-def parse_to_mb(s):
-    """Parses a memory string (potentially a list) into a list of integers in MB."""
-    def _parse_single(val):
-        if not val: return 0
-        if isinstance(val, (int, float)): return int(val)
-        val = str(val).upper().strip()
-        if val.endswith('MB'): return int(float(val[:-2]))
-        if val.endswith('GB'): return int(float(val[:-2]) * 1024)
-        if val.endswith('KB'): return int(float(val[:-2]) / 1024)
-        try: return int(float(val))
-        except ValueError: return 0
-
-    if isinstance(s, list):
-        return [_parse_single(x) for x in s]
-    s_str = str(s) if s is not None else ""
-    # Split by comma for strings like "2500MB, 4GB"
-    return [_parse_single(x) for x in s_str.split(',')]
-
-def parse_to_kb(s):
-    if not s: return 0
-    if isinstance(s, (int, float)): return int(s)
-    s = str(s).upper().strip()
-    if s.endswith('KB'): return int(float(s[:-2]))
-    if s.endswith('MB'): return int(float(s[:-2]) * 1024)
-    if s.endswith('GB'): return int(float(s[:-2]) * 1024 * 1024)
-    try: return int(float(s))
-    except ValueError: return 0
-
-def get_queued_jobs(rule):
-    """
-    Determines the number of jobs currently in the condor queue for a given rule.
-    """
-    # Determine what's already in "idle"
-    # Note: For this, we cannot use runnumber cuts, too difficult (and expensive) to get from condor.
-    # Bit of a clunky method. But it works and doesn't get called all that often.
-    cq_query  =  'condor_q'
-    cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
-    cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
-
-    # # Detailed method: requires three queries
-    # run_procs = shell_command(cq_query + ' -run' )
-    # idle_procs = shell_command(cq_query + ' -idle' )
-    # held_procs = shell_command(cq_query + ' -held' )
-    # if len(run_procs) > 0:
-    #     INFO(f"We already have {len(run_procs)} jobs in the queue running.")
-    # if len(idle_procs) > 0:
-    #     INFO(f"We already have {len(idle_procs)} jobs in the queue waiting for execution.")
-    # if len(held_procs) > 0:
-    #     WARN(f"There are {len(held_procs)} held jobs that should be removed and/or resubmitted.")
-    # currently_queued_jobs= len(run_procs) + len(idle_procs) + len(held_procs)
-    
-    all_procs = shell_command(cq_query)
-    currently_queued_jobs=len(all_procs)
-    return currently_queued_jobs
-
 # ============================================================================================
 
 def main():
