@@ -260,10 +260,13 @@ def main():
         currently_queued_jobs = get_queued_jobs(rule)
         DEBUG(f"Currently queued jobs at start: {currently_queued_jobs}")
 
+        # Flag to indicate if we should stop processing further chunks
+        should_stop_processing_chunks = False
+
         # Process each chunk
         for chunk_idx, run_chunk in enumerate(run_chunks, 1):
             INFO(f"===== Processing chunk {chunk_idx}/{len(run_chunks)} with {len(run_chunk)} runs =====")
-            
+
             # Match for this chunk of runs
             rule_matches = match_config.matches(subset_runlist=run_chunk)
             INFO(f"Chunk {chunk_idx}: Matching complete. {len(rule_matches)} jobs to be submitted.")
@@ -306,8 +309,9 @@ def main():
             
             DEBUG(f"Currently queued/pending jobs (including previous chunks): {currently_queued_jobs}")
             for submit_run in submittable_runs:
-                if max_queued_jobs>0 and currently_queued_jobs>max_queued_jobs:
+                if max_queued_jobs > 0 and currently_queued_jobs >= max_queued_jobs:
                     WARN(f"Reached maximum of {max_queued_jobs} queued, held, or running jobs, stopping here.")
+                    should_stop_processing_chunks = True
                     break
 
                 ### Make the decision here whether to skip this run
@@ -434,8 +438,10 @@ def main():
                 # Refresh the queue count after submission since jobs are now in the queue
                 currently_queued_jobs = get_queued_jobs(rule)
                 DEBUG(f"After submission, currently queued jobs: {currently_queued_jobs}")
-            
+
             INFO(f"===== Completed chunk {chunk_idx}/{len(run_chunks)} =====")
+            if should_stop_processing_chunks:
+                return # Exit the main function, allowing the finally block to execute
 
 
         if args.profile:
