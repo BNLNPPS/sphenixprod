@@ -257,8 +257,8 @@ class RuleConfig:
         # Extract and validate input_config
         input_data = rule_data.get("input", {})
         check_params(input_data
-                    , required=["db", "table"]
-                    , optional=["intriplet",
+                    , required=[]
+                    , optional=["db", "table", "intriplet",
                                 "min_run_events","min_run_time",
                                 "direct_path", "dataset",
                                 "combine_seg0_only","choose20",
@@ -296,19 +296,26 @@ class RuleConfig:
         if choose20:
             CRITICAL("Option choose20 shouldn't be used.")
             exit(11)
+            ### Use choose20 only for combination jobs.
+            if 'raw' in input_data["db"]:
+                WARN ("Selecting only 20% of good runs.")
+            else:
+                WARN ("Option 'choose20' ignored for downstream production.")
+                choose20=False
 
         cut_segment = input_data.get("cut_segment", 1)
         argv_cut_segment = param_overrides.get("cut_segment")
         if argv_cut_segment is not None:
             cut_segment = argv_cut_segment
 
-        ### Use choose20 only for combination jobs.
-        if choose20 :
-            if 'raw' in input_data["db"]:
-                WARN ("Selecting only 20% of good runs.")
-            else:
-                WARN ("Option 'choose20' ignored for downstream production.")
-                choose20=False
+        ## Infer input database
+        if "db" in input_data:
+            WARN("'db' field in input configuration is deprecated and will be ignored. It is now inferred automatically.")
+        if "table" in input_data:
+            WARN("'table' field in input configuration is deprecated and will be ignored. It is now always 'datasets'.")            
+        dsttype = params_data["dsttype"]
+        inferred_db = "rawr" if "TRIGGERED" in dsttype or "STREAMING" in dsttype else "fcr"
+        inferred_table = "datasets"
 
         # Substitutions in direct input path, if given
         input_direct_path = input_data.get("direct_path")
@@ -326,8 +333,8 @@ class RuleConfig:
         DEBUG(f"Status query constraints: {status_query_constraints}" )
 
         input_config=InputConfig(
-            db=input_data["db"],
-            table=input_data["table"],
+            db=inferred_db,
+            table=inferred_table,
             intriplet=intriplet,
             indsttype=indsttype,
             indsttype_str=indsttype_str,
