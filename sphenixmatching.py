@@ -334,24 +334,31 @@ order by runnumber
 
         ### More general case, need to check all segments
         # How many segments were produced per daqhost?
-        seg_query=   "select runnumber,hostname,count(sequence) from filelist"
-        seg_query+= f" WHERE {run_condition}"
-        seg_query+= f" and hostname in {tuple(self.in_types)}"
-        seg_query+=  " group by runnumber,hostname;"
-        seg_result = dbQuery( cnxn_string_map['daqr'], seg_query ).fetchall()
+        # Original query to DAQ database's filelist table
+        # seg_query=   "select runnumber,hostname,count(sequence) from filelist"
+        # seg_query+= f" WHERE {run_condition}"
+        # seg_query+= f" and hostname in {tuple(self.in_types)}"
+        # seg_query+=  " group by runnumber,hostname;"
+        # seg_result = dbQuery( cnxn_string_map['daqr'], seg_query ).fetchall()
+        # New query to raw database's datasets table
+        seg_query_raw=   "select runnumber,daqhost,count(segment) from datasets"
+        seg_query_raw+= f" WHERE {run_condition}"
+        seg_query_raw+= f" and daqhost in {tuple(self.in_types)}"
+        seg_query_raw+=  " group by runnumber,daqhost;"
+        seg_result = dbQuery( cnxn_string_map['rawr'], seg_query_raw ).fetchall()
         run_segs = {}
         for r,h,s in seg_result:
             if r not in run_segs:
                 run_segs[r] = {}
             run_segs[r][h] = s
-
+        
         ### How many segments are actually present in the file catalog?
-        lustre_query =   "select runnumber,daqhost,count(status) from datasets"
-        lustre_query += f" where {run_condition}"
-        lustre_query += f" and daqhost in {tuple(self.in_types)}"
-        lustre_query += f" and status::int > 0"
-        lustre_query +=  " group by runnumber,daqhost;"
-        lustre_result = dbQuery( cnxn_string_map[ self.input_config.db ], lustre_query ).fetchall()
+        lustre_query_raw =   "select runnumber,daqhost,count(status) from datasets"
+        lustre_query_raw += f" where {run_condition}"
+        lustre_query_raw += f" and daqhost in {tuple(self.in_types)}"
+        lustre_query_raw += f" and status::int > 0" # Assuming 'status' column exists and is relevant in raw db's datasets table
+        lustre_query_raw +=  " group by runnumber,daqhost;"
+        lustre_result = dbQuery( cnxn_string_map['rawr'], lustre_query_raw ).fetchall()
         lustre_segs = {}
         for r,h,s in lustre_result:
             if r not in lustre_segs:
@@ -559,24 +566,28 @@ order by runnumber
             ### Get available input
             DEBUG("Getting available daq hosts for run {runnumber}")
 
-            daqhost_query=f"select hostname,serverid from hostinfo where runnumber={runnumber}"
-            daqhost_serverid=[ (c.hostname,c.serverid) for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ]
+            ## daqhost_query=f"select hostname,serverid from hostinfo where runnumber={runnumber}"
+            ## daqhost_serverid=[ (c.hostname,c.serverid) for c in dbQuery( cnxn_string_map['daqr'], daqhost_query).fetchall() ]
+            # The 'daqhost' column in 'datasets' already contains the combined hostname_serverid for e.g. ebdc hosts.
+            daqhost_query_raw=f"select distinct daqhost from datasets where runnumber={runnumber}"
+            raw_daqhosts=[ c.daqhost for c in dbQuery( cnxn_string_map['rawr'], daqhost_query_raw).fetchall() ]
+
             available_tpc=set()
             available_tracking=set()
             available_seb=set()
-            for (hostname,serverid) in daqhost_serverid:
-                if hostname=='ebdc39' : # special case for TPOT
-                    available_tracking.add(hostname)
+            for daqhost_name in raw_daqhosts:
+                if daqhost_name=='ebdc39' : # special case for TPOT
+                    available_tracking.add(daqhost_name)
                     continue
-                if 'ebdc' in hostname:
-                    available_tpc.add(f"{hostname}_{serverid}")
+                if 'ebdc' in daqhost_name:
+                    available_tpc.add(daqhost_name)
                     continue
-                if 'seb' in hostname:
-                    available_seb.add(hostname)
+                if 'seb' in daqhost_name:
+                    available_seb.add(daqhost_name)
                     continue
                 # remainder is other tracking detectors (and gl1)
-                if not 'gl1' in hostname:
-                    available_tracking.add(hostname)
+                if not 'gl1' in daqhost_name:
+                    available_tracking.add(daqhost_name)
                 
             DEBUG (f"Found {len(available_tpc)} TPC hosts in the run db")
             CHATTY(f"{available_tpc}")

@@ -20,7 +20,7 @@ inputs_from_output['DST_TRKR_TRACKS']  = ['DST_TRKR_SEED']
 ### Calorimeters -
 # Physical detectors are triggered
 # Keeping it as a dictionary until otherwise specified
-inputs_from_output['DST_TRIGGERED_EVENT'] = { f'seb{n:02}' : f'seb{n:02}' for n in range(0,24) }
+inputs_from_output['DST_TRIGGERED_EVENT'] = { f'seb{n:02}' : f'seb{n:02}' for n in range(0,19) } | { 'seb20' : 'seb20' } 
 
 # Downstream products fitting
 inputs_from_output['DST_CALOFITTING'] = list('DST_TRIGGERED_EVENT_' + LEAF for LEAF in inputs_from_output['DST_TRIGGERED_EVENT'].keys())

@@ -76,4 +76,7 @@ if [[ `ssh-add -l` =~ "eickolja" ]] ; then
     bind '"\e[A": history-search-backward'
     bind '"\e[B": history-search-forward'
 
+    # Turn off paging for psql
+    alias psql='psql -P pager=off'
+
 fi
