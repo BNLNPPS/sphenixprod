@@ -33,11 +33,15 @@ filename=`basename ${distfilename}` # Strips the path
 
 maxtries=3
 for i in `seq 1 $maxtries`; do
-    action="dd status=none if=${distfilename} of=./${filename} bs=12MB"
+    action="dd if=${distfilename} of=./${filename} bs=12MB"
     if [ $i -gt 1 ] ; then
         echo "Attempt $i: ${action}"
     fi
-    eval ${action}
+    eval ${action} 2>&1 | awk '
+        /records in|records out/ { next }
+        /copied/ { print; next }
+        { print > "/dev/stderr" }
+    '
 
     # Check size
     if [ "${size}" != "-1" ] ; then

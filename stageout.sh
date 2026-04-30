@@ -83,7 +83,15 @@ max_tries=2
 
 for try in $(seq 1 ${max_tries}); do
     echo ${dd_action}
-    eval ${dd_action}
+    # eval ${dd_action}
+    # Only keep errors in stderr; redirect summary to stdout.
+    # To keep progress, /records in|records out/ { print; next }
+    eval ${dd_action} 2>&1 | awk '
+        /records in|records out/ { next }
+        /copied/ { print; next }
+        { print > "/dev/stderr" }
+    '
+
     dest_size=$(stat -c '%s' "${dd_dest}" 2>/dev/null)
     if [ "${dest_size}" = "${size}" ]; then
         break
