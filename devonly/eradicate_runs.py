@@ -61,7 +61,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True, delete_files: b
         else:
             if Path(dstlistname).exists():
                 wccommand=f"wc -l {dstlistname}"
-                ret = shell_command(wccommand)
+                ret = shell_command(wccommand, raise_on_error=True)
                 nfiles = int(ret[0])
 
         INFO(f"Found {nfiles} existing files to delete.")

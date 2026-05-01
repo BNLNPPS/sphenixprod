@@ -5,7 +5,6 @@ from datetime import datetime
 import yaml
 import cProfile
 import pstats
-import subprocess
 import sys
 import shutil
 import os
@@ -16,28 +15,13 @@ from typing import List
 import pprint # noqa F401
 
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks
+from sphenixmisc import setup_rot_handler, should_I_quit, make_chunks, shell_command
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig,inputs_from_output
 from sphenixprodrules import parse_lfn,parse_spiderstuff
 from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect
-
-# ============================================================================================
-def shell_command(command: str) -> List[str]:
-    """Minimal wrapper to hide away subbprocess tedium"""
-    DEBUG(f"[shell_command] Command: {command}")
-    ret=[]
-    try:
-        ret = subprocess.run(command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()
-    except subprocess.CalledProcessError as e:
-        WARN("[shell_command] Command failed with exit code:", e.returncode)
-    finally:
-        pass
-
-    DEBUG(f"[shell_command] Return value length is {len(ret)}.")
-    return ret
 
 # ============================================================================================
 
@@ -165,11 +149,11 @@ def main():
         INFO(" ... not found. Creating a new one.")
         findcommand=f"{lfind} {lakelocation} -type f -name {dstbase}\*.root\* > {lakelistname}; wc -l {lakelistname}"
         DEBUG(f"Using:\n{findcommand}")
-        ret = shell_command(findcommand)
+        ret = shell_command(findcommand, raise_on_error=True)
         INFO(f"Found {ret[0]} matching dsts without cuts in the lake, piped into {ret[1]}")
     else:
         wccommand=f"wc -l {lakelistname}"
-        ret = shell_command(wccommand)
+        ret = shell_command(wccommand, raise_on_error=True)
         INFO(f" ... found. List contains {ret[0]} files.")
 
     ### Grab the first N files and work on those.

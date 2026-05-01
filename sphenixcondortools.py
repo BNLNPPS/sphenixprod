@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import subprocess
 from pathlib import Path
 import pprint # noqa F401
 
@@ -78,9 +79,11 @@ def get_queued_jobs(rule: RuleConfig):
     cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
     cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
 
-    all_procs = shell_command(cq_query)
-    currently_queued_jobs=len(all_procs)
-    return currently_queued_jobs
+    try:
+        all_procs = shell_command(cq_query, raise_on_error=True)
+    except subprocess.CalledProcessError:
+        return -1
+    return len(all_procs)
 
 # ============================================================================================
 

@@ -8,7 +8,7 @@ import bisect # for binary search in sorted lists
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 
 # ============================================================================================
-def shell_command(command: str) -> List[str]:
+def shell_command(command: str, raise_on_error: bool = False) -> List[str]:
     """Minimal wrapper to hide away subbprocess tedium"""
     CHATTY(f"[shell_command] Command: {command}")
     ret=[]
@@ -16,8 +16,8 @@ def shell_command(command: str) -> List[str]:
         ret = subprocess.run(command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()
     except subprocess.CalledProcessError as e:
         WARN("[shell_command] Command failed with exit code:", e.returncode)
-    finally:
-        pass
+        if raise_on_error:
+            raise
 
     CHATTY(f"[shell_command] Return value length is {len(ret)}.")
     return ret

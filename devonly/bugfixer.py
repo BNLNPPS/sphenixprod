@@ -2,29 +2,15 @@
 
 from pathlib import Path
 from datetime import datetime
-import subprocess
 import sys
 import shutil
 import math
 from typing import Tuple,List
 
 from sphenixdbutils import cnxn_string_map, dbQuery
+from sphenixmisc import shell_command
 #from sphenixdbutils import filedb_info, upsert_filecatalog, update_proddb
 
-
-# ============================================================================================
-def shell_command(command: str) -> List[str]:
-    """Minimal wrapper to hide away subbprocess tedium"""
-    # CHATTY(f"[shell_command] Command: {command}")
-    ret=[]
-    try:
-        ret = subprocess.run(command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()
-    except subprocess.CalledProcessError as e:
-        print("[shell_command] Command failed with exit code:", e.returncode)
-    finally:
-        pass
-
-    return ret
 
 # ============================================================================
 def my_parse_spiderstuff(filename: str) -> Tuple[str,...] :

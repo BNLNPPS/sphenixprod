@@ -5,7 +5,6 @@ from datetime import datetime
 import yaml
 import cProfile
 import pstats
-import subprocess
 import sys
 import shutil
 import os
@@ -15,27 +14,12 @@ from typing import List
 import pprint # noqa F401
 
 from argparsing import submission_args
-from sphenixmisc import setup_rot_handler, should_I_quit
+from sphenixmisc import setup_rot_handler, should_I_quit, shell_command
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixmatching import parse_lfn, parse_spiderstuff
 from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect
-
-# ============================================================================================
-def shell_command(command: str) -> List[str]:
-    """Minimal wrapper to hide away subbprocess tedium"""
-    CHATTY(f"[shell_command] Command: {command}")
-    ret=[]
-    try:
-        ret = subprocess.run(command, shell=True, check=True, capture_output=True).stdout.decode('utf-8').split()
-    except subprocess.CalledProcessError as e:
-        WARN("[shell_command] Command failed with exit code:", e.returncode)
-    finally:
-        pass
-
-    CHATTY(f"[shell_command] Found {len(ret)} matches.")
-    return ret
 
 # ============================================================================================
 

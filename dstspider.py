@@ -116,7 +116,7 @@ def main():
         exit(0)
 
     wccommand=f"wc -l {dstlistname}"
-    ret = shell_command(wccommand)
+    ret = shell_command(wccommand, raise_on_error=True)
     INFO(f"List contains {ret[0]} files.")
 
     ### Grab the first N files and work on those.
