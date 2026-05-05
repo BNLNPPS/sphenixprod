@@ -9,6 +9,7 @@ odbc_test.ini
 *.prof
 .testbed
 *.png
+*.pdf
 *.pkl
 *.json
 
