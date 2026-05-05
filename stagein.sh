@@ -1,5 +1,26 @@
 #!/usr/bin/env bash
 
+# --checkonly: validate that the preceding filelist creator succeeded.
+# Must be sourced (. stagein.sh --checkonly) so it can exit the calling wrapper.
+if [[ "${1}" == "--checkonly" ]]; then
+    _filelist_rc=$?  # exit status of the filelist creator — preserved by bash into sourced scripts
+    if [[ $_filelist_rc -ne 0 ]]; then
+        echo "ERROR: Filelist creation failed (exit code $_filelist_rc). Aborting job."
+        status_f4a=$_filelist_rc
+        . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
+        exit $_filelist_rc
+    fi
+    echo "Filelist creation succeeded."
+    shopt -s nullglob
+    for l in *.list; do
+        echo "--- $l"
+        ls -la "$l"
+        cat "$l"
+    done
+    shopt -u nullglob
+    return 0 2>/dev/null
+fi
+
 if [ "$#" -ne 1 ] && [ "$#" -ne 4 ] ; then
     echo "Unsupported call:"
     echo $0 $@

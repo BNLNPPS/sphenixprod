@@ -49,6 +49,7 @@ def main():
 
     if not file_list_by_host:
         print("No files found for the given criteria.")
+        sys.exit(1)
 
     for host, filenames in file_list_by_host.items():
         list_filename = f"{host}.list"
