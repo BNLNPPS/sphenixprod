@@ -18,90 +18,90 @@ if [[ "${1}" == "--checkonly" ]]; then
         cat "$l"
     done
     shopt -u nullglob
+
+    if [[ -s infile_paths.list ]]; then
+        echo "--- Checking remote file health from infile_paths.list"
+        _health_ok=1
+        while IFS=' ' read -r full_file_path md5 size full_host_name; do
+            actual_size=$(stat -c '%s' "${full_file_path}" 2>/dev/null)
+            if [[ -z "${actual_size}" ]]; then
+                echo "MISSING: ${full_file_path}"
+                _health_ok=0
+            elif [[ "${actual_size}" != "${size}" ]]; then
+                echo "SIZE MISMATCH: ${full_file_path} (expected ${size}, got ${actual_size})"
+                _health_ok=0
+            else
+                echo "OK: ${full_file_path} (${size} bytes)"
+            fi
+        done < infile_paths.list
+        if [[ ${_health_ok} -eq 0 ]]; then
+            echo "ERROR: Remote file health check failed. Aborting job."
+            status_f4a=1
+            . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
+            exit 1
+        fi
+        echo "Remote file health check passed."
+    fi
+
     return 0 2>/dev/null
 fi
 
-if [ "$#" -ne 1 ] && [ "$#" -ne 4 ] ; then
-    echo "Unsupported call:"
-    echo $0 $@
-    echo Abort.
-    exit 0
+# Staging mode: read infile_paths.list and dd each file into the working directory.
+# Must be sourced so it can exit the calling wrapper on failure.
+# infile_paths.list format (from create_full_filelist_run_seg.py):
+#   full_file_path md5 size full_host_name
+infile_paths="infile_paths.list"
+if [[ ! -s "${infile_paths}" ]]; then
+    echo "ERROR: ${infile_paths} not found or empty. Cannot stage in files."
+    status_f4a=1
+    . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
+    exit 1
 fi
 
-distfilename=${1}
-echo "Staging in file ${distfilename}"
+maxtries=2
+while IFS=' ' read -r full_file_path md5 size full_host_name; do
+    filename=$(basename "${full_file_path}")
+    echo "Staging in: ${full_file_path} -> ./${filename} (size=${size}, md5=${md5})"
 
-md5=-1
-size=-1
-filesystem=""
-if [ "$#" -eq 4 ] ; then
-    md5=${2}
-    size=${3}
-    filesystem=${4}
-    # [ "${filesystem}" != "sphenix" ] && [ "${filesystem}" != "gpfs" ] && 
-    if [ "${filesystem}" != "lustre" ] ; then
-        echo "Unsupported filesystem ${filesystem} (expect lustre). Abort."
-        exit 10
-    fi
-fi
-
-if [ ! -f ${distfilename} ]; then
-    echo "${distfilename} not found!"
-    exit 11
-fi
-
-filename=`basename ${distfilename}` # Strips the path
-
-maxtries=3
-for i in `seq 1 $maxtries`; do
-    action="dd if=${distfilename} of=./${filename} bs=12MB"
-    if [ $i -gt 1 ] ; then
-        echo "Attempt $i: ${action}"
-    fi
-    eval ${action} 2>&1 | awk '
-        /records in|records out/ { next }
-        /copied/ { print; next }
-        { print > "/dev/stderr" }
-    '
-
-    # Check size
-    if [ "${size}" != "-1" ] ; then
-        actual_size=`stat -c '%s' ${filename}`
-        if [ "${actual_size}" == "${size}" ] ; then
-            echo "Size check passed."
-            break # Exit loop
-        else
-            echo "Calculated size: ${actual_size}"
-            echo "Expected size: ${size}"
-            echo "Size mismatch on attempt $i."
-            if [ $i -eq $maxtries ]; then
-                rm ${filename} # clean up incomplete file
-                echo "Size mismatch after $maxtries attempts. Abort."
-                exit 12
-            fi
-            # Try again
-        fi
-    else
-        # No size check requested, assume success
-        echo "No size check requested, assume success"
-        break
-    fi
-done
-# Once the size is okay, md5sum has to be too, otherwise the problem is more profound than transfer issues.
-
-# Check md5sum:
-actual_md5=`/usr/bin/env md5sum ${filename} | cut -d ' ' -f 1`
-
-if [ "${md5}" != "-1" ] ; then
-    if [ "${actual_md5}" != "${md5}" ] ; then
-        echo "Calculated md5: ${actual_md5}"
-        echo "Expected md5  : ${md5}"
-        echo "md5sum mismatch! Abort."
+    if [[ ! -f "${full_file_path}" ]]; then
+        echo "ERROR: Source file ${full_file_path} not found. Aborting."
+        status_f4a=1
+        . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
         exit 1
     fi
-    echo "Md5sum check passed."
-else 
-    echo "No md5sum check requested, assume success"
-fi
 
-exit 0
+    for try in $(seq 1 ${maxtries}); do
+        [[ ${try} -gt 1 ]] && echo "Attempt ${try}/${maxtries}"
+        dd if="${full_file_path}" of="./${filename}" bs=12MB 2>&1 | awk '
+            /records in|records out/ { next }
+            /copied/ { print; next }
+            { print > "/dev/stderr" }
+        '
+        actual_size=$(stat -c '%s' "./${filename}" 2>/dev/null)
+        if [[ "${actual_size}" == "${size}" ]]; then
+            echo "Size check passed."
+            break
+        fi
+        echo "Size mismatch on attempt ${try}/${maxtries} (expected ${size}, got ${actual_size:-<missing>})."
+        rm -f "./${filename}"
+        if [[ ${try} -eq ${maxtries} ]]; then
+            echo "ERROR: All ${maxtries} attempts failed for ${full_file_path}. Aborting."
+            status_f4a=1
+            . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
+            exit 1
+        fi
+    done
+
+    # Once size is OK, md5 has to be too — mismatch indicates a deeper problem.
+    actual_md5=$(/usr/bin/env md5sum "./${filename}" | cut -d ' ' -f 1)
+    if [[ "${actual_md5}" != "${md5}" ]]; then
+        echo "ERROR: md5 mismatch for ${filename} (expected ${md5}, got ${actual_md5}). Aborting."
+        status_f4a=1
+        . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
+        exit 1
+    fi
+    echo "md5 check passed."
+
+done < "${infile_paths}"
+
+return 0 2>/dev/null
