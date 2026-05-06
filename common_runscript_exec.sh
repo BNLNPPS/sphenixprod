@@ -16,3 +16,8 @@ user_cpu=$(  awk '/User time \(seconds\)/     {print $NF}' "${time_file}")
 sys_cpu=$(   awk '/System time \(seconds\)/   {print $NF}' "${time_file}")
 max_rss_kb=$(awk '/Maximum resident set size/ {print $NF}' "${time_file}")
 rm -f "${time_file}"
+
+if [[ ${status_f4a} -ne 0 ]]; then
+    echo "ERROR: Macro exited with code ${status_f4a}. Aborting."
+    . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
+fi

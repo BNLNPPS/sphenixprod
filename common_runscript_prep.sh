@@ -158,11 +158,4 @@ echo ls -lha
 ls -lha
 # printenv
 echo "---------------------------------------------"
-return 0  2>/dev/null
-
-echo "Execution of $0 complete "
-echo "---------------------------------------------"
-exit
-
-
-# (return 0 2>/dev/null) && ( echo "Leaving sourced script." ) || (echo Exiting) && exit 0
+return 0

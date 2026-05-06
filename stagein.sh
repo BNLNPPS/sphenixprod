@@ -8,7 +8,6 @@ if [[ "${1}" == "--checkonly" ]]; then
         echo "ERROR: Filelist creation failed (exit code $_filelist_rc). Aborting job."
         status_f4a=$_filelist_rc
         . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
-        exit $_filelist_rc
     fi
     echo "Filelist creation succeeded."
     shopt -s nullglob
@@ -38,7 +37,6 @@ if [[ "${1}" == "--checkonly" ]]; then
             echo "ERROR: Remote file health check failed. Aborting job."
             status_f4a=1
             . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
-            exit 1
         fi
         echo "Remote file health check passed."
     fi
@@ -55,7 +53,6 @@ if [[ ! -s "${infile_paths}" ]]; then
     echo "ERROR: ${infile_paths} not found or empty. Cannot stage in files."
     status_f4a=1
     . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
-    exit 1
 fi
 
 maxtries=2
@@ -67,7 +64,6 @@ while IFS=' ' read -r full_file_path md5 size full_host_name; do
         echo "ERROR: Source file ${full_file_path} not found. Aborting."
         status_f4a=1
         . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
-        exit 1
     fi
 
     for try in $(seq 1 ${maxtries}); do
@@ -88,7 +84,6 @@ while IFS=' ' read -r full_file_path md5 size full_host_name; do
             echo "ERROR: All ${maxtries} attempts failed for ${full_file_path}. Aborting."
             status_f4a=1
             . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
-            exit 1
         fi
     done
 
@@ -98,10 +93,9 @@ while IFS=' ' read -r full_file_path md5 size full_host_name; do
         echo "ERROR: md5 mismatch for ${filename} (expected ${md5}, got ${actual_md5}). Aborting."
         status_f4a=1
         . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
-        exit 1
     fi
     echo "md5 check passed."
 
 done < "${infile_paths}"
 
-return 0 2>/dev/null
+return 0

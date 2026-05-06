@@ -6,7 +6,8 @@ if [ "$#" -lt "$MIN_ARG_COUNT" ] || [ "$#" -gt "$MAX_ARG_COUNT" ] ; then
     echo "Unsupported call:"
     echo $0 $@
     echo Abort.
-    exit 0
+    status_f4a=1
+    . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
 fi
 
 filename=${1}
@@ -22,7 +23,8 @@ if [ ! -f ${filename} ]; then
     echo "${filename} not found!"
     echo ls -lahtr
     ls -lahtr
-    exit 0
+    status_f4a=1
+    . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
 fi
 
 # Could test the destination like this, but we want to minimize lustre probing in the worker jobs
@@ -83,9 +85,6 @@ max_tries=2
 
 for try in $(seq 1 ${max_tries}); do
     echo ${dd_action}
-    # eval ${dd_action}
-    # Only keep errors in stderr; redirect summary to stdout.
-    # To keep progress, /records in|records out/ { print; next }
     eval ${dd_action} 2>&1 | awk '
         /records in|records out/ { next }
         /copied/ { print; next }
@@ -100,10 +99,11 @@ for try in $(seq 1 ${max_tries}); do
     rm -f "${dd_dest}"
     if [ ${try} -eq ${max_tries} ]; then
         echo "ERROR: All ${max_tries} attempts failed. Giving up."
-        exit 0 # Fom Jason: stageout should never propagate a failed error code
+        status_f4a=1
+        . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
     fi
 done
 
 rm -v "${filename}"
 
-exit 0 # Fom Jason: stageout should never propagate a failed error code
+return 0
