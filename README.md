@@ -9,6 +9,24 @@ All (at least hopefully) dependencies are in `requirements.txt`.
 pip install -r requirements.txt
 ```
 
+## Job Exit Codes
+
+All job scripts report a final exit code via `common_runscript_finish.sh`, which records it in the production database. Codes are designed to identify the failure stage at a glance:
+
+| Code | Stage | Meaning |
+|------|-------|---------|
+| 0 | — | Success |
+| 2 | Setup | Bad arguments or configuration error |
+| 3 | Setup | Unsupported OS / environment setup failed |
+| 10 | Input | No input files found (DB query returned empty) |
+| 11 | Input | Remote file health check failed (missing or wrong size) |
+| 20 | Stage-in | Input file copy failed (dd retries exhausted or source missing) |
+| 21 | Stage-in | Input file md5 mismatch after copy |
+| 30 | Stage-out | Output file not found (macro produced no output) |
+| 31 | Stage-out | Output file copy failed (dd retries exhausted) |
+| 111 | Input | Streaming: wrong number of GL1 or detector list files |
+| other | Macro | Propagated directly from `root.exe` exit code |
+
 ## Chunking Support
 
 For large run lists, the submission process can be time-consuming when processing all runs at once. The `--chunk-size` parameter allows you to process runs in smaller chunks, enabling faster feedback and more incremental progress.

@@ -20,7 +20,7 @@ def main():
         segment_str = sys.argv[5]
     else:
         ERROR( "usage: [dataset] [intriplet] [dsttype] <runnumber> <segment> ")
-        sys.exit(1)
+        sys.exit(2)
 
     try:
         runnumber = int(runnumber_str)
@@ -28,7 +28,7 @@ def main():
     except ValueError:
         print(f"Error: runnumber '{runnumber_str}' must be an integer.")
         print(f"     : segment '{segment_str}' must be an integer.")
-        sys.exit(1)
+        sys.exit(2)
 
     # dsttype comes as a a comma-separated list, add ticks for sql
     dsttype4sql=dsttype.replace(",","','")
@@ -58,7 +58,7 @@ def main():
 
     if not file_list:
         print("No files found for the given criteria.")
-        exit(1)
+        sys.exit(10)
     filelist=sorted(file_list)
 
     ### Collect full paths. Note, we can make this optional for combiner jobs.
@@ -78,7 +78,7 @@ def main():
 
     if not full_path_info:
         print("No files found for the given criteria.")
-        exit(1)
+        sys.exit(10)
 
     list_filename = "infile.list"
     full_path_list_filename = "infile_paths.list"

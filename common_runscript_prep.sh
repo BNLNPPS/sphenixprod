@@ -25,7 +25,7 @@ if [ "$#" -lt $ARG_COUNT ]  ; then
     echo "Usage: $0 <buildarg> <dataset> <intriplet> <dsttype> <run> <seg> <daqhost> <inputs>"
     echo "       <nevents> <outdir> <histdir> <outbase> <neventsper> <dbtag>"
     echo "       <logbase> <logdir> <condor_rsync> [dbid]"
-    exit 1
+    exit 2
 fi
 
 # Parse arguments using shift
@@ -121,7 +121,7 @@ else
         source /opt/sphenix/core/bin/sphenix_setup.sh -n $buildarg
     else
 	echo "Unsupported OS $OS"
-	exit 1
+	exit 3
     fi
 fi
 

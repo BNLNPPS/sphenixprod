@@ -9,14 +9,14 @@ def main():
     if len(sys.argv) < 4:
         script_name = sys.argv[0]
         print(f"usage: {script_name} <runnumber> <daqhost> <segswitch>")
-        sys.exit(0)
+        sys.exit(2)
 
     runnumber_str = sys.argv[1]
     try:
         runnumber = int(runnumber_str)
     except ValueError:
         print(f"Error: runnumber '{runnumber_str}' must be an integer.")
-        sys.exit(1)
+        sys.exit(2)
 
     daqhost = sys.argv[2]
 
@@ -35,7 +35,7 @@ def main():
         pass
     else:
         print("segswitch = {seg0fromdb|allsegsfromdb} must be explicitly provided")
-        exit(1)
+        sys.exit(2)
     sql_query += f"""
     AND (daqhost = '{daqhost}' OR daqhost = 'gl1daq')
     AND status=1
@@ -49,7 +49,7 @@ def main():
 
     if not file_list_by_host:
         print("No files found for the given criteria.")
-        sys.exit(1)
+        sys.exit(10)
 
     for host, filenames in file_list_by_host.items():
         list_filename = f"{host}.list"

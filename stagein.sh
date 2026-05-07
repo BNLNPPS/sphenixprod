@@ -35,7 +35,7 @@ if [[ "${1}" == "--checkonly" ]]; then
         done < infile_paths.list
         if [[ ${_health_ok} -eq 0 ]]; then
             echo "ERROR: Remote file health check failed. Aborting job."
-            status_f4a=1
+            status_f4a=11
             . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
         fi
         echo "Remote file health check passed."
@@ -51,7 +51,7 @@ fi
 infile_paths="infile_paths.list"
 if [[ ! -s "${infile_paths}" ]]; then
     echo "ERROR: ${infile_paths} not found or empty. Cannot stage in files."
-    status_f4a=1
+    status_f4a=20
     . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
 fi
 
@@ -62,7 +62,7 @@ while IFS=' ' read -r full_file_path md5 size full_host_name; do
 
     if [[ ! -f "${full_file_path}" ]]; then
         echo "ERROR: Source file ${full_file_path} not found. Aborting."
-        status_f4a=1
+        status_f4a=20
         . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
     fi
 
@@ -82,7 +82,7 @@ while IFS=' ' read -r full_file_path md5 size full_host_name; do
         rm -f "./${filename}"
         if [[ ${try} -eq ${maxtries} ]]; then
             echo "ERROR: All ${maxtries} attempts failed for ${full_file_path}. Aborting."
-            status_f4a=1
+            status_f4a=20
             . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
         fi
     done
@@ -91,7 +91,7 @@ while IFS=' ' read -r full_file_path md5 size full_host_name; do
     actual_md5=$(/usr/bin/env md5sum "./${filename}" | cut -d ' ' -f 1)
     if [[ "${actual_md5}" != "${md5}" ]]; then
         echo "ERROR: md5 mismatch for ${filename} (expected ${md5}, got ${actual_md5}). Aborting."
-        status_f4a=1
+        status_f4a=21
         . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
     fi
     echo "md5 check passed."

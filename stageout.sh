@@ -6,7 +6,7 @@ if [ "$#" -lt "$MIN_ARG_COUNT" ] || [ "$#" -gt "$MAX_ARG_COUNT" ] ; then
     echo "Unsupported call:"
     echo $0 $@
     echo Abort.
-    status_f4a=1
+    status_f4a=2
     . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
 fi
 
@@ -23,7 +23,7 @@ if [ ! -f ${filename} ]; then
     echo "${filename} not found!"
     echo ls -lahtr
     ls -lahtr
-    status_f4a=1
+    status_f4a=30
     . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
 fi
 
@@ -99,7 +99,7 @@ for try in $(seq 1 ${max_tries}); do
     rm -f "${dd_dest}"
     if [ ${try} -eq ${max_tries} ]; then
         echo "ERROR: All ${max_tries} attempts failed. Giving up."
-        status_f4a=1
+        status_f4a=31
         . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
     fi
 done
