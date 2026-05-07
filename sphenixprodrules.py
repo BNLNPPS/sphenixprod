@@ -190,7 +190,7 @@ class RuleConfig:
                 f"/cvmfs/sphenix.sdcc.bnl.gov/alma9.2-gcc-14.2.0/release/release_*/ — "
                 f"check spelling or cvmfs availability."
             )
-            exit(2)
+            exit(3)
         INFO(f"Build tag '{build_tag}' found: {cvmfs_matches[0]}")
 
         ### Fill derived data fields
@@ -214,7 +214,7 @@ class RuleConfig:
                     content = file.read()
             except FileNotFoundError:
                 ERROR(f"Error: Runlist file not found at {runlist_filename}")
-                exit(-1)
+                exit(10)
             try:
                 number_strings = re.findall(r"[-+]?\d+", content)
                 runlist_int=[int(runstr) for runstr in number_strings]
@@ -246,7 +246,7 @@ class RuleConfig:
                 runlist_int=[r for r in runlist_int if r>=0]
         if not runlist_int or runlist_int==[]:
             ERROR("Something's wrong parsing the runs to be processed. Maybe runmax < runmin?")
-            exit(-1)
+            exit(10)
         CHATTY(f"Runlist: {runlist_int}")
 
         ### Optionals
@@ -276,7 +276,7 @@ class RuleConfig:
             indsttype = input_stem
         else:
             ERROR("Unrecognized type of input file descriptor {type(input_stem)}")
-            exit(1)
+            exit(2)
         indsttype_str=",".join(indsttype)
         # indsttype_str=f"('{indsttype_str}')" ## Commented out. Adding parens here doesn't play well with handover to condor
 
@@ -295,7 +295,7 @@ class RuleConfig:
             choose20=True
         if choose20:
             CRITICAL("Option choose20 shouldn't be used.")
-            exit(11)
+            exit(2)
             ### Use choose20 only for combination jobs.
             if 'raw' in input_data["db"]:
                 WARN ("Selecting only 20% of good runs.")
@@ -367,7 +367,7 @@ class RuleConfig:
         if arguments_tmpl:
             # WARN("Using 'arguments' from the yaml file.")
             ERROR("Yaml rule contains 'arguments' field. That almost certainly means the file is outdated.")
-            exit(1)
+            exit(2)
         else:
             arguments_tmpl=glob_arguments_tmpl
         job_data["arguments_tmpl"]=arguments_tmpl
@@ -424,10 +424,10 @@ class RuleConfig:
         INFO(f'Full path to script is {script}')
         if not Path(script).exists() :
             ERROR(f"Executable {script} does not exist")
-            exit(1)
+            exit(2)
         if not is_executable(Path(script)):
             ERROR(f"{script} is not executable")
-            exit(1)
+            exit(2)
         job_data["executable"]=script
 
         # Some tedium to deal with a now deprecated field.
@@ -439,7 +439,7 @@ class RuleConfig:
                 job_data["request_memory"]=mem
             elif request_memory != mem:
                 ERROR("Conflicting 'mem' (deprecated) and  'request_memory' fields.")
-                exit(1)
+                exit(2)
 
         # for k,v in job_data.items():
         #     print(f"{k}:\t {v}")
@@ -591,7 +591,7 @@ def parse_spiderstuff(filename: str) -> Tuple[str,...] :
         ERROR(f"Error: {e}")
         print(filename)
         print(filename.split(':'))
-        exit(-1)
+        exit(2)
 
     return lfn,int(nevents),int(first),int(last),md5,int(size),int(ctime),int(dbid)
 

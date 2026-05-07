@@ -80,7 +80,7 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool
                         filenames.append(Path(log_file).stem + ".root")
         except Exception as e:
             ERROR(f"Error while parsing {in_file}:\n{e}")
-            exit(1)
+            exit(2)
         dbids_str=", ".join(dbids)
         now_str=str(datetime.now().replace(microsecond=0))
         # Update production_jobs (primary) before condor_submit to mark as submitted
@@ -179,7 +179,7 @@ def main():
         INFO(f"Successfully loaded rule configuration: {args.rulename}")
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
-        exit(1)
+        exit(2)
 
     # CHATTY("Rule configuration:")
     # CHATTY(yaml.dump(rule.dict))

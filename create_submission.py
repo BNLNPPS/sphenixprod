@@ -66,14 +66,14 @@ def main():
             payload_list += [sphenixdbutils_spec.origin]
         else:
             ERROR("sphenixdbutils module not found.")
-            exit(1)
+            exit(3)
 
         simplelogger_spec = importlib.util.find_spec('simpleLogger')
         if simplelogger_spec and simplelogger_spec.origin:
             payload_list += [simplelogger_spec.origin]
         else:
             ERROR("simpleLogger module not found.")
-            exit(1)
+            exit(3)
 
         script_path = Path(__file__).parent.resolve()
         payload_list += [ f"{script_path}/stageout.sh" ]
@@ -135,7 +135,7 @@ def main():
             INFO(f"Successfully loaded rule configuration: {args.rulename}")
         except (ValueError, FileNotFoundError) as e:
             ERROR(f"Error: {e}")
-            exit(1)
+            exit(2)
 
         CHATTY("Rule configuration:")
         CHATTY(yaml.dump(rule.dict))
@@ -153,7 +153,7 @@ def main():
         currently_queued_jobs = get_queued_jobs(rule)
         if currently_queued_jobs < 0:
             WARN("condor_q failed, cannot determine queue depth. Aborting submission.")
-            exit(0)
+            exit(50)
         if max_queued_jobs>0 and currently_queued_jobs >= max_queued_jobs:
             WARN(f"There are already {currently_queued_jobs} jobs in the queue, which meets or exceeds the maximum of {max_queued_jobs}.")
             WARN("Aborting submission.")
@@ -208,7 +208,7 @@ def main():
         currently_queued_jobs = get_queued_jobs(rule)
         if currently_queued_jobs < 0:
             WARN("condor_q failed, cannot determine queue depth. Aborting submission.")
-            exit(0)
+            exit(50)
         DEBUG(f"Currently queued jobs at start: {currently_queued_jobs}")
 
         # Flag to indicate if we should stop processing further chunks

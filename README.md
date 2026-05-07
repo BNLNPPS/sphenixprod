@@ -27,6 +27,20 @@ All job scripts report a final exit code via `common_runscript_finish.sh`, which
 | 111 | Input | Streaming: wrong number of GL1 or detector list files |
 | other | Macro | Propagated directly from `root.exe` exit code |
 
+## Submission Exit Codes
+
+Submission-side scripts (`create_submission.py`, `production_control.py`, `execute_condorsubmission.py`, etc.) use a parallel scheme:
+
+| Code | Stage | Meaning |
+|------|-------|---------|
+| 0 | — | Success, or graceful soft-stop (nothing to do, queue full, already running, host not in steering) |
+| 2 | Config | Bad args, invalid/missing YAML, conflicting fields, outdated YAML, script not found/not executable |
+| 3 | Environment | Required module not importable, CVMFS build tag not found, init script missing |
+| 10 | Input | No runs to process (empty or missing runlist, runmax < runmin) |
+| 40 | Database | Write failure (failed insert/update) |
+| 41 | Database | Query failure (non-retryable error or all retries exhausted) |
+| 50 | Condor | Infrastructure failure (condor_q failed before submission can proceed) |
+
 ## Chunking Support
 
 For large run lists, the submission process can be time-consuming when processing all runs at once. The `--chunk-size` parameter allows you to process runs in smaller chunks, enabling faster feedback and more incremental progress.

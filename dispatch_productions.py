@@ -49,7 +49,7 @@ def main():
     steer_list_file = Path(args.steer_list)
     if not steer_list_file.is_file():
         ERROR(f"Steer list file '{steer_list_file}' not found.")
-        sys.exit(1)
+        sys.exit(2)
 
     with open(steer_list_file, 'r') as f:
         steer_files = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]

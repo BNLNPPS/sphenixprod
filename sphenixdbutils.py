@@ -215,14 +215,14 @@ def upsert_filecatalog(fullinfos: Union[long_filedb_info,List[long_filedb_info]]
         else:
             ERROR(f"Failed to insert file(s)into database {dbstring}. Line was:")
             ERROR(f"{insert_files}")
-            exit(1)
+            exit(40)
         datasets_curs = dbQuery( cnxn_string_map[ dbstring ], insert_datasets )
         if datasets_curs:
             datasets_curs.commit()
         else:
             ERROR(f"Failed to insert dataset(s)into database {dbstring}. Line was:")
             ERROR(f"{insert_datasets}")
-            exit(1)
+            exit(40)
 
 # ============================================================================================
 
@@ -243,7 +243,7 @@ where id={dbid}
                 jobs_curs.commit()
             else:
                 ERROR(f"Failed to update production_jobs for id={dbid} in database {dbstring}")
-                exit(1)
+                exit(40)
 
 # ============================================================================================
 def jobstarted(dbid: int, dryrun: bool = False):
@@ -437,10 +437,10 @@ def dbQuery( cnxn_string, query, ntries=5, maintenance_wait=0 ):
                     time.sleep(delay)
                 else:
                     ERROR(f"Non-retryable odbc error: {E}")
-                    exit(11)
+                    exit(41)
             except Exception as E:
                 ERROR(f"Non-retryable error during database query: {E}")
-                exit(11)
+                exit(41)
         return None
 
     start = datetime.now()
@@ -453,7 +453,7 @@ def dbQuery( cnxn_string, query, ntries=5, maintenance_wait=0 ):
 
     if curs is None:
         ERROR(f"Exhausted all attempts. Stop.")
-        exit(11)
+        exit(41)
 
     CHATTY(f'[query time ] {(datetime.now() - start).total_seconds():.2f} seconds' )
     return curs
@@ -486,7 +486,7 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
         pass
     else:
         ERROR(f"list_to_condition: input argument is {type(lst)}")
-        exit(1)
+        exit(2)
 
     length=len( lst )
     if length==0:
@@ -494,7 +494,7 @@ def list_to_condition(lst: List[int], name: str="runnumber")  -> str :
 
     if length>20000:
         ERROR(f"Run list has {length} entries. Not a good idea. Bailing out.")
-        exit(-1)
+        exit(2)
 
     if length==1:
         return f"{name}={lst[0]}"
@@ -518,7 +518,7 @@ def main():
     dbid = args.dbid if args.dbid is not None else int(os.getenv("PRODDB_DBID", -1))
     if dbid < 0:
         ERROR("No dbid provided via --dbid and PRODDB_DBID is not set.")
-        exit(1)
+        exit(2)
 
     if args.command == 'jobstarted':
         jobstarted(dbid, args.dryrun)

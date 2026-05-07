@@ -52,13 +52,13 @@ def main():
         raise ValueError(f"Error parsing YAML file: {yerr}")
     except FileNotFoundError:
         ERROR(f"YAML file not found: {args.steerfile}")
-        exit(1)
+        exit(2)
 
     try:
         host_data = yaml_data[hostname]
     except KeyError:
         INFO(f"Host '{hostname}' not found in {args.steerfile}")
-        exit(2)
+        exit(0)
 
     ### defaultlocations is special
     # pop removes it so the remainder are rules
@@ -66,7 +66,7 @@ def main():
     defaultlocations=host_data.pop("defaultlocations",None)
     if not defaultlocations:
         ERROR(f'Could not find field "defaultlocations" in the yaml for {hostname}')
-        exit(1)
+        exit(2)
     prettyfs = pprint.pformat(defaultlocations)
     DEBUG(f"Default file locations:\n{prettyfs}")
     INFO(f"Successfully loaded {len(host_data)} rules for {hostname}")
@@ -153,7 +153,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     thisprod=f"{prodbase}/this_sphenixprod.sh"
     if not Path(thisprod).is_file():
         ERROR(f'Init script {thisprod} does not exist.')
-        exit(1)
+        exit(3)
 
     ### construct arguments
     ruleargs=f"--rule {rule}"
@@ -162,7 +162,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
         config=f"{configbase}/{config}"
     if not Path(config).is_file():
         ERROR(f"Cannot find config file {config}")
-        exit(1)
+        exit(2)
     ruleargs += f" --config {config}"
 
     if not dryrun:
@@ -179,7 +179,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
         ruleargs += f" --runlist {runlist}"
     if runs and runlist:
         ERROR( 'You cannot specify both "runs" and "runlist"')
-        exit(1)
+        exit(2)
 
     ### More rare extra arguments
     nevents=rule_data.get("nevents", None)
@@ -217,7 +217,7 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     for k,v in sdh_tuple._asdict().items():
         if not isinstance(v,bool):
             ERROR(f'Value of "{k}" must be (yaml-)boolean, got "{v}"')
-            exit(1)
+            exit(2)
 
     ## cleanup
     while ruleargs.startswith(" "):
