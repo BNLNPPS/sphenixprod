@@ -108,6 +108,7 @@ class InputConfig:
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
     direct_path: Optional[str]                = None  # Make direct_path optional
     check_legacy: Optional[bool]              = True  # Check the legacy production_status table
+    min_seb:      Optional[int] = 20                  # Minimum number of SEB hosts required for CALOFITTING
 
 # ============================================================================
 @dataclass( frozen = True )
@@ -264,7 +265,8 @@ class RuleConfig:
                                 "combine_seg0_only","choose20",
                                 "cut_segment",
                                 "infile_query_constraints",
-                                "status_query_constraints","physicsmode"] )
+                                "status_query_constraints","physicsmode",
+                                "min_seb"] )
 
         intriplet=input_data.get("intriplet")
         dsttype=params_data["dsttype"]
@@ -332,6 +334,10 @@ class RuleConfig:
         DEBUG(f"Input query constraints: {infile_query_constraints}" )
         DEBUG(f"Status query constraints: {status_query_constraints}" )
 
+        min_seb = input_data.get("min_seb", 20)
+        if min_seb != 20:
+            WARN(f"Non-default min_seb={min_seb} (default is 20).")
+
         input_config=InputConfig(
             db=inferred_db,
             table=inferred_table,
@@ -348,6 +354,7 @@ class RuleConfig:
             status_query_constraints=status_query_constraints,
             direct_path=input_direct_path,
             check_legacy=check_legacy,
+            min_seb=min_seb,
         )
 
         # Extract and validate job_config
