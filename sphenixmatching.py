@@ -658,8 +658,6 @@ order by runnumber
                     missing_hosts = [host for host in available_tracking if not any(host in present for present in present_tracking)]
                     if missing_hosts:
                         WARN(f"Missing non-TPC hosts: {missing_hosts}")
-                    # WARN(f"Available non-TPC hosts in the daq db: {sorted(available_tracking)}")
-                    # WARN(f"Present non-TPC leafs: {sorted(present_tracking)}")
                     continue
                 DEBUG (f"Found {len(present_tracking)} other tracking files in the catalog")
 
