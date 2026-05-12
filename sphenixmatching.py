@@ -592,13 +592,13 @@ order by runnumber
             ### Here we could enforce both mandatory and masked hosts
 
             # Calo hardcoding
-            minSEB=20
+            min_seb=self.input_config.min_seb
             if 'CALOFITTING' in self.dsttype:
                 # 1. How many SEB hosts are turned on in this run according to the daq db?
-                if len(available_seb) < minSEB and not self.physicsmode=='cosmics':
+                if len(available_seb) < min_seb and not self.physicsmode=='cosmics':
                     WARN(f"Skip run {runnumber}. Only {len(available_seb)} SEB hosts turned on in the run.")
                     continue
-                
+
                 # 2. How many are SEB host files have been produced and are currently available in this run.
                 present_seb_files=set()
                 for host in files_for_run:
@@ -606,7 +606,7 @@ order by runnumber
                         if available in host:
                             present_seb_files.add(host)
                             continue
-                if len(present_seb_files) < minSEB and not self.physicsmode=='cosmics':
+                if len(present_seb_files) < min_seb and not self.physicsmode=='cosmics':
                     WARN(f"Skip run {runnumber}. Only {len(present_seb_files)} SEB detectors actually in the run.")
                     missing_hosts = [host for host in available_seb if not any(host in present for present in present_seb_files)]
                     if missing_hosts:
