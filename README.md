@@ -7,7 +7,29 @@ Originally based on https://github.com/klendathu2k/slurp with the goal of stream
 All (at least hopefully) dependencies are in `requirements.txt`. 
 ```sh
 pip install -r requirements.txt
+source this_sphenixprod.sh
 ```
+
+## Usage
+
+Run a submission with `create_submission.py`. It requires a config yaml, a rule name, and a run range:
+
+```bash
+create_submission.py \
+  --config path/to/config.yaml \
+  --rule DST_TRIGGERED_EVENT_run3physics \
+  --runs 69600 72000 \
+  -vv -n
+```
+
+Use `-h` for full help. Key flags:
+- `-n` — dry run, nothing is submitted
+- `-v` / `-vv` / `-vvv` — increasing verbosity
+- `--andgo` — submit immediately after processing
+
+## Aborting and Cleaning Up a Production
+
+See `Named_Productions.md` in the [prodmacros](https://github.com/sPHENIX-Collaboration/prodmacros) repository.
 
 ## Job Exit Codes
 
