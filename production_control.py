@@ -247,9 +247,7 @@ def setup_my_rot_handler(args):
 # ============================================================================================
 def steering_args():
     """Handle command line tedium for steering jobs."""
-    arg_parser = argparse.ArgumentParser( prog='production_control.py',
-                                          description='"Production manager to dispatch jobs depending on submit node."',
-                                         )
+    arg_parser = argparse.ArgumentParser(description='Cron-driven dispatcher: launches submission and spider processes for sPHENIX production based on hostname and a control YAML.')
     arg_parser.add_argument( '--steerfile', '-f', dest='steerfile', required=True,
                              help='Location of steering instructions per host' )
 

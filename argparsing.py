@@ -53,8 +53,7 @@ def _base_arguments(parser):
 # ============================================================================================
 def submission_args():
     """Handle command line tedium for submitting jobs."""
-    parser = argparse.ArgumentParser(prog='create_submission.py',
-                                     description='"Production script to submit jobs to the batch system for sPHENIX."')
+    parser = argparse.ArgumentParser(description='Prepare and submit sPHENIX production jobs to the HTCondor batch system.')
     parser = _base_arguments(parser)
 
     parser.add_argument('--print-query', dest='printquery', help="Print the query after parameter substitution and exit",
@@ -101,8 +100,7 @@ def submission_args():
 # ============================================================================================
 def monitor_args():
     """Handle command line tedium for monitoring jobs."""
-    parser = argparse.ArgumentParser(prog='altmonitor.py',
-                                     description='"Production script to monitor jobs in the batch system for sPHENIX."')
+    parser = argparse.ArgumentParser(description='Inspect, resubmit, and plot diagnostics for held or queued sPHENIX HTCondor jobs.')
     parser = _base_arguments(parser)
 
     # Job description arguments - here, they are optional
