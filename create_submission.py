@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+import math
 import yaml
 import cProfile
 import pstats
@@ -310,7 +311,7 @@ def main():
                 indsttype_str = rule.input_config.indsttype_str or ''
                 intriplet = rule.input_config.intriplet or 'N/A'
 
-                for out_file,(in_files, outbase, logbase, run, seg, daqhost, dsttype) in matches:
+                for out_file,(in_files, outbase, logbase, run, seg, daqhost, dsttype, eventsinrun) in matches:
                     # Create .in file row
                     condor_job = CondorJob.make_job( output_file=out_file,
                                                      inputs=in_files,
@@ -336,7 +337,11 @@ def main():
                     dsttype=logbase.split(f'_{rule.dataset}')[0]
                     dstfile=out_file # this is much more robust and correct
 
-                    prod_jobs_rows.append("('{rulename}', '{tag}', '{dataset}', '{dsttype}', '{filename}', {run}, {segment}, '{status}', '{submitted}', '{host}', '{log}', '{err}', '{out}', '{intriplet}', '{indsttype_str}', {xferslots}, {request_memory}, {request_disk}, {request_cpus}, {neventsper})".format(
+                    maxjobsexpected = math.ceil(eventsinrun / neventsper) if (eventsinrun and neventsper) else None
+                    # print( eventsinrun, neventsper, maxjobsexpected )
+                    # exit(1)
+
+                    prod_jobs_rows.append("('{rulename}', '{tag}', '{dataset}', '{dsttype}', '{filename}', {run}, {segment}, '{status}', '{submitted}', '{host}', '{log}', '{err}', '{out}', '{intriplet}', '{indsttype_str}', {xferslots}, {request_memory}, {request_disk}, {request_cpus}, {neventsper}, {eventsinrun}, {maxjobsexpected})".format(
                         rulename=args.rulename,
                         tag=rule.outtriplet,
                         dataset=rule.dataset,
@@ -356,14 +361,16 @@ def main():
                         request_memory=f"ARRAY{req_mem_list}",
                         request_disk=req_disk,
                         request_cpus=req_cpus,
-                        neventsper=neventsper
-                    ))                    
+                        neventsper=neventsper,
+                        eventsinrun=eventsinrun if eventsinrun is not None else 'NULL',
+                        maxjobsexpected=maxjobsexpected if maxjobsexpected is not None else 'NULL',
+                    ))
                     # end of collecting job lines for this run
 
                 comma_prod_jobs_rows=',\n'.join(prod_jobs_rows)
                 insert_prod_jobs = f"""
         insert into production_jobs
-        ( rulename, tag, dataset, dsttype, filename, runnumber, segment, status, submitted, submission_host, log, err, out, intriplet, indsttype_str, xferslots, request_memory, request_disk, request_cpus, neventsper )
+        ( rulename, tag, dataset, dsttype, filename, runnumber, segment, status, submitted, submission_host, log, err, out, intriplet, indsttype_str, xferslots, request_memory, request_disk, request_cpus, neventsper, eventsinrun, maxjobsexpected )
         values
         {comma_prod_jobs_rows}
         returning id

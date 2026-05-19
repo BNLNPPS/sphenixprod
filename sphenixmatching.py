@@ -109,7 +109,7 @@ class MatchConfig:
         return { k: str(v) for k, v in asdict(self).items() if v is not None }
 
     # ------------------------------------------------
-    def good_runlist(self, subset_runlist: List[int] = None) -> List[int]:
+    def good_runlist(self, subset_runlist: List[int] = None) -> Dict[int, int]:
         ### Run quality
         CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
         # Here would be a  good spot to check against golden or bad runlists and to enforce quality cuts on the runs
@@ -119,7 +119,7 @@ class MatchConfig:
 
         INFO("Checking runlist against run quality cuts.")
         run_quality_tmpl="""
-select distinct(runnumber) from run
+select runnumber, eventsinrun from run
  where
 runnumber>={runmin} and runnumber <= {runmax}
  and
@@ -137,14 +137,15 @@ order by runnumber
             min_run_events=self.input_config.min_run_events,
             min_run_time=self.input_config.min_run_time,
         )
-        goodruns=[ int(r) for (r,) in dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall() ]
+        rows = dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall()
+        goodruns = { int(r): int(e) for r, e in rows }
         # tighten run condition now
-        runlist_int=[ run for run in runlist_to_check if run in goodruns ]
-        if runlist_int==[]:
-            return []
+        runlist_int = [ run for run in runlist_to_check if run in goodruns ]
+        if not runlist_int:
+            return {}
         INFO(f"{len(runlist_int)} runs pass run quality cuts.")
         DEBUG(f"Runlist: {runlist_int}")
-        return runlist_int
+        return { run: goodruns[run] for run in runlist_int }
 
     # ------------------------------------------------
     def get_files_in_db(self, runnumbers: Any) :
@@ -298,19 +299,18 @@ order by runnumber
         return { **legacy_status, **existing_status }
 
     # ------------------------------------------------
-    def daqhosts_for_combining(self, subset_runlist: List[int] = None) -> Dict[int, Set[int]]:
+    def daqhosts_for_combining(self, subset_runlist: List[int] = None) -> tuple:
         ### Which DAQ hosts have all required segments present in the file catalog for a given run?
+        ### Returns (daqhosts_dict, eventsinrun_by_run)
 
         # Run quality:
-        goodruns=self.good_runlist(subset_runlist)
-        if goodruns==[]:
+        eventsinrun_by_run=self.good_runlist(subset_runlist)
+        if not eventsinrun_by_run:
             INFO( "No runs pass run quality cuts.")
-            return {}
-        INFO(f"{len(goodruns)} runs pass run quality cuts.")
-        DEBUG(f"Runlist: {goodruns}")
-        if goodruns==[]:
-            return {}
-        run_condition=list_to_condition(goodruns)
+            return {}, {}
+        INFO(f"{len(eventsinrun_by_run)} runs pass run quality cuts.")
+        DEBUG(f"Runlist: {list(eventsinrun_by_run)}")
+        run_condition=list_to_condition(list(eventsinrun_by_run))
 
         # If we only care about segment 0, we can skip a lot of the checks
         if self.input_config.combine_seg0_only:
@@ -330,7 +330,7 @@ order by runnumber
             for run in daqhosts_for_combining:
                 CHATTY(f"Available on lustre for run {run}: {daqhosts_for_combining.get(run,set())}")
 
-            return daqhosts_for_combining
+            return daqhosts_for_combining, eventsinrun_by_run
 
         ### More general case, need to check all segments
         # How many segments were produced per daqhost?
@@ -381,7 +381,7 @@ order by runnumber
                         else:
                             CHATTY(f"Run {r} host {h} has only {lustre_segs[r][h]} out of {s} segments on lustre. Not using this host.")
 
-        return daqhosts_for_combining
+        return daqhosts_for_combining, eventsinrun_by_run
 
     # ------------------------------------------------
     def matches(self, subset_runlist: List[int] = None) :
@@ -394,8 +394,8 @@ order by runnumber
             segswitch="seg0fromdb"
             if not self.input_config.combine_seg0_only:
                 segswitch="allsegsfromdb"
-            daqhosts_for_combining = self.daqhosts_for_combining(subset_runlist)
-            if daqhosts_for_combining=={}:
+            daqhosts_for_combining, eventsinrun_by_run = self.daqhosts_for_combining(subset_runlist)
+            if not daqhosts_for_combining:
                 WARN("No runs satisfy the segment availability criteria. No jobs to submit.")
                 return {}
             INFO(f"{len(daqhosts_for_combining)} runs satisfy the segment availability criteria.")
@@ -444,7 +444,7 @@ order by runnumber
                         WARN(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                         continue
                     DEBUG(f"Creating {dstfile} for run {runnumber}.")
-                    rule_matches[dstfile] = [segswitch], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf
+                    rule_matches[dstfile] = [segswitch], outbase, logbase, runnumber, 0, daqhost, self.dsttype+'_'+leaf, eventsinrun_by_run.get(runnumber)
 
             INFO(f'[Parsing time ] {(datetime.now() - start).total_seconds():.2f} seconds')
             return rule_matches
@@ -461,20 +461,37 @@ order by runnumber
         ####################################################################################
         # TODO: Support rule.printquery
 
-        # Return early if there are no viable runs
-        goodruns=self.good_runlist(subset_runlist)
-        if goodruns==[]:
-            INFO( "No runs pass run quality cuts.")
-            return {}
-        DEBUG(f"{len(goodruns)} runs pass run quality cuts.")
-        CHATTY(f"Runlist: {goodruns}")
-
         # Manipulate the input types to match the database
         in_types=self.in_types # local copy, member is frozen
-        
+
         # Transform list to ('<v1>','<v2>', ...) format. (one-liner doesn't work in python 3.9)
         in_types_str = f'( QUOTE{"QUOTE,QUOTE".join(in_types)}QUOTE )'
         in_types_str = in_types_str.replace("QUOTE","'")
+
+        intriplet=self.input_config.intriplet
+
+        # Get run list + eventsinrun: prod DB when we have an intriplet, DAQ DB otherwise
+        if intriplet and intriplet != "":
+            runlist_to_check = subset_runlist if subset_runlist is not None else self.runlist_int
+            run_condition_up = list_to_condition(runlist_to_check)
+            rc_clause = f"AND {run_condition_up}" if run_condition_up else ""
+            upstream_query = f"""SELECT DISTINCT ON (runnumber) runnumber, eventsinrun
+                FROM production_jobs
+                WHERE tag='{intriplet}'
+                  AND dsttype IN {in_types_str}
+                  {rc_clause}
+                ORDER BY runnumber, id DESC;"""
+            rows = dbQuery(cnxn_string_map['statr'], upstream_query).fetchall()
+            goodruns = {int(r.runnumber): r.eventsinrun for r in rows}
+            INFO(f"{len(goodruns)} runs found in production DB for intriplet={intriplet}.")
+        else:
+            goodruns = self.good_runlist(subset_runlist)
+
+        if not goodruns:
+            INFO("No runs available.")
+            return {}
+        DEBUG(f"{len(goodruns)} runs in runlist.")
+        CHATTY(f"Runlist: {list(goodruns)}")
 
         # Need status==1 for all files in a given run,host combination
         # Easier to check that after the SQL query
@@ -482,7 +499,6 @@ order by runnumber
         from {self.input_config.table}
         where dsttype in {in_types_str}
         """
-        intriplet=self.input_config.intriplet
         if intriplet and intriplet!="":
             infile_query+=f"\tand tag='{intriplet}'"
         infile_query += self.input_config.infile_query_constraints
@@ -544,7 +560,7 @@ order by runnumber
                         continue
                     in_files_for_seg=[infile]
                     CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
-                    rule_matches[dstfile] = ["dbinput"], outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype
+                    rule_matches[dstfile] = ["dbinput"], outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype, goodruns.get(infile.runnumber)
                 continue
 
             ####### NOT 1-1, requires more work:
@@ -691,7 +707,7 @@ order by runnumber
                 if dstfile in existing_status:
                     CHATTY(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                     continue
-                rule_matches[dstfile] = ["dbinput"], outbase, logbase, runnumber, seg, "dummy", self.dsttype
+                rule_matches[dstfile] = ["dbinput"], outbase, logbase, runnumber, seg, "dummy", self.dsttype, goodruns.get(runnumber)
             # \for run
         INFO(f'[Parsing time ] {(datetime.now() - start).total_seconds():.2f} seconds')
 

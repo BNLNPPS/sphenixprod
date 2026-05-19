@@ -51,7 +51,9 @@ CREATE TABLE production_jobs (
     request_memory        INT[],
     request_disk          INT,
     request_cpus          INT,
-    neventsper            INT
+    neventsper            INT,
+    eventsinrun           INT,
+    maxjobsexpected       INT
 );
 
 -- Add comments to the table and columns to explain their purpose.
@@ -89,6 +91,8 @@ COMMENT ON COLUMN production_jobs.request_memory IS 'Array of integers in MB.';
 COMMENT ON COLUMN production_jobs.request_disk IS 'Requested disk space, in KB.';
 COMMENT ON COLUMN production_jobs.request_cpus IS 'Number of requested CPUs.';
 COMMENT ON COLUMN production_jobs.neventsper IS 'Number of events per job.';
+COMMENT ON COLUMN production_jobs.eventsinrun IS 'Total number of events in the run, as reported by the DAQ database.';
+COMMENT ON COLUMN production_jobs.maxjobsexpected IS 'Expected maximum number of jobs for this run, derived from eventsinrun and neventsper.';
 
 -- Create indexes on frequently queried columns for better performance.
 CREATE INDEX ON production_jobs (runnumber);
