@@ -153,7 +153,6 @@ def main():
         max_queued_jobs=rule.job_config.max_queued_jobs
         currently_queued_jobs = get_queued_jobs(rule)
         if currently_queued_jobs < 0:
-            WARN("condor_q failed, cannot determine queue depth. Aborting submission.")
             exit(50)
         if max_queued_jobs>0 and currently_queued_jobs >= max_queued_jobs:
             WARN(f"There are already {currently_queued_jobs} jobs in the queue, which meets or exceeds the maximum of {max_queued_jobs}.")
@@ -208,7 +207,6 @@ def main():
         # Get initial queue status once before processing chunks
         currently_queued_jobs = get_queued_jobs(rule)
         if currently_queued_jobs < 0:
-            WARN("condor_q failed, cannot determine queue depth. Aborting submission.")
             exit(50)
         DEBUG(f"Currently queued jobs at start: {currently_queued_jobs}")
 
@@ -396,7 +394,6 @@ def main():
                 # Refresh the queue count after submission since jobs are now in the queue
                 currently_queued_jobs = get_queued_jobs(rule)
                 if currently_queued_jobs < 0:
-                    WARN("condor_q failed after submission, cannot determine queue depth. Stopping further chunks.")
                     should_stop_processing_chunks = True
                 else:
                     DEBUG(f"After submission, currently queued jobs: {currently_queued_jobs}")

@@ -81,7 +81,8 @@ def get_queued_jobs(rule: RuleConfig):
 
     try:
         all_procs = shell_command(cq_query, raise_on_error=True)
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        CRITICAL(f"condor_q failed (exit {e.returncode}) — condor infrastructure problem. Command: {cq_query.strip()}")
         return -1
     return len(all_procs)
 
