@@ -64,6 +64,12 @@ if [[ `ssh-add -l` =~ "eickolja" ]] ; then
     #git config --global push.default simple
     git config --global push.autoSetupRemote true
 
+    ## For codex, claude
+    export PATH="$HOME/.local/bin:$PATH"
+    export CODEX_HOME="$HOME/.local/dotcodex-kolja"
+    npm config set prefix '~/.local'
+
+
     # if [[ -n "$_CONDOR_SCRATCH_DIR" ]]; then
 	# echo "_CONDOR_SCRATCH_DIR = $_CONDOR_SCRATCH_DIR"
     # else
