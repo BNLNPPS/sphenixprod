@@ -470,10 +470,18 @@ order by runnumber
 
         intriplet=self.input_config.intriplet
 
-        # Get run list + eventsinrun: prod DB when we have an intriplet, DAQ DB otherwise
+        # Run list: always from the configured runlist (authoritative source is the datasets table)
+        goodruns = self.good_runlist(subset_runlist)
+        if not goodruns:
+            INFO("No runs pass run quality cuts.")
+            return {}
+        DEBUG(f"{len(goodruns)} runs in runlist.")
+        CHATTY(f"Runlist: {list(goodruns)}")
+
+        # eventsinrun: look up from prod DB if we have an intriplet (informational only, best-effort)
+        eventsinrun_by_run = {}
         if intriplet and intriplet != "":
-            runlist_to_check = subset_runlist if subset_runlist is not None else self.runlist_int
-            run_condition_up = list_to_condition(runlist_to_check)
+            run_condition_up = list_to_condition(list(goodruns))
             rc_clause = f"AND {run_condition_up}" if run_condition_up else ""
             upstream_query = f"""SELECT DISTINCT ON (runnumber) runnumber, eventsinrun
                 FROM production_jobs
@@ -482,16 +490,8 @@ order by runnumber
                   {rc_clause}
                 ORDER BY runnumber, id DESC;"""
             rows = dbQuery(cnxn_string_map['statr'], upstream_query).fetchall()
-            goodruns = {int(r.runnumber): r.eventsinrun for r in rows}
-            INFO(f"{len(goodruns)} runs found in production DB for intriplet={intriplet}.")
-        else:
-            goodruns = self.good_runlist(subset_runlist)
-
-        if not goodruns:
-            INFO("No runs available.")
-            return {}
-        DEBUG(f"{len(goodruns)} runs in runlist.")
-        CHATTY(f"Runlist: {list(goodruns)}")
+            eventsinrun_by_run = {int(r.runnumber): r.eventsinrun for r in rows}
+            DEBUG(f"eventsinrun found in prod DB for {len(eventsinrun_by_run)} runs.")
 
         # Need status==1 for all files in a given run,host combination
         # Easier to check that after the SQL query
@@ -560,7 +560,7 @@ order by runnumber
                         continue
                     in_files_for_seg=[infile]
                     CHATTY(f"Creating {dstfile} from {in_files_for_seg}")
-                    rule_matches[dstfile] = ["dbinput"], outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype, goodruns.get(infile.runnumber)
+                    rule_matches[dstfile] = ["dbinput"], outbase, logbase, infile.runnumber, infile.segment, "dummy", self.dsttype, eventsinrun_by_run.get(infile.runnumber)
                 continue
 
             ####### NOT 1-1, requires more work:
@@ -707,7 +707,7 @@ order by runnumber
                 if dstfile in existing_status:
                     CHATTY(f"Output file {dstfile} already has production status {existing_status[dstfile]}. Not submitting.")
                     continue
-                rule_matches[dstfile] = ["dbinput"], outbase, logbase, runnumber, seg, "dummy", self.dsttype, goodruns.get(runnumber)
+                rule_matches[dstfile] = ["dbinput"], outbase, logbase, runnumber, seg, "dummy", self.dsttype, eventsinrun_by_run.get(runnumber)
             # \for run
         INFO(f'[Parsing time ] {(datetime.now() - start).total_seconds():.2f} seconds')
 
