@@ -6,6 +6,7 @@ Note: It should only find one file every time.
 """
 
 import sys
+from pathlib import Path
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixdbutils import cnxn_string_map, dbQuery # type: ignore
 
@@ -32,6 +33,12 @@ def main():
 
     # dsttype comes as a a comma-separated list, add ticks for sql
     dsttype4sql=dsttype.replace(",","','")
+
+    list_filename = "infile.list"
+    full_path_list_filename = "infile_paths.list"
+    print("Removing old file lists if they exist...")
+    Path(list_filename).unlink(missing_ok=True)
+    Path(full_path_list_filename).unlink(missing_ok=True)
 
     #  The following:
     # SELECT datasets.filename,files.full_file_path
@@ -79,9 +86,6 @@ def main():
     if not full_path_info:
         print("No files found for the given criteria.")
         sys.exit(10)
-
-    list_filename = "infile.list"
-    full_path_list_filename = "infile_paths.list"
     try:
         with open(list_filename, 'w') as f_out:
             for fname in file_list:
