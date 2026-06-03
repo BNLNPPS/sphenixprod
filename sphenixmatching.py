@@ -14,7 +14,7 @@ from sphenixprodrules import RuleConfig, InputConfig
 from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixjobdicts import inputs_from_output
+from sphenixjobdicts import inputs_from_output, required_seb_hosts
 from sphenixmisc import binary_contains_bisect, shell_command
 
 from collections import namedtuple
@@ -615,26 +615,31 @@ order by runnumber
 
             # Calo hardcoding
             min_seb=self.input_config.min_seb
-            if 'CALOFITTING' in self.dsttype:
-                # 1. How many SEB hosts are turned on in this run according to the daq db?
-                if len(available_seb) < min_seb and not self.physicsmode=='cosmics':
-                    WARN(f"Skip run {runnumber}. Only {len(available_seb)} SEB hosts turned on in the run.")
+            required_seb = required_seb_hosts(self.dsttype)
+            if required_seb:
+                # 1. How many required SEB hosts are turned on in this run according to the daq db?
+                available_required_seb = available_seb.intersection(required_seb)
+                if len(available_required_seb) < min_seb and not self.physicsmode=='cosmics':
+                    WARN(f"Skip run {runnumber}. Only {len(available_required_seb)} required SEB hosts turned on in the run.")
+                    missing_hosts = sorted(required_seb.difference(available_required_seb))
+                    if missing_hosts:
+                        WARN(f"Missing required SEB hosts: {missing_hosts}")
                     continue
 
-                # 2. How many are SEB host files have been produced and are currently available in this run.
+                # 2. How many required SEB host files have been produced and are currently available in this run.
                 present_seb_files=set()
                 for host in files_for_run:
-                    for available in available_seb:
-                        if available in host:
-                            present_seb_files.add(host)
+                    for required in required_seb:
+                        if required in host:
+                            present_seb_files.add(required)
                             continue
                 if len(present_seb_files) < min_seb and not self.physicsmode=='cosmics':
-                    WARN(f"Skip run {runnumber}. Only {len(present_seb_files)} SEB detectors actually in the run.")
-                    missing_hosts = [host for host in available_seb if not any(host in present for present in present_seb_files)]
+                    WARN(f"Skip run {runnumber}. Only {len(present_seb_files)} required SEB detectors actually in the run.")
+                    missing_hosts = sorted(required_seb.difference(present_seb_files))
                     if missing_hosts:
-                        WARN(f"Missing SEB hosts: {missing_hosts}")
+                        WARN(f"Missing required SEB hosts: {missing_hosts}")
                     continue
-                DEBUG (f"Found {len(present_seb_files)} SEB files in the catalog")
+                DEBUG (f"Found {len(present_seb_files)} required SEB files in the catalog")
 
 
             # TPC hardcoding

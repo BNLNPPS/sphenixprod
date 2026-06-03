@@ -9,7 +9,7 @@ import subprocess
 import pprint # noqa: F401
 
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixjobdicts import inputs_from_output
+from sphenixjobdicts import inputs_from_output, required_seb_hosts
 from sphenixcondorjobs import CondorJobConfig,CondorJobConfig_fieldnames,glob_arguments_tmpl
 
 """ This file contains the dataclasses for the rule configuration and matching.
@@ -334,9 +334,10 @@ class RuleConfig:
         DEBUG(f"Input query constraints: {infile_query_constraints}" )
         DEBUG(f"Status query constraints: {status_query_constraints}" )
 
-        min_seb = input_data.get("min_seb", 20)
-        if min_seb != 20:
-            WARN(f"Non-default min_seb={min_seb} (default is 20).")
+        default_min_seb = len(required_seb_hosts(dsttype)) or 20
+        min_seb = input_data.get("min_seb", default_min_seb)
+        if "min_seb" in input_data and min_seb != default_min_seb:
+            WARN(f"Non-default min_seb={min_seb} (default is {default_min_seb}).")
 
         input_config=InputConfig(
             db=inferred_db,

@@ -24,6 +24,10 @@ inputs_from_output['DST_TRIGGERED_EVENT'] = { f'seb{n:02}' : f'seb{n:02}' for n 
 
 # Downstream products fitting
 inputs_from_output['DST_CALOFITTING'] = list('DST_TRIGGERED_EVENT_' + LEAF for LEAF in inputs_from_output['DST_TRIGGERED_EVENT'].keys())
+inputs_from_output['DST_VERNIER'] = [
+    'DST_TRIGGERED_EVENT_seb18',
+    'DST_TRIGGERED_EVENT_seb20',
+]
 
 # Downstream products
 inputs_from_output['DST_CALO'] = ['DST_CALOFITTING']
@@ -31,3 +35,14 @@ inputs_from_output['DST_CALO'] = ['DST_CALOFITTING']
 # Calo jets - KK: Not clear to me what these are in detail
 inputs_from_output['DST_JETS'] = ['DST_CALO']
 inputs_from_output['DST_JETCALO'] = ['DST_CALOFITTING']
+
+
+def required_seb_hosts(dsttype):
+    input_stem = inputs_from_output[dsttype]
+    input_types = input_stem.values() if isinstance(input_stem, dict) else input_stem
+    prefix = 'DST_TRIGGERED_EVENT_'
+    return {
+        input_type[len(prefix):]
+        for input_type in input_types
+        if input_type.startswith(f'{prefix}seb')
+    }
