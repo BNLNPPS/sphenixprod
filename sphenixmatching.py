@@ -284,7 +284,7 @@ order by runnumber
         now=datetime.now()
         existing_status = { c.filename : c.status for c in dbQuery( cnxn_string_map['statr'], jobs_query ) }
         legacy_status = {}
-        if getattr(self.input_config, 'check_legacy', True):
+        if getattr(self.input_config, 'check_legacy', False):
             legacy_run_condition = f"and {run_condition.replace('runnumber','run')}" if run_condition != "" else ""
             # Also query production_status for jobs submitted by older code
             legacy_query = f"""select dstfile,status from production_status

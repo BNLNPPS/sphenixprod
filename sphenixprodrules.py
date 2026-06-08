@@ -107,7 +107,7 @@ class InputConfig:
     infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
     direct_path: Optional[str]                = None  # Make direct_path optional
-    check_legacy: Optional[bool]              = True  # Check the legacy production_status table
+    check_legacy: Optional[bool]              = False  # Check the legacy production_status table
     min_seb:      Optional[int] = 20                  # Minimum number of SEB hosts required for CALOFITTING
 
 # ============================================================================
@@ -321,7 +321,7 @@ class RuleConfig:
 
         # Substitutions in direct input path, if given
         input_direct_path = input_data.get("direct_path")
-        check_legacy = param_overrides.get("check_legacy", True)
+        check_legacy = param_overrides.get("check_legacy", False)
         if input_direct_path is not None:
             input_direct_path = input_direct_path.format(mode=physicsmode)
             DEBUG (f"Using direct path {input_direct_path}")
