@@ -68,7 +68,7 @@ def plot_histogram(ax, time_diffs_seconds, title, time_unit='hours'):
 
     # Unit-specific configurations
     config = {
-        'hours': {'conv': 3600, 'label': 'hours', 'max_val': 10, 'bin_w': 0.1, 'tick_step': 2},
+        'hours': {'conv': 3600, 'label': 'hours', 'max_val': 20, 'bin_w': 0.1, 'tick_step': 2},
         'minutes': {'conv': 60, 'label': 'minutes', 'max_val': 600, 'bin_w': 10, 'tick_step': 60},
         'seconds': {'conv': 1, 'label': 'seconds', 'max_val': 1200, 'bin_w': 20, 'tick_step': 120},
     }
