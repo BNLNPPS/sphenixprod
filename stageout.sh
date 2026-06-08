@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+stageout_sourced=0
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+    stageout_sourced=1
+fi
+
 MIN_ARG_COUNT=2
 MAX_ARG_COUNT=3
 if [ "$#" -lt "$MIN_ARG_COUNT" ] || [ "$#" -gt "$MAX_ARG_COUNT" ] ; then
@@ -106,4 +111,7 @@ done
 
 rm -v "${filename}"
 
-return 0
+if [ "${stageout_sourced}" -eq 1 ]; then
+    return 0
+fi
+exit 0
