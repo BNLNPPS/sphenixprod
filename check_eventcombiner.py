@@ -86,7 +86,7 @@ def main():
             WARN(msg)
             flagged.append((runnumber, dsttype))
         elif ratio < 0.999:
-            INFO(msg)
+            DEBUG(msg)
         else:
             CHATTY(msg)
 
@@ -94,12 +94,67 @@ def main():
     INFO(f"{len(flagged)} (run, dsttype) combinations flagged below ratio cut {args.ratio_cut}.")
 
     if flagged:
-        if args.output:
-            Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-            Path(args.output).write_text('\n'.join(f"{r} {d}" for r, d in flagged) + '\n')
-            INFO(f"Flagged combinations written to {args.output}")
-        else:
-            print('\n'.join(f"{r} {d}" for r, d in flagged))
+        report_and_cleanup(flagged, args, match)
+
+# ============================================================================================
+def report_and_cleanup(flagged, args, match):
+    """
+    Handle incomplete (runnumber, dsttype) combinations.
+    Requires both --delete and --andgo to actually execute deletions.
+    """
+    if args.output:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.output).write_text('\n'.join(f"{r} {d}" for r, d in flagged) + '\n')
+        INFO(f"Flagged combinations written to {args.output}")
+    else:
+        print('\n'.join(f"{r} {d}" for r, d in flagged))
+
+    if not getattr(args, 'delete', False):
+        return
+
+    dryrun = args.dryrun or not args.andgo
+    if dryrun:
+        WARN("--delete given without --andgo or --dryrun set: dry run only, no deletions performed.")
+
+    tag = match.outtriplet
+
+    for runnumber, dsttype in flagged:
+        INFO(f"Deleting run {runnumber} {dsttype} from FileCatalog and production DB.")
+
+        # 1. files (must come before datasets — uses JOIN to identify rows)
+        delete_files = f"""
+            DELETE FROM files USING datasets
+            WHERE lfn=filename
+              AND tag='{tag}'
+              AND dsttype='{dsttype}'
+              AND runnumber={runnumber}
+        """
+        # 2. datasets
+        delete_datasets = f"""
+            DELETE FROM datasets
+            WHERE tag='{tag}'
+              AND dsttype='{dsttype}'
+              AND runnumber={runnumber}
+        """
+        # 3. production_jobs
+        delete_prodjobs = f"""
+            DELETE FROM production_jobs
+            WHERE tag='{tag}'
+              AND dsttype='{dsttype}'
+              AND runnumber={runnumber}
+        """
+
+        CHATTY(delete_files)
+        curs = dbQuery(cnxn_string_map['fcw'], delete_files, dryrun=dryrun)
+        if curs: curs.commit()
+
+        CHATTY(delete_datasets)
+        curs = dbQuery(cnxn_string_map['fcw'], delete_datasets, dryrun=dryrun)
+        if curs: curs.commit()
+
+        CHATTY(delete_prodjobs)
+        curs = dbQuery(cnxn_string_map['statw'], delete_prodjobs, dryrun=dryrun)
+        if curs: curs.commit()
 
 # ============================================================================================
 if __name__ == '__main__':

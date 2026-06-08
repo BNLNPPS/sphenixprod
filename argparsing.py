@@ -99,6 +99,8 @@ def submission_args():
                         help="(check_eventcombiner) Flag runs where lastevent/eventsinrun is below this threshold (default: 0.9).")
     parser.add_argument('--output', dest='output', default=None,
                         help="(check_eventcombiner) Write flagged run numbers to this file (one per line).")
+    parser.add_argument('--delete', dest='delete', action='store_true', default=False,
+                        help="(check_eventcombiner) Delete incomplete output. Requires --andgo to execute.")
 
     return parse_and_set_loglevel(parser)
 

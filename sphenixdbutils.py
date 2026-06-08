@@ -399,7 +399,7 @@ def printDbInfo( cnxn_string, title ):
     print(f"with {cnxn_string}\n   connected {name} from {serv} as {title}")
 
 # ============================================================================================
-def dbQuery( cnxn_string, query, ntries=5, maintenance_wait=0 ):
+def dbQuery( cnxn_string, query, ntries=5, maintenance_wait=0, dryrun=False ):
     """
     Execute a query with retry logic for transient errors.
 
@@ -408,9 +408,14 @@ def dbQuery( cnxn_string, query, ntries=5, maintenance_wait=0 ):
         maintenance_wait:  If >0 and all ntries attempts fail, sleep this many seconds
                            (to ride out a DB maintenance window) then retry ntries more
                            times before giving up. Set to 0 (default) for fast failure.
+        dryrun:            If True, log the query and return None without executing.
     """
     CHATTY(f'[cnxn_string] {cnxn_string}')
     CHATTY(f'[query      ]\n{query}')
+
+    if dryrun:
+        INFO(f'[dryrun] would execute:\n{query}')
+        return None
 
     # SQLSTATE codes that are transient and worth retrying
     retryable_states = {
