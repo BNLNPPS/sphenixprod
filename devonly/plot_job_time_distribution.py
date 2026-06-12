@@ -8,6 +8,7 @@ import yaml
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.offsetbox import AnchoredOffsetbox, HPacker, TextArea, VPacker
 
 from argparsing import submission_args
 from sphenixdbutils import dbQuery, cnxn_string_map, list_to_condition
@@ -50,6 +51,35 @@ def get_time_diffs(run_condition, dsttype, tag, dataset):
         time_diffs_seconds.append((finished - started).total_seconds())
     
     return time_diffs_seconds
+
+def get_status_counts(run_condition, dsttype, tag, dataset):
+    query = f"""
+    SELECT
+      SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) AS finished,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+    FROM production_jobs
+    WHERE {run_condition}
+      AND tag = '{tag}'
+      AND dataset = '{dataset}'
+      AND status IN ('finished', 'failed')
+      AND dsttype LIKE '{dsttype}%'
+    """
+
+    DEBUG(f"Executing query:\n{query}")
+
+    cursor = dbQuery(cnxn_string_map['statr'], query)
+    if not cursor:
+        ERROR("Failed to query production database.")
+        return None
+
+    row = cursor.fetchone()
+    finished = int(row.finished or 0)
+    failed = int(row.failed or 0)
+    return {
+        "finished": finished,
+        "failed": failed,
+        "total": finished + failed,
+    }
 
 def pick_unit(time_diffs_seconds):
     median = np.median(time_diffs_seconds)
@@ -101,7 +131,7 @@ def plot_histogram(ax, time_diffs_seconds, title, time_unit='hours'):
     ax.set_title(title)
     ax.set_xlabel(f'Wall time (start to finish) ({cfg["label"]})')
     ax.set_ylabel('Number of Jobs')
-    ax.legend()
+    ax.legend(loc='upper left')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
 
     # X-axis ticks and overflow label
@@ -117,6 +147,56 @@ def plot_histogram(ax, time_diffs_seconds, title, time_unit='hours'):
 
     ax.set_xticks(xticks)
     ax.set_xticklabels(xticklabels)
+
+def add_status_box(ax, status_counts):
+    if status_counts is None:
+        return
+
+    rows = [
+        ("finished:", status_counts["finished"], "black"),
+        ("failed:", status_counts["failed"], "red"),
+        ("total:", status_counts["total"], "black"),
+    ]
+
+    label_column = VPacker(
+        children=[
+            TextArea(label, textprops={"color": color, "ha": "left"})
+            for label, _, color in rows
+        ],
+        align="left",
+        pad=0,
+        sep=2,
+    )
+    value_column = VPacker(
+        children=[
+            TextArea(f"{value}", textprops={"color": color, "ha": "right"})
+            for _, value, color in rows
+        ],
+        align="right",
+        pad=0,
+        sep=2,
+    )
+    status_box = HPacker(
+        children=[label_column, value_column],
+        align="baseline",
+        pad=0,
+        sep=12,
+    )
+
+    anchored_box = AnchoredOffsetbox(
+        loc="upper right",
+        child=status_box,
+        bbox_to_anchor=(0.98, 0.95),
+        bbox_transform=ax.transAxes,
+        frameon=True,
+        borderpad=0,
+        pad=0.35,
+    )
+    anchored_box.patch.set_boxstyle("round,pad=0.35")
+    anchored_box.patch.set_facecolor("white")
+    anchored_box.patch.set_edgecolor("0.5")
+    anchored_box.patch.set_alpha(0.85)
+    ax.add_artist(anchored_box)
 
 def main():
     """
@@ -161,6 +241,7 @@ def main():
                 INFO(f"Processing run: {run}")
                 run_condition = list_to_condition([run], name="runnumber")
                 time_diffs_seconds = get_time_diffs(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
+                status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
 
                 if not time_diffs_seconds:
                     INFO(f"No finished jobs found for run {run}.")
@@ -171,6 +252,7 @@ def main():
                 
                 title = f'Job Time Distribution for {args.rulename} (Run: {run})'
                 plot_histogram(ax, time_diffs_seconds, title, time_unit=pick_unit(time_diffs_seconds))
+                add_status_box(ax, status_counts)
                 
                 plt.tight_layout()
                 pdf.savefig(fig)
@@ -181,6 +263,7 @@ def main():
     else: # Original behavior: single plot for all runs, now for each time unit
         run_condition = list_to_condition(rule.runlist_int, name="runnumber")
         time_diffs_seconds = get_time_diffs(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
+        status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
         if time_diffs_seconds is None:
             sys.exit(1) # Error occurred in get_time_diffs
         if not time_diffs_seconds:
@@ -201,6 +284,7 @@ def main():
         plt.style.use('seaborn-v0_8-deep')
 
         plot_histogram(ax, time_diffs_seconds, base_title, time_unit=unit)
+        add_status_box(ax, status_counts)
 
         plt.tight_layout()
         output_file = f'job_time_distribution_{args.rulename}.png'
