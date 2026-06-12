@@ -96,11 +96,11 @@ def submission_args():
     parser.add_argument('--chunk-size', dest="chunk_size", help="Process runs in chunks of this size (0 = process all at once)", default=0, type=int)
     parser.add_argument('--docstring', default=None, help="Appends a documentation string to the log entry")
     parser.add_argument('--ratio-cut', dest='ratio_cut', default=0.9, type=float,
-                        help="(check_eventcombiner) Flag runs where lastevent/eventsinrun is below this threshold (default: 0.9).")
+                        help="(checkers) Flag work units where output/input completeness is below this threshold (default: 0.9).")
     parser.add_argument('--output', dest='output', default=None,
-                        help="(check_eventcombiner) Write flagged run numbers to this file (one per line).")
+                        help="(checkers) Write flagged work units to this file.")
     parser.add_argument('--delete', dest='delete', action='store_true', default=False,
-                        help="(check_eventcombiner) Delete incomplete output. Requires --andgo to execute.")
+                        help="(check_eventcombiner only) Delete incomplete output. Requires --andgo to execute.")
 
     return parse_and_set_loglevel(parser)
 
