@@ -144,7 +144,7 @@ order by runnumber
         if not runlist_int:
             return {}
         INFO(f"{len(runlist_int)} runs pass run quality cuts.")
-        DEBUG(f"Runlist: {runlist_int}")
+        CHATTY(f"Runlist: {runlist_int}")
         return { run: goodruns[run] for run in runlist_int }
 
     # ------------------------------------------------
@@ -306,10 +306,7 @@ order by runnumber
         # Run quality:
         eventsinrun_by_run=self.good_runlist(subset_runlist)
         if not eventsinrun_by_run:
-            INFO( "No runs pass run quality cuts.")
             return {}, {}
-        INFO(f"{len(eventsinrun_by_run)} runs pass run quality cuts.")
-        DEBUG(f"Runlist: {list(eventsinrun_by_run)}")
         run_condition=list_to_condition(list(eventsinrun_by_run))
 
         # If we only care about segment 0, we can skip a lot of the checks
