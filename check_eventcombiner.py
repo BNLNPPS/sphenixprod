@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from argparsing import submission_args
-from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR  # noqa: F401
+from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
 from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
@@ -23,7 +23,7 @@ def main():
 
     from simpleLogger import slogger
     import logging
-    slogger.setLevel(getattr(logging, args.loglevel))
+    slogger.setLevel(logging.getLevelName(args.loglevel))
 
     param_overrides = {}
     param_overrides["runs"]     = args.runs
@@ -47,16 +47,44 @@ def main():
         ERROR(f"Rule '{args.rulename}' is not a combining rule (db={match.input_config.db}). Exiting.")
         sys.exit(2)
 
-    # Get run list + eventsinrun from DAQ DB (same path as submission)
-    eventsinrun_by_run = match.good_runlist()   # Dict[int, int]
+    # Get run list + ideal (run, daqhost) combos from RAW DB
+    daqhosts_dict, eventsinrun_by_run = match.daqhosts_for_combining()  # also prints run count
     if not eventsinrun_by_run:
-        INFO("No runs pass run quality cuts.")
         sys.exit(0)
-    INFO(f"{len(eventsinrun_by_run)} runs pass run quality cuts.")
+
+    seb_types = [h for h in match.in_types if h != 'gl1daq']
+
+    n_ideal = sum(sum(1 for h in hosts if h != 'gl1daq') for hosts in daqhosts_dict.values())
+    INFO(f"{n_ideal} (run, daqhost) combinations have all segments on lustre.")
 
     run_condition = list_to_condition(list(eventsinrun_by_run))
 
-    # Query FileCatalog for max(lastevent) per (runnumber, dsttype)
+    total_query = f"""
+        SELECT DISTINCT runnumber, daqhost FROM datasets
+        WHERE {run_condition}
+          AND daqhost IN {tuple(seb_types)}
+        ORDER BY runnumber, daqhost
+    """
+    all_combos = dbQuery(cnxn_string_map['rawr'], total_query).fetchall()
+    INFO(f"{len(all_combos)} (run, daqhost) combinations found in the raw DB.")
+    not_on_lustre = [(int(r), h) for r, h in all_combos if h not in daqhosts_dict.get(int(r), set())]
+    INFO(f"{len(not_on_lustre)} (run, daqhost) combinations are in the DB but not fully on lustre.")
+    for run, daqhost in not_on_lustre[:5]:
+        DEBUG(f"  Not fully on lustre: Run {run} {daqhost}")
+
+    runs_without_gl1daq = [run for run, hosts in daqhosts_dict.items() if 'gl1daq' not in hosts]
+    for run in sorted(runs_without_gl1daq):
+        WARN(f"Run {run}: gl1daq not complete on lustre — run will not be submitted.")
+
+    lustre_combos = [
+        (run, daqhost)
+        for run, hosts in daqhosts_dict.items()
+        if 'gl1daq' in hosts
+        for daqhost in hosts
+        if daqhost != 'gl1daq'
+    ]
+
+    # --- FileCatalog ratio check ---
     lastevent_query = f"""
         SELECT runnumber, dsttype, max(lastevent)
         FROM datasets
@@ -68,10 +96,34 @@ def main():
         ORDER BY runnumber, dsttype
     """
     rows = dbQuery(cnxn_string_map['fcr'], lastevent_query).fetchall()
-
     INFO(f"{len(rows)} (run, dsttype) combinations have existing output in the FileCatalog.")
 
-    flagged = []   # list of (runnumber, dsttype)
+    fc_dsttypes_by_run = {}
+    for r, d, _ in rows:
+        fc_dsttypes_by_run.setdefault(int(r), []).append(d)
+
+    lustre_no_fc = [
+        (run, daqhost)
+        for run, daqhost in lustre_combos
+        if not any(daqhost in dsttype for dsttype in fc_dsttypes_by_run.get(run, []))
+    ]
+    INFO(f"{len(lustre_no_fc)} lustre combos have no FileCatalog entry.")
+    if lustre_no_fc:
+        for run, daqhost in sorted(lustre_no_fc)[:5]:
+            DEBUG(f"  Run {run} {daqhost}")
+
+    all_no_fc = [
+        (int(r), h)
+        for r, h in all_combos
+        if not any(h in dsttype for dsttype in fc_dsttypes_by_run.get(int(r), []))
+    ]
+    if all_no_fc:
+        WARN(f"{len(all_no_fc)} raw DB combos (lustre or not) have no FileCatalog entry. Check for corruption?")
+        for run, daqhost in sorted(all_no_fc)[:5]:
+            DEBUG(f"  Run {run} {daqhost}")
+    
+    INFO(f"Checking for combinations flagged below ratio cut {args.ratio_cut}...")
+    flagged = []
     for runnumber, dsttype, lastevent in rows:
         runnumber = int(runnumber)
         eventsinrun = eventsinrun_by_run.get(runnumber)
@@ -85,8 +137,6 @@ def main():
         if ratio < args.ratio_cut:
             WARN(msg)
             flagged.append((runnumber, dsttype))
-        elif ratio < 0.999:
-            DEBUG(msg)
         else:
             CHATTY(msg)
 
@@ -95,6 +145,11 @@ def main():
 
     if flagged:
         report_and_cleanup(flagged, args, match)
+
+    above_threshold = len(rows) - len(flagged)
+    n_possible = len(all_combos)
+    pct = 100.0 * above_threshold / n_possible if n_possible else 0.0
+    INFO(f"Summary: {above_threshold}/{n_possible} possible combos have FileCatalog entries above threshold ({pct:.1f}%).")
 
 # ============================================================================================
 def report_and_cleanup(flagged, args, match):
@@ -106,8 +161,6 @@ def report_and_cleanup(flagged, args, match):
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         Path(args.output).write_text('\n'.join(f"{r} {d}" for r, d in flagged) + '\n')
         INFO(f"Flagged combinations written to {args.output}")
-    else:
-        print('\n'.join(f"{r} {d}" for r, d in flagged))
 
     if not getattr(args, 'delete', False):
         return

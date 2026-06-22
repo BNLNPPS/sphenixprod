@@ -114,16 +114,21 @@ def filter_runs_by_required_seb(
 
     allowed = set()
     all_runs = set(raw_daqhosts_by_run) | set(present_by_run)
+    failure_examples = 0
     for runnumber in all_runs:
         available_required = raw_daqhosts_by_run.get(runnumber, set()).intersection(required_seb)
         present_required = present_by_run.get(runnumber, set())
         if len(available_required) >= min_seb and len(present_required) >= min_seb:
             allowed.add(runnumber)
         else:
-            DEBUG(
-                f"Run {runnumber}: required SEB availability failed "
-                f"(raw={len(available_required)}, catalog={len(present_required)}, min={min_seb})."
-            )
+            failure_examples += 1
+            if failure_examples <= 5:
+                DEBUG(
+                    f"Run {runnumber}: required SEB availability failed "
+                    f"(raw={len(available_required)}, catalog={len(present_required)}, min={min_seb})."
+                )
+            elif failure_examples == 6:
+                DEBUG("Additional required SEB availability failures suppressed after 5 examples.")
     return allowed
 
 
@@ -168,6 +173,103 @@ def find_flagged_units(
     return flagged
 
 
+def check_run_level_coverage(
+    eligible_units: Dict[Tuple[int, int], List[DatasetInfo]],
+    output_rows: Iterable[Any],
+    ratio_cut: float,
+) -> Set[int]:
+    """Check whether summed output events reach summed input events per run.
+
+    Returns the set of runnumbers that fail the coverage check.
+    Logs up to 5 failing examples and a summary if more are found.
+    """
+    outputs_by_unit: Dict[Tuple[int, int], DatasetInfo] = {}
+    for row in output_rows:
+        info = _dataset_info_from_row(row)
+        previous = outputs_by_unit.get((info.runnumber, info.segment))
+        if previous is None or info.events > previous.events:
+            outputs_by_unit[(info.runnumber, info.segment)] = info
+
+    input_sum_by_run: Dict[int, int] = defaultdict(int)
+    for (runnumber, _), inputs in eligible_units.items():
+        # conservatively count the largest input event count for the unit
+        input_sum_by_run[runnumber] += max(info.events for info in inputs)
+
+    output_sum_by_run: Dict[int, int] = defaultdict(int)
+    for (runnumber, _), info in outputs_by_unit.items():
+        output_sum_by_run[runnumber] += info.events
+
+    failing_runs: Set[int] = set()
+    examples = 0
+    no_input_examples = 0
+    all_runs = set(input_sum_by_run) | set(output_sum_by_run)
+    for run in sorted(all_runs):
+        input_sum = input_sum_by_run.get(run, 0)
+        output_sum = output_sum_by_run.get(run, 0)
+        if input_sum <= 0:
+            no_input_examples += 1
+            if no_input_examples <= 5:
+                DEBUG(f"Run {run}: no input events to check run-level coverage.")
+            elif no_input_examples == 6:
+                DEBUG("Additional no-input coverage examples suppressed after 5 examples.")
+            continue
+        ratio = output_sum / input_sum if input_sum else 0.0
+        if ratio < ratio_cut:
+            failing_runs.add(run)
+            examples += 1
+            if examples <= 5:
+                WARN(
+                    f"Run {run}: run-level coverage failed (output={output_sum}, input={input_sum}, ratio={ratio:.3f}, min={ratio_cut})."
+                )
+            elif examples == 6:
+                WARN("Additional run-level coverage failures suppressed after 5 examples.")
+
+    INFO(f"{len(failing_runs)} runs fail run-level coverage (ratio < {ratio_cut}).")
+    return failing_runs
+
+
+def check_coverage_against_raw(
+    output_rows: Iterable[Any], raw_input_by_run: Dict[int, int], ratio_cut: float
+) -> Set[int]:
+    """Compare summed outputs (files DB) against summed available raw input per run.
+
+    Logs up to 5 failing runs and returns the set of failing runnumbers.
+    """
+    outputs_by_unit: Dict[Tuple[int, int], DatasetInfo] = {}
+    for row in output_rows:
+        info = _dataset_info_from_row(row)
+        previous = outputs_by_unit.get((info.runnumber, info.segment))
+        if previous is None or info.events > previous.events:
+            outputs_by_unit[(info.runnumber, info.segment)] = info
+
+    output_sum_by_run: Dict[int, int] = defaultdict(int)
+    for (runnumber, _), info in outputs_by_unit.items():
+        output_sum_by_run[runnumber] += info.events
+
+    failing = set()
+    examples = 0
+    for run in sorted(raw_input_by_run):
+        raw_events = raw_input_by_run.get(run, 0)
+        out_events = output_sum_by_run.get(run, 0)
+        if raw_events <= 0:
+            CHATTY(f"Run {run}: raw input events=0, skipping coverage check.")
+            continue
+        ratio = out_events / raw_events
+        if ratio < ratio_cut:
+            failing.add(run)
+            examples += 1
+            if examples <= 5:
+                WARN(
+                    f"Run {run}: files DB covers {out_events}/{raw_events} events "
+                    f"({ratio:.3f} < {ratio_cut})"
+                )
+            elif examples == 6:
+                WARN("Additional files-vs-raw coverage failures suppressed after 5 examples.")
+
+    INFO(f"{len(failing)} runs fail files-vs-raw coverage (ratio < {ratio_cut}).")
+    return failing
+
+
 def write_report(flagged: List[FlaggedWorkUnit], output: str = None) -> None:
     lines = [unit.report_line() for unit in flagged]
     text = "\n".join(lines)
@@ -178,8 +280,6 @@ def write_report(flagged: List[FlaggedWorkUnit], output: str = None) -> None:
         Path(output).parent.mkdir(parents=True, exist_ok=True)
         Path(output).write_text(text)
         INFO(f"Flagged downstream work units written to {output}")
-    else:
-        print(text, end="")
 
 
 def _load_rule_and_match(args) -> Tuple[Any, Any]:
@@ -224,6 +324,33 @@ def _query_raw_daqhosts(runnumbers: Iterable[int]) -> Dict[int, Set[str]]:
         hosts_by_run[int(_row_value(row, "runnumber", 0))].add(str(_row_value(row, "daqhost", 1)))
     return hosts_by_run
 
+def _query_raw_input_events(match: Any, runnumbers: Iterable[int]) -> Dict[int, int]:
+    """Query the raw DB for per-run available input events for trigger-SEB hosts.
+
+    For downstream combining the target per run is the maximum events across
+    DAQ hosts (not the sum). Returns mapping runnumber -> max_events.
+    """
+    from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
+
+    run_condition = list_to_condition(list(runnumbers))
+    if not run_condition:
+        return {}
+
+    prefix = "DST_TRIGGERED_EVENT_"
+    hosts = sorted({t[len(prefix):] for t in match.in_types if isinstance(t, str) and t.startswith(prefix)})
+    if not hosts:
+        return {}
+
+    host_list = ",".join(f"'{h}'" for h in hosts)
+    query = f"""
+        SELECT runnumber, MAX(events) as max_events
+        FROM datasets
+        WHERE {run_condition}
+          AND daqhost IN ({host_list})
+        GROUP BY runnumber
+    """
+    rows = dbQuery(cnxn_string_map["rawr"], query).fetchall()
+    return {int(r): int(e) for r, e in rows}
 
 def _query_inputs(match: Any, runnumbers: Iterable[int]) -> List[Any]:
     from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
@@ -269,7 +396,7 @@ def main():
 
     from simpleLogger import slogger
     import logging
-    slogger.setLevel(getattr(logging, args.loglevel))
+    slogger.setLevel(logging.getLevelName(args.loglevel))
 
     rule, match = _load_rule_and_match(args)
 
@@ -285,10 +412,26 @@ def main():
         INFO("No runs pass run quality cuts.")
         sys.exit(0)
     runnumbers = sorted(goodruns)
-    INFO(f"{len(runnumbers)} runs pass run quality cuts.")
+
+    neventsper = getattr(match.job_config, "neventsper", None)
+    if neventsper is not None:
+        try:
+            neventsper = int(neventsper)
+        except (TypeError, ValueError):
+            neventsper = None
+    if neventsper:
+        total_expected_outputs = sum(
+            (goodruns[run] + neventsper - 1) // neventsper
+            for run in runnumbers
+            if goodruns.get(run, 0) > 0
+        )
+        INFO(
+            f"{total_expected_outputs} expected downstream output files "
+            f"from events/neventsper={neventsper}."
+        )
 
     input_rows = _query_inputs(match, runnumbers)
-    INFO(f"{len(input_rows)} input FileCatalog rows found.")
+    INFO(f"{len(input_rows)} available input FileCatalog rows found.")
 
     required_seb = required_seb_hosts(match.dsttype)
     if required_seb:
@@ -310,10 +453,35 @@ def main():
         required_input_types=match.in_types,
         cut_segment=match.input_config.cut_segment,
     )
-    INFO(f"{len(eligible_units)} eligible downstream run/segment units found.")
+    INFO(f"{len(eligible_units)} available input combinations found.")
 
     output_rows = _query_outputs(match, runnumbers)
     INFO(f"{len(output_rows)} primary output FileCatalog rows found.")
+
+    # Run-level coverage check: compare summed input events to summed outputs
+    failing_runs = check_run_level_coverage(
+        eligible_units=eligible_units,
+        output_rows=output_rows,
+        ratio_cut=args.ratio_cut,
+    )
+
+    # Also compare files DB outputs against available raw inputs where possible
+    raw_input_by_run = _query_raw_input_events(match, runnumbers)
+    raw_coverage_summary = None
+    if raw_input_by_run:
+        failing_raw = check_coverage_against_raw(
+            output_rows=output_rows,
+            raw_input_by_run=raw_input_by_run,
+            ratio_cut=args.ratio_cut,
+        )
+        INFO(f"{len(failing_raw)} runs fail coverage against raw input.")
+        raw_runs = len(raw_input_by_run)
+        complete_runs = raw_runs - len(failing_raw)
+        pct_raw = 100.0 * complete_runs / raw_runs if raw_runs else 0.0
+        raw_coverage_summary = (
+            f"Summary: {complete_runs}/{raw_runs} runs have downstream FileCatalog coverage "
+            f"above threshold relative to raw input events ({pct_raw:.1f}%)."
+        )
 
     flagged = find_flagged_units(
         eligible_units=eligible_units,
@@ -331,6 +499,14 @@ def main():
 
     if args.delete:
         WARN("--delete is ignored by check_downstream.py; this checker is read-only.")
+
+    if raw_coverage_summary is not None:
+        INFO(raw_coverage_summary)
+    else:
+        n_eligible = len(eligible_units)
+        above_threshold = n_eligible - len(flagged)
+        pct = 100.0 * above_threshold / n_eligible if n_eligible else 0.0
+        INFO(f"Summary: {above_threshold}/{n_eligible} eligible units have output above threshold ({pct:.1f}%).")
 
 
 if __name__ == "__main__":
