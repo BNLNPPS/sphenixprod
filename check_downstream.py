@@ -15,8 +15,9 @@ from typing import Any, Dict, Iterable, List, Set, Tuple
 
 from argparsing import submission_args
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR  # noqa: F401
-from sphenixjobdicts import required_seb_hosts
+from sphenixjobdicts import required_seb_hosts as required_daqhosts
 from sphenixprodrules import pRUNFMT, pSEGFMT
+from sphenixmisc import human_event_count
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,13 @@ class FlaggedWorkUnit:
             f"{self.runnumber:{pRUNFMT}} {self.segment:{pSEGFMT}} "
             f"{','.join(self.reasons)} {self.input_events} {self.output_events}"
         )
+
+
+@dataclass(frozen=True)
+class RequiredDaqhostFilterResult:
+    allowed_runs: Set[int]
+    failing_runs: Set[int]
+    failing_units: List[Tuple[int, int]]
 
 
 def _row_value(row: Any, name: str, index: int) -> Any:
@@ -92,44 +100,60 @@ def build_eligible_units(
     return eligible
 
 
-def filter_runs_by_required_seb(
+def filter_runs_by_required_daqhosts(
     input_rows: Iterable[Any],
-    required_seb: Set[str],
-    min_seb: int,
+    required_hosts: Set[str],
+    min_hosts: int,
     raw_daqhosts_by_run: Dict[int, Set[str]],
-) -> Set[int]:
-    """Apply the calo required-SEB run-level availability check."""
-    if not required_seb:
-        return set()
+    cut_segment: int = 1,
+    example_limit: int = 5,
+) -> RequiredDaqhostFilterResult:
+    """Apply the required-daqhost run-level availability check."""
+    if not required_hosts:
+        return RequiredDaqhostFilterResult(allowed_runs=set(), failing_runs=set(), failing_units=[])
 
     present_by_run: Dict[int, Set[str]] = defaultdict(set)
+    units_by_run: Dict[int, Set[int]] = defaultdict(set)
     prefix = "DST_TRIGGERED_EVENT_"
     for row in input_rows:
         info = _dataset_info_from_row(row)
+        if not cut_segment or info.segment % cut_segment == 0:
+            units_by_run[info.runnumber].add(info.segment)
         if not info.dsttype.startswith(prefix):
             continue
         host = info.dsttype[len(prefix):]
-        if host in required_seb:
+        if host in required_hosts:
             present_by_run[info.runnumber].add(host)
 
     allowed = set()
+    failing = set()
     all_runs = set(raw_daqhosts_by_run) | set(present_by_run)
     failure_examples = 0
     for runnumber in all_runs:
-        available_required = raw_daqhosts_by_run.get(runnumber, set()).intersection(required_seb)
+        available_required = raw_daqhosts_by_run.get(runnumber, set()).intersection(required_hosts)
         present_required = present_by_run.get(runnumber, set())
-        if len(available_required) >= min_seb and len(present_required) >= min_seb:
+        if len(available_required) >= min_hosts and len(present_required) >= min_hosts:
             allowed.add(runnumber)
         else:
+            failing.add(runnumber)
             failure_examples += 1
-            if failure_examples <= 5:
+            if failure_examples <= example_limit:
                 DEBUG(
-                    f"Run {runnumber}: required SEB availability failed "
-                    f"(raw={len(available_required)}, catalog={len(present_required)}, min={min_seb})."
+                    f"Run {runnumber}: required daqhost availability failed "
+                    f"(raw={len(available_required)}, catalog={len(present_required)}, min={min_hosts})."
                 )
-            elif failure_examples == 6:
-                DEBUG("Additional required SEB availability failures suppressed after 5 examples.")
-    return allowed
+            elif failure_examples == example_limit + 1:
+                DEBUG(f"Additional required daqhost availability failures suppressed after {example_limit} examples.")
+    failing_units = sorted(
+        (runnumber, segment)
+        for runnumber in failing
+        for segment in units_by_run.get(runnumber, set())
+    )
+    return RequiredDaqhostFilterResult(
+        allowed_runs=allowed,
+        failing_runs=failing,
+        failing_units=failing_units,
+    )
 
 
 def find_flagged_units(
@@ -177,11 +201,12 @@ def check_run_level_coverage(
     eligible_units: Dict[Tuple[int, int], List[DatasetInfo]],
     output_rows: Iterable[Any],
     ratio_cut: float,
+    example_limit: int = 5,
 ) -> Set[int]:
     """Check whether summed output events reach summed input events per run.
 
     Returns the set of runnumbers that fail the coverage check.
-    Logs up to 5 failing examples and a summary if more are found.
+    Logs up to example_limit failing examples and a summary if more are found.
     """
     outputs_by_unit: Dict[Tuple[int, int], DatasetInfo] = {}
     for row in output_rows:
@@ -208,32 +233,44 @@ def check_run_level_coverage(
         output_sum = output_sum_by_run.get(run, 0)
         if input_sum <= 0:
             no_input_examples += 1
-            if no_input_examples <= 5:
+            if no_input_examples <= example_limit:
                 DEBUG(f"Run {run}: no input events to check run-level coverage.")
-            elif no_input_examples == 6:
-                DEBUG("Additional no-input coverage examples suppressed after 5 examples.")
+            elif no_input_examples == example_limit + 1:
+                DEBUG(f"Additional no-input coverage examples suppressed after {example_limit} examples.")
             continue
         ratio = output_sum / input_sum if input_sum else 0.0
         if ratio < ratio_cut:
             failing_runs.add(run)
             examples += 1
-            if examples <= 5:
+            if examples <= example_limit:
                 WARN(
                     f"Run {run}: run-level coverage failed (output={output_sum}, input={input_sum}, ratio={ratio:.3f}, min={ratio_cut})."
                 )
-            elif examples == 6:
-                WARN("Additional run-level coverage failures suppressed after 5 examples.")
+            elif examples == example_limit + 1:
+                WARN(f"Additional run-level coverage failures suppressed after {example_limit} examples.")
 
     INFO(f"{len(failing_runs)} runs fail run-level coverage (ratio < {ratio_cut}).")
     return failing_runs
 
 
-def check_coverage_against_raw(
-    output_rows: Iterable[Any], raw_input_by_run: Dict[int, int], ratio_cut: float
-) -> Set[int]:
-    """Compare summed outputs (files DB) against summed available raw input per run.
+def sum_output_events(output_rows: Iterable[Any]) -> int:
+    outputs_by_unit: Dict[Tuple[int, int], DatasetInfo] = {}
+    for row in output_rows:
+        info = _dataset_info_from_row(row)
+        previous = outputs_by_unit.get((info.runnumber, info.segment))
+        if previous is None or info.events > previous.events:
+            outputs_by_unit[(info.runnumber, info.segment)] = info
+    return sum(info.events for info in outputs_by_unit.values())
 
-    Logs up to 5 failing runs and returns the set of failing runnumbers.
+def check_coverage_against_raw(
+    output_rows: Iterable[Any],
+    raw_input_by_run: Dict[int, int],
+    ratio_cut: float,
+    example_limit: int = 5,
+) -> Set[int]:
+    """Compare summed outputs (files DB) against per-run reference events.
+
+    Logs up to example_limit failing runs and returns the set of failing runnumbers.
     """
     outputs_by_unit: Dict[Tuple[int, int], DatasetInfo] = {}
     for row in output_rows:
@@ -252,21 +289,21 @@ def check_coverage_against_raw(
         raw_events = raw_input_by_run.get(run, 0)
         out_events = output_sum_by_run.get(run, 0)
         if raw_events <= 0:
-            CHATTY(f"Run {run}: raw input events=0, skipping coverage check.")
+            CHATTY(f"Run {run}: reference events=0, skipping coverage check.")
             continue
         ratio = out_events / raw_events
         if ratio < ratio_cut:
             failing.add(run)
             examples += 1
-            if examples <= 5:
+            if examples <= example_limit:
                 WARN(
-                    f"Run {run}: files DB covers {out_events}/{raw_events} events "
+                    f"Run {run}: files DB covers {out_events}/{raw_events} reference events "
                     f"({ratio:.3f} < {ratio_cut})"
                 )
-            elif examples == 6:
-                WARN("Additional files-vs-raw coverage failures suppressed after 5 examples.")
+            elif examples == example_limit + 1:
+                WARN(f"Additional files-vs-raw coverage failures suppressed after {example_limit} examples.")
 
-    INFO(f"{len(failing)} runs fail files-vs-raw coverage (ratio < {ratio_cut}).")
+    INFO(f"{len(failing)} runs fail files-vs-reference coverage (ratio < {ratio_cut}).")
     return failing
 
 
@@ -280,6 +317,12 @@ def write_report(flagged: List[FlaggedWorkUnit], output: str = None) -> None:
         Path(output).parent.mkdir(parents=True, exist_ok=True)
         Path(output).write_text(text)
         INFO(f"Flagged downstream work units written to {output}")
+
+
+REASON_SUMMARY_TEXT = {
+    "input_mismatch": "combinations had all required input DST types present, but the input files did not agree on the event count",
+    "missing_output": "had the required inputs, but did not produce primary output",
+}
 
 
 def _load_rule_and_match(args) -> Tuple[Any, Any]:
@@ -324,34 +367,6 @@ def _query_raw_daqhosts(runnumbers: Iterable[int]) -> Dict[int, Set[str]]:
         hosts_by_run[int(_row_value(row, "runnumber", 0))].add(str(_row_value(row, "daqhost", 1)))
     return hosts_by_run
 
-def _query_raw_input_events(match: Any, runnumbers: Iterable[int]) -> Dict[int, int]:
-    """Query the raw DB for per-run available input events for trigger-SEB hosts.
-
-    For downstream combining the target per run is the maximum events across
-    DAQ hosts (not the sum). Returns mapping runnumber -> max_events.
-    """
-    from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
-
-    run_condition = list_to_condition(list(runnumbers))
-    if not run_condition:
-        return {}
-
-    prefix = "DST_TRIGGERED_EVENT_"
-    hosts = sorted({t[len(prefix):] for t in match.in_types if isinstance(t, str) and t.startswith(prefix)})
-    if not hosts:
-        return {}
-
-    host_list = ",".join(f"'{h}'" for h in hosts)
-    query = f"""
-        SELECT runnumber, MAX(events) as max_events
-        FROM datasets
-        WHERE {run_condition}
-          AND daqhost IN ({host_list})
-        GROUP BY runnumber
-    """
-    rows = dbQuery(cnxn_string_map["rawr"], query).fetchall()
-    return {int(r): int(e) for r, e in rows}
-
 def _query_inputs(match: Any, runnumbers: Iterable[int]) -> List[Any]:
     from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
 
@@ -393,6 +408,7 @@ def _query_outputs(match: Any, runnumbers: Iterable[int]) -> List[Any]:
 
 def main():
     args = submission_args()
+    args.example_limit = max(0, args.example_limit)
 
     from simpleLogger import slogger
     import logging
@@ -433,20 +449,29 @@ def main():
     input_rows = _query_inputs(match, runnumbers)
     INFO(f"{len(input_rows)} available input FileCatalog rows found.")
 
-    required_seb = required_seb_hosts(match.dsttype)
-    if required_seb:
+    required_hosts = required_daqhosts(match.dsttype)
+    daqhost_failed_runs: Set[int] = set()
+    daqhost_failed_units: List[Tuple[int, int]] = []
+    if required_hosts:
         raw_daqhosts_by_run = _query_raw_daqhosts(runnumbers)
-        allowed_runs = filter_runs_by_required_seb(
+        daqhost_filter = filter_runs_by_required_daqhosts(
             input_rows=input_rows,
-            required_seb=required_seb,
-            min_seb=match.input_config.min_seb,
+            required_hosts=required_hosts,
+            min_hosts=match.input_config.min_seb,
             raw_daqhosts_by_run=raw_daqhosts_by_run,
+            cut_segment=match.input_config.cut_segment,
+            example_limit=args.example_limit,
         )
+        allowed_runs = daqhost_filter.allowed_runs
+        daqhost_failed_runs = daqhost_filter.failing_runs
+        daqhost_failed_units = daqhost_filter.failing_units
         input_rows = [
             row for row in input_rows
             if int(_row_value(row, "runnumber", 1)) in allowed_runs
         ]
-        INFO(f"{len(allowed_runs)} runs pass required SEB availability checks.")
+        INFO(f"{len(allowed_runs)} runs pass required daqhost availability checks.")
+        INFO(f"{len(daqhost_failed_runs)} runs fail required daqhost availability checks.")
+        INFO(f"{len(daqhost_failed_units)} run-segment combinations fail required daqhost availability checks.")
 
     eligible_units = build_eligible_units(
         input_rows=input_rows,
@@ -463,25 +488,37 @@ def main():
         eligible_units=eligible_units,
         output_rows=output_rows,
         ratio_cut=args.ratio_cut,
+        example_limit=args.example_limit,
     )
 
-    # Also compare files DB outputs against available raw inputs where possible
-    raw_input_by_run = _query_raw_input_events(match, runnumbers)
+    # Also compare files DB outputs against eventsinrun from the DAQ DB.
+    daq_events_by_run = {run: events for run, events in goodruns.items() if events}
     raw_coverage_summary = None
-    if raw_input_by_run:
-        failing_raw = check_coverage_against_raw(
+    raw_event_summary = None
+    if daq_events_by_run:
+        failing_daq = check_coverage_against_raw(
             output_rows=output_rows,
-            raw_input_by_run=raw_input_by_run,
+            raw_input_by_run=daq_events_by_run,
             ratio_cut=args.ratio_cut,
+            example_limit=args.example_limit,
         )
-        INFO(f"{len(failing_raw)} runs fail coverage against raw input.")
-        raw_runs = len(raw_input_by_run)
-        complete_runs = raw_runs - len(failing_raw)
-        pct_raw = 100.0 * complete_runs / raw_runs if raw_runs else 0.0
+        INFO(f"{len(failing_daq)} runs fail coverage against DAQ eventsinrun.")
+        daq_runs = len(daq_events_by_run)
+        complete_runs = daq_runs - len(failing_daq)
+        pct_daq = 100.0 * complete_runs / daq_runs if daq_runs else 0.0
+        files_db_events = sum_output_events(output_rows)
+        daq_events = sum(daq_events_by_run.values())
+        event_pct = 100.0 * files_db_events / daq_events if daq_events else 0.0
         raw_coverage_summary = (
-            f"Summary: {complete_runs}/{raw_runs} runs have downstream FileCatalog coverage "
-            f"above threshold relative to raw input events ({pct_raw:.1f}%)."
+            f"Summary: {complete_runs}/{daq_runs} runs have downstream FileCatalog coverage "
+            f"above threshold relative to DAQ eventsinrun ({pct_daq:.1f}%)."
         )
+        raw_event_summary = (
+            f"Summary: FileCatalog has {human_event_count(files_db_events)}/"
+            f"{human_event_count(daq_events)} possible events from DAQ eventsinrun "
+            f"({event_pct:.1f}%)."
+        )
+        raw_event_counts = f"Available: {daq_events} \t Done {files_db_events}"
 
     flagged = find_flagged_units(
         eligible_units=eligible_units,
@@ -492,7 +529,7 @@ def main():
     reason_counts = Counter(reason for unit in flagged for reason in unit.reasons)
     INFO(f"{len(flagged)} downstream work units flagged below ratio cut {args.ratio_cut}.")
     for reason, count in sorted(reason_counts.items()):
-        INFO(f"{reason}: {count}")
+        INFO(f"{count} {REASON_SUMMARY_TEXT.get(reason, reason)}")
 
     if flagged:
         write_report(flagged, args.output)
@@ -502,11 +539,54 @@ def main():
 
     if raw_coverage_summary is not None:
         INFO(raw_coverage_summary)
+        INFO(raw_event_summary)
+        INFO(raw_event_counts)
     else:
         n_eligible = len(eligible_units)
         above_threshold = n_eligible - len(flagged)
         pct = 100.0 * above_threshold / n_eligible if n_eligible else 0.0
         INFO(f"Summary: {above_threshold}/{n_eligible} eligible units have output above threshold ({pct:.1f}%).")
+
+    print_report(args.report, flagged, daqhost_failed_runs, daqhost_failed_units)
+
+
+def print_report(
+    report: str,
+    flagged: List[FlaggedWorkUnit],
+    daqhost_failed_runs: Set[int],
+    daqhost_failed_units: List[Tuple[int, int]],
+) -> None:
+    if report == "none":
+        return
+
+    if report == "flagged":
+        for unit in flagged:
+            print(unit.report_line())
+        return
+
+    if report == "input_mismatch":
+        for unit in flagged:
+            if "input_mismatch" in unit.reasons:
+                print(f"{unit.runnumber} {unit.segment}")
+        return
+
+    if report == "missing_output":
+        for unit in flagged:
+            if "missing_output" in unit.reasons:
+                print(f"{unit.runnumber} {unit.segment}")
+        return
+
+    if report == "daqhost":
+        for runnumber, segment in daqhost_failed_units:
+            print(f"{runnumber} {segment}")
+        return
+
+    if report == "daqhost_runs":
+        for runnumber in sorted(daqhost_failed_runs):
+            print(runnumber)
+        return
+
+    WARN(f"--report {report} is not supported by check_downstream.py; no report printed.")
 
 
 if __name__ == "__main__":

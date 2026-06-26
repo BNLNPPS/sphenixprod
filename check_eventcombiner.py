@@ -11,20 +11,29 @@ flagged and written to an output list.
 import sys
 from pathlib import Path
 import math
+import cProfile
+import pstats
 
 from argparsing import submission_args
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
 from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
+from sphenixmisc import human_event_count
 
 # ============================================================================================
 def main():
     args = submission_args()
+    args.example_limit = max(0, args.example_limit)
 
     from simpleLogger import slogger
     import logging
     slogger.setLevel(logging.getLevelName(args.loglevel))
+
+    if args.profile:
+        DEBUG( "Profiling is ENABLED.")
+        profiler = cProfile.Profile()
+        profiler.enable()
 
     param_overrides = {}
     param_overrides["runs"]     = args.runs
@@ -65,7 +74,7 @@ def main():
         )
         INFO(f"{total_expected_outputs} expected downstream output files from events/neventsper={neventsper}.")
 
-    seb_types = [h for h in match.in_types if h != 'gl1daq']
+    daqhost_types = [h for h in match.in_types if h != 'gl1daq']
 
     n_ideal = sum(sum(1 for h in hosts if h != 'gl1daq') for hosts in daqhosts_dict.values())
     INFO(f"{n_ideal} (run, daqhost) combinations have all segments on lustre.")
@@ -75,14 +84,14 @@ def main():
     total_query = f"""
         SELECT DISTINCT runnumber, daqhost FROM datasets
         WHERE {run_condition}
-          AND daqhost IN {tuple(seb_types)}
+          AND daqhost IN {tuple(daqhost_types)}
         ORDER BY runnumber, daqhost
     """
     all_combos = dbQuery(cnxn_string_map['rawr'], total_query).fetchall()
     INFO(f"{len(all_combos)} (run, daqhost) combinations found in the raw DB.")
     not_on_lustre = [(int(r), h) for r, h in all_combos if h not in daqhosts_dict.get(int(r), set())]
     INFO(f"{len(not_on_lustre)} (run, daqhost) combinations are in the DB but not fully on lustre.")
-    for run, daqhost in not_on_lustre[:5]:
+    for run, daqhost in not_on_lustre[:args.example_limit]:
         DEBUG(f"  Not fully on lustre: Run {run} {daqhost}")
 
     runs_without_gl1daq = [run for run, hosts in daqhosts_dict.items() if 'gl1daq' not in hosts]
@@ -122,7 +131,7 @@ def main():
     ]
     INFO(f"{len(lustre_no_fc)} lustre combos have no FileCatalog entry.")
     if lustre_no_fc:
-        for run, daqhost in sorted(lustre_no_fc)[:5]:
+        for run, daqhost in sorted(lustre_no_fc)[:args.example_limit]:
             DEBUG(f"  Run {run} {daqhost}")
 
     all_no_fc = [
@@ -132,7 +141,7 @@ def main():
     ]
     if all_no_fc:
         WARN(f"{len(all_no_fc)} raw DB combos (lustre or not) have no FileCatalog entry. Check for corruption?")
-        for run, daqhost in sorted(all_no_fc)[:5]:
+        for run, daqhost in sorted(all_no_fc)[:args.example_limit]:
             DEBUG(f"  Run {run} {daqhost}")
     
     INFO(f"Checking for combinations flagged below ratio cut {args.ratio_cut}...")
@@ -162,31 +171,71 @@ def main():
     # Unique-run summaries
     unique_runs_no_fc = sorted({int(r) for r, h in all_no_fc})
     INFO(f"{len(unique_runs_no_fc)} unique runs have raw DB combos (lustre or not) with no FileCatalog entry.")
-    # show up to 5 example (run,daqhost) combos for followup
+    # show example (run,daqhost) combos for followup
     all_no_fc_by_run = {}
     for r, h in all_no_fc:
         rint = int(r)
         all_no_fc_by_run.setdefault(rint, []).append(h)
     examples_shown = 0
-    for run in unique_runs_no_fc:
-        if examples_shown >= 5:
+    lustre_set = set(lustre_combos)
+    for r, h in all_no_fc:
+        if examples_shown >= args.example_limit:
             break
-        hosts = all_no_fc_by_run.get(run, [])
-        if hosts:
-            DEBUG(f"  Example missing combo: Run {run} daqhost={hosts[0]}")
+        combo = (int(r), h)
+        if combo in lustre_set:
+            DEBUG(f"  Example missing combo: Run {combo[0]} daqhost={combo[1]}")
             examples_shown += 1
 
     unique_flagged_runs = sorted({r for r, d in flagged})
     INFO(f"{len(unique_flagged_runs)} unique runs have flagged (run,dsttype) combinations below ratio cut.")
-    # show up to 5 example (run,dsttype) combos for followup
+    # show example (run,dsttype) combos for followup
     unique_flagged_combos = sorted({(int(r), d) for r, d in flagged})
-    for run, dst in unique_flagged_combos[:5]:
+    for run, dst in unique_flagged_combos[:args.example_limit]:
         DEBUG(f"  Example flagged combo: Run {run} dsttype={dst}")
 
     above_threshold = len(rows) - len(flagged)
     n_possible = len(all_combos)
     pct = 100.0 * above_threshold / n_possible if n_possible else 0.0
     INFO(f"Summary: {above_threshold}/{n_possible} possible combos have FileCatalog entries above threshold ({pct:.1f}%).")
+
+    files_db_events = sum(int(lastevent or 0) for _, _, lastevent in rows)
+    raw_combo_events = sum(eventsinrun_by_run.get(int(r), 0) for r, _ in all_combos)
+    event_pct = 100.0 * files_db_events / raw_combo_events if raw_combo_events else 0.0
+    INFO(
+        f"Summary: FileCatalog has {human_event_count(files_db_events)}/"
+        f"{human_event_count(raw_combo_events)} possible events from raw DB combos "
+        f"({event_pct:.1f}%)."
+    )
+    INFO(f"Available: {raw_combo_events} \t Done {files_db_events}")
+
+    print_report(args.report, all_no_fc, flagged)
+
+    if args.profile:
+        profiler.disable()
+        DEBUG("Profiling finished. Printing stats...")
+        stats = pstats.Stats(profiler)
+        stats.strip_dirs().sort_stats('time').print_stats(10)
+
+# ============================================================================================
+def print_report(report, all_no_fc, flagged):
+    if report == 'none':
+        return
+
+    if report == 'nofc':
+        for run, daqhost in sorted(all_no_fc):
+            print(f"Run {run}, {daqhost}")
+        return
+
+    if report == 'flagged':
+        for run, dsttype in sorted(flagged):
+            print(f"Run {run}, {dsttype}")
+        return
+
+    if report in ('daqhost', 'daqhost_runs', 'input_mismatch', 'missing_output'):
+        WARN(f"--report {report} is not supported by check_eventcombiner.py; no report printed.")
+        return
+
+    WARN(f"Unknown report '{report}' requested; no report printed.")
 
 # ============================================================================================
 def report_and_cleanup(flagged, args, match):
