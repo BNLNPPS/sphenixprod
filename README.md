@@ -62,6 +62,7 @@ Submission-side scripts (`create_submission.py`, `production_control.py`, `execu
 | 40 | Database | Write failure (failed insert/update) |
 | 41 | Database | Query failure (non-retryable error or all retries exhausted) |
 | 50 | Condor | Infrastructure failure (condor_q failed before submission can proceed) |
+| 51 | Condor | Job deliberately removed by production resubmission/control tooling |
 
 ## Chunking Support
 

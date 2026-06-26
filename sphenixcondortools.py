@@ -2,6 +2,7 @@
 import argparse
 import subprocess
 from pathlib import Path
+import re
 import pprint # noqa F401
 
 from argparsing import monitor_args
@@ -10,6 +11,53 @@ from sphenixprodrules import RuleConfig # New import
 from sphenixmatching import MatchConfig
 from sphenixmisc import setup_rot_handler, should_I_quit, shell_command # Modified import
 import htcondor2 as htcondor  # type: ignore
+
+_common_runscript_arg_count = None
+
+def common_runscript_arg_count():
+    global _common_runscript_arg_count
+    if _common_runscript_arg_count is not None:
+        return _common_runscript_arg_count
+
+    prep_script = Path(__file__).with_name('common_runscript_prep.sh')
+    try:
+        for line in prep_script.read_text().splitlines():
+            match = re.match(r'\s*ARG_COUNT\s*=\s*(\d+)\b', line)
+            if match:
+                _common_runscript_arg_count = int(match.group(1))
+                return _common_runscript_arg_count
+    except OSError as e:
+        WARN(f"Could not read {prep_script}: {e}")
+        return None
+
+    WARN(f"Could not find ARG_COUNT in {prep_script}. Production DB ids will not be inferred from Condor Args.")
+    return None
+
+def production_dbid_from_job_ad(job_ad):
+    condor_id = f"{job_ad.get('ClusterId')}.{job_ad.get('ProcId')}"
+    batch_name = str(job_ad.get('JobBatchName', ''))
+    if '.' not in batch_name:
+        WARN(f"Job {condor_id} batch name '{batch_name}' has no dot. Proceeding without production DB updates.")
+        return None
+
+    expected_arg_count = common_runscript_arg_count()
+    if expected_arg_count is None:
+        return None
+    expected_arg_count += 1  # common runscript args plus production dbid
+
+    args = str(job_ad.get('Args', '')).split()
+    if len(args) != expected_arg_count:
+        WARN(
+            f"Job {condor_id} has {len(args)} Args tokens, expected {expected_arg_count} "
+            f"for a production job. Proceeding without production DB updates."
+        )
+        return None
+
+    dbid = args[-1]
+    if not dbid.isdigit():
+        WARN(f"Job {condor_id} final Args token '{dbid}' is not a production dbid. Proceeding without DB updates.")
+        return None
+    return int(dbid)
 
 def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
     """
@@ -53,19 +101,22 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
         ERROR(f"An unexpected error occurred during condor query: {e}")
         exit(1)
 
-    ad_by_dbid = {}
+    ad_by_id = {}
+    dbid_count = 0
     for ad in jobs:
-        dbid=ad.get('Args', '').split()[-1]
-        if not dbid.isdigit():
-            ERROR(f"Job with Args {ad.get('Args', '')} has non-integer dbid {dbid}. Stop.")
-            exit(1)
-        dbid = int(dbid)
-        if dbid in ad_by_dbid:
-            ERROR(f"Duplicate dbid {dbid} found in jobs, overwriting previous entry. Stop.")
-            exit(1)
-        ad_by_dbid[dbid] = ad
-    INFO(f"Mapped {len(ad_by_dbid)} jobs by dbid.")
-    return ad_by_dbid
+        condor_id = f"{ad.get('ClusterId')}.{ad.get('ProcId')}"
+        dbid = production_dbid_from_job_ad(ad)
+        if dbid is None:
+            ad_by_id[condor_id] = ad
+            continue
+        if dbid in ad_by_id:
+            WARN(f"Duplicate production dbid {dbid} found in Condor queue. Keeping job {condor_id} under Condor id.")
+            ad_by_id[condor_id] = ad
+        else:
+            ad_by_id[dbid] = ad
+            dbid_count += 1
+    INFO(f"Mapped {len(ad_by_id)} jobs, {dbid_count} by production dbid.")
+    return ad_by_id
 
 # ============================================================================================
 def get_queued_jobs(rule: RuleConfig):

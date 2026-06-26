@@ -8,6 +8,20 @@ import bisect # for binary search in sorted lists
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 
 # ============================================================================================
+def human_event_count(value):
+    value = int(value or 0)
+    units = (
+        (1_000_000_000_000, "T"),
+        (1_000_000_000, "B"),
+        (1_000_000, "M"),
+        (1_000, "k"),
+    )
+    for scale, suffix in units:
+        if abs(value) >= scale:
+            return f"{value / scale:.4g}{suffix}"
+    return str(value)
+
+# ============================================================================================
 def shell_command(command: str, raise_on_error: bool = False) -> List[str]:
     """Minimal wrapper to hide away subbprocess tedium"""
     CHATTY(f"[shell_command] Command: {command}")
