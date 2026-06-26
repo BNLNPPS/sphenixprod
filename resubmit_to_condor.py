@@ -10,7 +10,8 @@ import pprint # noqa F401
 from argparsing import monitor_args
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixmisc import setup_rot_handler
-from sphenixcondortools import base_batchname_from_args, monitor_condor_jobs
+from sphenixcondortools import base_batchname_from_args, monitor_condor_jobs, production_dbid_from_job_ad
+from sphenixdbutils import mark_killed, mark_resubmitted
 import htcondor2 as htcondor # type: ignore
 
 def main():
@@ -55,6 +56,8 @@ def main():
             under_memory_hold_reasons[reason_code] += 1
 
         # Now let's kill and resubmit this job
+        dbid = production_dbid_from_job_ad(job_ad)
+
         # Fix difference between Submit object and ClassAd keys
         job_ad['output']=job_ad.pop('Out')
         job_ad['error']=job_ad.pop('Err')
@@ -81,6 +84,8 @@ def main():
                     INFO(f"Removed held job {job_ad['ClusterId']}.{job_ad['ProcId']} from queue.")
                     submit_result = schedd.submit(new_submit_ad)
                     new_queue_id = submit_result.cluster()
+                    if dbid is not None:
+                        mark_resubmitted(dbid, new_queue_id, new_rm, dryrun=args.dryrun)
                     INFO(f"Resubmitted job with increased memory request ({rm}MB -> {new_rm}MB) as {new_queue_id}.")                    
                 except Exception as e:
                     ERROR(f"Failed to remove and resubmit job {job_ad['ClusterId']}.{job_ad['ProcId']}: {e}")
@@ -101,6 +106,10 @@ def main():
                 #         json.dump(dict(job_ad), f, indent=4)
                 try:
                     schedd.act(htcondor.JobAction.Remove, kill_procs)
+                    for job_ad in kill_suggestion:
+                        dbid = production_dbid_from_job_ad(job_ad)
+                        if dbid is not None:
+                            mark_killed(dbid, dryrun=args.dryrun)
                     INFO(f"Killed {len(kill_suggestion)} jobs that exceeded max memory limit of {args.max_memory}MB.")
                 except Exception as e:
                     ERROR(f"Failed to kill jobs: {e}")

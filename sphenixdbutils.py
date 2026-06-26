@@ -392,6 +392,77 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False,
             ERROR(f"Failed to update production_jobs for id={dbid} in database {dbstring}")
             # Do not exit, as we want to avoid causing further issues at the end of a job.
 
+def mark_resubmitted(dbid: int, cluster_id: int, request_memory: int, dryrun: bool = False):
+    """
+    Mark a production job row as queued again after Condor resubmission.
+
+    The original submitted timestamp is intentionally preserved as the first
+    submission time. Runtime fields are cleared because the replacement Condor
+    job has not started yet.
+    """
+    update_jobs_sql = f"""
+        UPDATE production_jobs
+        SET ClusterId = {cluster_id},
+            ProcId = NULL,
+            status = 'submitted',
+            started = NULL,
+            finished = NULL,
+            RemoteUserCpu = NULL,
+            RemoteSysCpu = NULL,
+            MemoryUsage = NULL,
+            MemoryProvisioned = NULL,
+            DiskUsage = NULL,
+            ExitCode = NULL,
+            jobstarts = NULL,
+            execution_node = NULL,
+            request_memory = ARRAY[{request_memory}]
+        WHERE id = {dbid};
+    """
+    CHATTY(update_jobs_sql)
+    if not dryrun:
+        dbstring = 'statw'
+        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql, maintenance_wait=1500)
+        if prodstate_curs:
+            if prodstate_curs.rowcount == 0:
+                WARN(f"No production_jobs row found for id={dbid}; resubmission DB update skipped.")
+                return False
+            prodstate_curs.commit()
+            return True
+        else:
+            WARN(f"Failed to mark production_jobs id={dbid} as resubmitted in database {dbstring}")
+            return False
+    return True
+
+def mark_killed(dbid: int, exit_code: int = 51, dryrun: bool = False):
+    """
+    Mark a production job row as failed after deliberate Condor removal.
+
+    Exit code 51 is reserved here for Condor-side removal by production control
+    tooling, distinct from the existing code 50 infrastructure failure.
+    """
+    now = str(datetime.now().replace(microsecond=0))
+    update_jobs_sql = f"""
+        UPDATE production_jobs
+        SET status = 'failed',
+            finished = '{now}',
+            ExitCode = {exit_code}
+        WHERE id = {dbid};
+    """
+    CHATTY(update_jobs_sql)
+    if not dryrun:
+        dbstring = 'statw'
+        prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql, maintenance_wait=1500)
+        if prodstate_curs:
+            if prodstate_curs.rowcount == 0:
+                WARN(f"No production_jobs row found for id={dbid}; kill DB update skipped.")
+                return False
+            prodstate_curs.commit()
+            return True
+        else:
+            WARN(f"Failed to mark production_jobs id={dbid} as killed in database {dbstring}")
+            return False
+    return True
+
 def printDbInfo( cnxn_string, title ):
     conn = pyodbc.connect( cnxn_string )
     name=conn.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
