@@ -59,48 +59,22 @@ def production_dbid_from_job_ad(job_ad):
         return None
     return int(dbid)
 
-def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
-    """
-    Check on the status of held jobs and process them using the htcondor2 bindings.
-    """
-    INFO("Polling for all condor jobs using htcondor2 python bindings...")
-    
-    try:
-        schedd = htcondor.Schedd()
+condor_monitor_attrs = [
+    'ClusterId', 'ProcId', # access via job_id = f"{ClusterId}.{ProcId}"
+        # Interesting Statistics
+    'JobStatus',  'QDate', 'CompletionDate',
+    'ExitCode', 'HoldReason', 'RemoveReason',
+    'RemoteHost', 'NumJobStarts',
+    'ResidentSetSize', 'MemoryProvisioned', 'LastHoldReasonCode',
+    'EnteredCurrentStatus',
+        # Important for cloning
+    'Owner', 'JobBatchName','Environment', 'JobPrio',
+    'Cmd', 'Args', 'Iwd',
+    'JobSubmitFile', 'Out', 'Err', 'UserLog',
+    'RequestCpus', 'RequestDisk', 'RequestMemory', 'Requestxferslots'
+]
 
-        # batch_pattern = f'.*\\.{batch_name}$' ## Assumes batch_name does NOT contain 'main.' prefix
-        batch_pattern = f'.*{batch_name}$'      ## Assumes batch_name MAY contain any prefix
-
-        # Query all jobs for the batch, we will filter by status locally
-        constraint = f'regexp("{batch_pattern}", JobBatchName)'
-        INFO(f"Querying condor with constraint: {constraint}")
-
-        attrs = [
-            'ClusterId', 'ProcId', # access via job_id = f"{ClusterId}.{ProcId}"
-                # Interesting Statistics
-            'JobStatus',  'QDate', 'CompletionDate', 
-            'ExitCode', 'HoldReason', 'RemoveReason',
-            'RemoteHost', 'NumJobStarts',
-            'ResidentSetSize', 'MemoryProvisioned', 'LastHoldReasonCode',
-            'EnteredCurrentStatus',
-                # Important for cloning
-            'Owner', 'JobBatchName','Environment', 'JobPrio',
-            'Cmd', 'Args', 'Iwd',
-            'JobSubmitFile', 'Out', 'Err', 'UserLog',
-            'RequestCpus', 'RequestDisk', 'RequestMemory', 'Requestxferslots'
-        ]
-
-        jobs = schedd.query(constraint=constraint, projection=attrs)
-
-        if not jobs:
-            INFO("No jobs found for the specified batch name.")
-            return {}
-
-        INFO(f"Found {len(jobs)} jobs for batch_name {batch_name}.")
-    except Exception as e:
-        ERROR(f"An unexpected error occurred during condor query: {e}")
-        exit(1)
-
+def map_condor_ads(jobs) -> dict:
     ad_by_id = {}
     dbid_count = 0
     for ad in jobs:
@@ -117,6 +91,76 @@ def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
             dbid_count += 1
     INFO(f"Mapped {len(ad_by_id)} jobs, {dbid_count} by production dbid.")
     return ad_by_id
+
+def condor_id_constraint(condor_ids) -> str:
+    constraints = []
+    for condor_id in condor_ids:
+        try:
+            cluster, proc = condor_id.split(".", 1)
+            cluster = int(cluster)
+            proc = int(proc)
+        except ValueError:
+            ERROR(f"Invalid Condor id '{condor_id}'. Expected ClusterId.ProcId, e.g. 194490.13.")
+            exit(2)
+        constraints.append(f"(ClusterId == {cluster} && ProcId == {proc})")
+    return " || ".join(constraints)
+
+def monitor_condor_jobs(batch_name: str, dryrun: bool=True) -> dict:
+    """
+    Check on the status of held jobs and process them using the htcondor2 bindings.
+    """
+    INFO("Polling for all condor jobs using htcondor2 python bindings...")
+    
+    try:
+        schedd = htcondor.Schedd()
+
+        # batch_pattern = f'.*\\.{batch_name}$' ## Assumes batch_name does NOT contain 'main.' prefix
+        batch_pattern = f'.*{batch_name}$'      ## Assumes batch_name MAY contain any prefix
+
+        # Query all jobs for the batch, we will filter by status locally
+        constraint = f'regexp("{batch_pattern}", JobBatchName)'
+        INFO(f"Querying condor with constraint: {constraint}")
+
+        jobs = schedd.query(constraint=constraint, projection=condor_monitor_attrs)
+
+        if not jobs:
+            INFO("No jobs found for the specified batch name.")
+            return {}
+
+        INFO(f"Found {len(jobs)} jobs for batch_name {batch_name}.")
+    except Exception as e:
+        ERROR(f"An unexpected error occurred during condor query: {e}")
+        exit(1)
+
+    return map_condor_ads(jobs)
+
+def monitor_condor_jobs_by_ids(condor_ids, dryrun: bool=True) -> dict:
+    """
+    Query specific Condor jobs by ClusterId.ProcId.
+    """
+    INFO("Polling for selected condor jobs using htcondor2 python bindings...")
+
+    try:
+        schedd = htcondor.Schedd()
+        constraint = condor_id_constraint(condor_ids)
+        INFO(f"Querying condor with constraint: {constraint}")
+        jobs = schedd.query(constraint=constraint, projection=condor_monitor_attrs)
+
+        if not jobs:
+            INFO("No jobs found for the specified Condor ids.")
+            return {}
+
+        requested = set(condor_ids)
+        found = {f"{ad.get('ClusterId')}.{ad.get('ProcId')}" for ad in jobs}
+        missing = sorted(requested - found)
+        if missing:
+            WARN(f"{len(missing)} requested Condor id(s) were not found: {' '.join(missing)}")
+        INFO(f"Found {len(jobs)} selected Condor jobs.")
+    except Exception as e:
+        ERROR(f"An unexpected error occurred during condor query: {e}")
+        exit(1)
+
+    return map_condor_ads(jobs)
 
 # ============================================================================================
 def get_queued_jobs(rule: RuleConfig):
