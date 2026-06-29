@@ -168,7 +168,9 @@ class RuleConfig:
         try:
             rule_data = yaml_data[rule_name]
         except KeyError:
-            raise ValueError(f"Rule '{rule_name}' not found in YAML data.")
+            available = sorted(yaml_data.keys())
+            ERROR(f"Rule '{rule_name}' not found in YAML data. Available rules: {available}")
+            exit(1)
 
         if param_overrides is None:
             WARN("No rule substitutions provided. This may fail.")
