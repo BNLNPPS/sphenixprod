@@ -10,7 +10,12 @@ import pprint # noqa F401
 from argparsing import monitor_args
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixmisc import setup_rot_handler
-from sphenixcondortools import base_batchname_from_args, monitor_condor_jobs, production_dbid_from_job_ad
+from sphenixcondortools import (
+    base_batchname_from_args,
+    monitor_condor_jobs,
+    monitor_condor_jobs_by_ids,
+    production_dbid_from_job_ad,
+)
 from sphenixdbutils import mark_killed, mark_resubmitted
 import htcondor2 as htcondor # type: ignore
 
@@ -23,8 +28,12 @@ def main():
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
     INFO("Running in production mode.")
 
-    batch_name=base_batchname_from_args(args)
-    jobs=monitor_condor_jobs(batch_name=batch_name, dryrun=args.dryrun)
+    if args.condor_ids:
+        batch_name="selected_condor_ids"
+        jobs=monitor_condor_jobs_by_ids(args.condor_ids, dryrun=args.dryrun)
+    else:
+        batch_name=base_batchname_from_args(args)
+        jobs=monitor_condor_jobs(batch_name=batch_name, dryrun=args.dryrun)
 
     # Filter for held jobs (JobStatus == 5)
     held_jobs_ads = [ad for ad in jobs.values() if ad.get('JobStatus') == 5]
@@ -62,7 +71,7 @@ def main():
         job_ad['output']=job_ad.pop('Out')
         job_ad['error']=job_ad.pop('Err')
         # adjust memory request
-        new_submit_ad = htcondor.Submit(dict(job_ad))
+        new_submit_ad = htcondor.Submit({k: str(v) for k, v in dict(job_ad).items() if v is not None})
         if args.memory:
             new_rm=int(args.memory)
         else:
