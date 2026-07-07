@@ -342,11 +342,15 @@ def _load_rule_and_match(args) -> Tuple[Any, Any]:
     if args.physicsmode:
         param_overrides["physicsmode"] = args.physicsmode
 
-    rule = RuleConfig.from_yaml_file(
-        yaml_file=args.config,
-        rule_name=args.rulename,
-        param_overrides=param_overrides,
-    )
+    try:
+        rule = RuleConfig.from_yaml_file(
+            yaml_file=args.config,
+            rule_name=args.rulename,
+            param_overrides=param_overrides,
+        )
+    except (ValueError, FileNotFoundError) as e:
+        ERROR(f"Error loading rule configuration: {e}")
+        sys.exit(2)
     return rule, MatchConfig.from_rule_config(rule)
 
 

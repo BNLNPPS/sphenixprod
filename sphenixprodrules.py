@@ -572,13 +572,14 @@ class RuleConfig:
         Returns:
             A RuleConfig objects, keyed by rule name.
         """
+        yaml_path = Path(yaml_file)
         try:
-            with open(yaml_file, "r") as yamlstream:
+            with open(yaml_path, "r") as yamlstream:
                 yaml_data = yaml.safe_load(yamlstream)
         except yaml.YAMLError as exc:
-            raise ValueError(f"Error parsing YAML file: {exc}")
+            raise ValueError(f"Error parsing YAML file '{yaml_file}': {exc}") from None
         except FileNotFoundError:
-            raise FileNotFoundError(f"YAML file not found: {yaml_file}")
+            raise FileNotFoundError(f"YAML file not found: {yaml_file}") from None
 
         return cls.from_yaml(yaml_file=yaml_file,
                              yaml_data=yaml_data,
