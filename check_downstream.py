@@ -160,6 +160,7 @@ def find_flagged_units(
     eligible_units: Dict[Tuple[int, int], List[DatasetInfo]],
     output_rows: Iterable[Any],
     ratio_cut: float,
+    example_limit: int = 5,
 ) -> List[FlaggedWorkUnit]:
     """Classify eligible units with missing, inconsistent, or short outputs."""
     outputs_by_unit: Dict[Tuple[int, int], DatasetInfo] = {}
@@ -170,15 +171,39 @@ def find_flagged_units(
             outputs_by_unit[(info.runnumber, info.segment)] = info
 
     flagged = []
+    mismatch_examples = 0
+    tolerated_mismatch_examples = 0
     for (runnumber, segment), inputs in sorted(eligible_units.items()):
         input_event_counts = {info.events for info in inputs}
-        input_events = inputs[0].events if len(input_event_counts) == 1 else -1
+        sorted_event_counts = sorted(input_event_counts)
+        if len(sorted_event_counts) == 1:
+            input_events = sorted_event_counts[0]
+        elif sorted_event_counts[-1] - sorted_event_counts[0] <= 2:
+            input_events = sorted_event_counts[0]
+            tolerated_mismatch_examples += 1
+            if tolerated_mismatch_examples <= example_limit:
+                CHATTY(
+                    f"Run {runnumber}, segment {segment}: input event counts differ slightly; "
+                    f"using minimum {input_events} from {sorted_event_counts}."
+                )
+            elif tolerated_mismatch_examples == example_limit + 1:
+                CHATTY(f"Additional tolerated input event count mismatches suppressed after {example_limit} examples.")
+        else:
+            input_events = -1
         output = outputs_by_unit.get((runnumber, segment))
         output_events = output.events if output else -1
 
         reasons = []
-        if len(input_event_counts) != 1:
+        if len(sorted_event_counts) != 1 and input_events < 0:
             reasons.append("input_mismatch")
+            mismatch_examples += 1
+            if mismatch_examples <= example_limit:
+                DEBUG(
+                    f"Run {runnumber}, segment {segment}: input event counts mismatch "
+                    f"{sorted_event_counts}."
+                )
+            elif mismatch_examples == example_limit + 1:
+                DEBUG(f"Additional input event count mismatches suppressed after {example_limit} examples.")
         if output is None:
             reasons.append("missing_output")
         elif input_events > 0 and output.events / input_events < ratio_cut:
@@ -473,8 +498,24 @@ def main():
             row for row in input_rows
             if int(_row_value(row, "runnumber", 1)) in allowed_runs
         ]
+        daqhost_failed_summary = f"{len(daqhost_failed_runs)} runs fail required daqhost availability checks"
+        if neventsper:
+            daqhost_failed_segments_by_run = Counter(runnumber for runnumber, _ in daqhost_failed_units)
+            daqhost_failed_estimated_events = sum(
+                failed_segments * goodruns.get(runnumber, 0) / neventsper
+                for runnumber, failed_segments in daqhost_failed_segments_by_run.items()
+            )
+            total_goodrun_events = sum(goodruns.values())
+            daqhost_failed_pct = (
+                100.0 * daqhost_failed_estimated_events / total_goodrun_events
+                if total_goodrun_events else 0.0
+            )
+            daqhost_failed_summary += (
+                f", estimated {human_event_count(round(daqhost_failed_estimated_events))} events "
+                f"({daqhost_failed_pct:.2f}% of total)"
+            )
         INFO(f"{len(allowed_runs)} runs pass required daqhost availability checks.")
-        INFO(f"{len(daqhost_failed_runs)} runs fail required daqhost availability checks.")
+        INFO(f"{daqhost_failed_summary}.")
         INFO(f"{len(daqhost_failed_units)} run-segment combinations fail required daqhost availability checks.")
 
     eligible_units = build_eligible_units(
@@ -518,22 +559,53 @@ def main():
             f"above threshold relative to DAQ eventsinrun ({pct_daq:.1f}%)."
         )
         raw_event_summary = (
-            f"Summary: FileCatalog has {human_event_count(files_db_events)}/"
+            f"Summary: FileCatalog has {human_event_count(files_db_events)} / "
             f"{human_event_count(daq_events)} possible events from DAQ eventsinrun "
             f"({event_pct:.1f}%)."
         )
-        raw_event_counts = f"Available: {daq_events} \t Done {files_db_events}"
+        raw_event_counts = f"Done: {files_db_events} /t Available: {daq_events}"
 
     flagged = find_flagged_units(
         eligible_units=eligible_units,
         output_rows=output_rows,
         ratio_cut=args.ratio_cut,
+        example_limit=args.example_limit,
     )
 
     reason_counts = Counter(reason for unit in flagged for reason in unit.reasons)
-    INFO(f"{len(flagged)} downstream work units flagged below ratio cut {args.ratio_cut}.")
+    reason_runs: Dict[str, Set[int]] = defaultdict(set)
+    all_flagged_segments_by_run = Counter(unit.runnumber for unit in flagged)
+    missing_output_segments_by_run = Counter(
+        unit.runnumber for unit in flagged if "missing_output" in unit.reasons
+    )
+    flagged_estimated_events = None
+    missing_output_estimated_events = None
+    total_goodrun_events = sum(goodruns.values())
+    if neventsper:
+        flagged_estimated_events = sum(
+            flagged_segments * goodruns.get(runnumber, 0) / neventsper
+            for runnumber, flagged_segments in all_flagged_segments_by_run.items()
+        )
+        missing_output_estimated_events = sum(
+            missing_segments * goodruns.get(runnumber, 0) / neventsper
+            for runnumber, missing_segments in missing_output_segments_by_run.items()
+        )
+    for unit in flagged:
+        for reason in unit.reasons:
+            reason_runs[reason].add(unit.runnumber)
+    flagged_summary = f"{len(flagged)} downstream work units flagged below ratio cut {args.ratio_cut}"
+    if flagged_estimated_events is not None:
+        flagged_pct = 100.0 * flagged_estimated_events / total_goodrun_events if total_goodrun_events else 0.0
+        flagged_summary += f", estimated {human_event_count(round(flagged_estimated_events))} events ({flagged_pct:.2f}% of total)"
+    INFO(f"{flagged_summary}.")
     for reason, count in sorted(reason_counts.items()):
-        INFO(f"{count} {REASON_SUMMARY_TEXT.get(reason, reason)}")
+        summary = f"{count} {REASON_SUMMARY_TEXT.get(reason, reason)}"
+        if reason == "missing_output":
+            summary += f" from {len(reason_runs[reason])} unique runnumbers"
+            if missing_output_estimated_events is not None:
+                missing_pct = 100.0 * missing_output_estimated_events / total_goodrun_events if total_goodrun_events else 0.0
+                summary += f", estimated {human_event_count(round(missing_output_estimated_events))} events ({missing_pct:.2f}% of total)"
+        INFO(summary)
 
     if flagged:
         write_report(flagged, args.output)
@@ -575,7 +647,7 @@ def print_report(
         return
 
     if report == "missing_output":
-        for unit in flagged:
+        for unit in sorted(flagged, key=lambda unit: (unit.runnumber, unit.segment)):
             if "missing_output" in unit.reasons:
                 print(f"{unit.runnumber} {unit.segment}")
         return
