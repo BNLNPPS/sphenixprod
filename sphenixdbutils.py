@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import pyodbc
-from pathlib import Path
 import pprint # noqa: F401
 
 import time
@@ -49,21 +48,13 @@ from simpleLogger import WARN, ERROR, DEBUG, INFO, CHATTY, slogger, CHATTY_LEVEL
 This module provides an interface to the sPHENIX databases.
 Used both by submission scripts and by the production payload scripts themselves,
 so it should remain lightweight and not depend on any other package modules.
-Also, it needs a robust way to establish things like testbed vs. production mode.
 """
 
 # ============================================================================
 
-prod_mode = Path("SPHNX_PRODUCTION_MODE").exists()
-if ( prod_mode ):
-    dsnprodr = 'Production_read'
-    dsnprodw = 'Production_write'
-    dsnfilec = 'FileCatalog'
-else:
-    INFO("Neither production nor testbed mode set. Default to PRODUCTION.  YMMV.")
-    dsnprodr = 'Production_read'
-    dsnprodw = 'Production_write'
-    dsnfilec = 'FileCatalog'
+dsnprodr = 'Production_read'
+dsnprodw = 'Production_write'
+dsnfilec = 'FileCatalog'
 
 # ============================================================================
 cnxn_string_map = {
@@ -73,7 +64,6 @@ cnxn_string_map = {
     'statw'       : f'DSN={dsnprodw};UID=argouser',
     'daqr'        :  'DSN=daq;READONLY=True;UID=phnxrc',
     'rawr'        :  'DSN=RawdataCatalog_read;READONLY=True;UID=phnxrc',
-    'testw'       :  'DSN=FileCatalogTest;UID=phnxrc',
 
 }
 

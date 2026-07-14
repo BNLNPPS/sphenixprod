@@ -17,7 +17,6 @@ from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig,list_to_condition
 from sphenixprodrules import parse_lfn
-from sphenixdbutils import test_mode as dbutils_test_mode
 from sphenixdbutils import cnxn_string_map
 from sphenixmisc import remove_empty_directories, binary_contains_bisect, make_chunks
 
@@ -57,13 +56,6 @@ def main():
         else:
             print("Here we go deleting then.")
 
-    #################### Test mode?
-    test_mode = (
-            dbutils_test_mode
-            or args.test_mode
-            # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
-        )
-
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
@@ -75,11 +67,7 @@ def main():
     
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
-    if test_mode:
-        INFO("Running in testbed mode.")
-        args.mangle_dirpath = 'production-testbed'
-    else:
-        INFO("Running in production mode.")
+    INFO("Running in production mode.")
 
     #################### Rule has steering parameters and two subclasses for input and job specifics
     # Rule is instantiated via the yaml reader.
@@ -286,9 +274,9 @@ def main():
     ## It would be more thorough to do it by a more general rule, but that's complicated b/c you have to dissect lfn
     chunk_size = 500
     chunked_dsts = list(make_chunks(del_final_dsts, chunk_size))
-    dbstring = 'testw' if test_mode else 'fcw'
-    files_table='test_files' if test_mode else 'files'
-    datasets_table='test_datasets' if test_mode else 'datasets'
+    dbstring = 'fcw'
+    files_table='files'
+    datasets_table='datasets'
     WARN(f"Deleting {len(del_final_dsts)} DST rows from table {files_table} and from table {datasets_table}")
 
     ## files
