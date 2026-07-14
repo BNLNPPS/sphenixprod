@@ -101,12 +101,14 @@ def submission_args():
                         help="(checkers) Maximum number of example rows to print for each diagnostic category (default: 5).")
     parser.add_argument('--report', dest='report', default='none',
                         choices=['none', 'nofc', 'flagged', 'daqhost', 'daqhost_runs',
-                                 'input_mismatch', 'missing_output'],
+                                 'input_mismatch', 'missing_output', 'reproduce_runs', 'stage_runs'],
                         help="(checkers) Plain stdout report to print at the end (default: none).")
     parser.add_argument('--output', dest='output', default=None,
                         help="(checkers) Write flagged work units to this file.")
     parser.add_argument('--delete', dest='delete', action='store_true', default=False,
-                        help="(check_eventcombiner only) Delete incomplete output. Requires --andgo to execute.")
+                        help="(checkers) Delete incomplete bookkeeping rows. Requires --andgo to execute; otherwise dry-run.")
+    parser.add_argument('--mismatch-delete', dest='mismatch_delete', action='store_true', default=False,
+                        help="(check_downstream) Include input_mismatch work units in --delete cleanup.")
 
     return parse_and_set_loglevel(parser)
 
