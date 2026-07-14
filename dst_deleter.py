@@ -51,6 +51,7 @@ logging.Logger.chatty = _chatty
 
 
 class _Fmt(logging.Formatter):
+    show_datetime = True
     grey     = "\x1b[38;20m"
     yellow   = "\x1b[33;20m"
     green    = "\x1b[32;20m"
@@ -58,20 +59,28 @@ class _Fmt(logging.Formatter):
     red      = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
     reset    = "\x1b[0m"
-    _fmt     = "%(asctime)s [%(levelname)s] - %(message)s"
+    _datetime_fmt = "%(asctime)s [%(levelname)s] - %(message)s"
+    _plain_fmt = "[%(levelname)s] - %(message)s"
 
-    FORMATS = {
-        CHATTY_LEVEL_NUM: yellow   + _fmt + " (%(filename)s:%(lineno)d) " + reset,
-        logging.DEBUG:    grey     + _fmt + " (%(filename)s:%(lineno)d) " + reset,
-        logging.INFO:     green    + _fmt + reset,
-        logging.WARNING:  blue     + _fmt + " (%(filename)s:%(lineno)d) " + reset,
-        logging.ERROR:    red      + _fmt + " (%(filename)s:%(lineno)d) " + reset,
-        logging.CRITICAL: bold_red + _fmt + " (%(filename)s:%(lineno)d) " + reset,
-    }
+    def _base_format(self):
+        return self._datetime_fmt if self.show_datetime else self._plain_fmt
 
     def format(self, record):
-        formatter = logging.Formatter(self.FORMATS.get(record.levelno, self._fmt))
+        base_format = self._base_format()
+        formats = {
+            CHATTY_LEVEL_NUM: self.yellow + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
+            logging.DEBUG:    self.grey + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
+            logging.INFO:     self.green + base_format + self.reset,
+            logging.WARNING:  self.blue + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
+            logging.ERROR:    self.red + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
+            logging.CRITICAL: self.bold_red + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
+        }
+        formatter = logging.Formatter(formats.get(record.levelno, base_format))
         return formatter.format(record)
+
+
+def _set_log_timestamps_enabled(enabled: bool):
+    _Fmt.show_datetime = enabled
 
 
 _log = logging.getLogger('dst_deleter')
@@ -575,6 +584,7 @@ Examples:
 
 def main():
     args = _parse_args()
+    _set_log_timestamps_enabled(False)
     _set_loglevel(args)
 
     args.func(args)

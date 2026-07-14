@@ -34,8 +34,9 @@ def main():
     args = submission_args()
     args.example_limit = max(0, args.example_limit)
 
-    from simpleLogger import slogger
+    from simpleLogger import slogger, set_log_timestamps_enabled
     import logging
+    set_log_timestamps_enabled(False)
     slogger.setLevel(logging.getLevelName(args.loglevel))
 
     if args.profile:
