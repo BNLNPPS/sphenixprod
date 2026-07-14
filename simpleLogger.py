@@ -17,6 +17,7 @@ logging.Logger.chatty = chatty
 # ============================================================================
 # Prettier logging for console output
 class CustomFormatter(logging.Formatter):
+    show_datetime = True
     grey     = "\x1b[38;20m"
     yellow   = "\x1b[33;20m"
     green    = "\x1b[32;20m"
@@ -24,21 +25,28 @@ class CustomFormatter(logging.Formatter):
     red      = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
     reset    = "\x1b[0m"
-    format   = "%(asctime)s [%(levelname)s] - %(message)s"
+    datetime_format = "%(asctime)s [%(levelname)s] - %(message)s"
+    plain_format = "[%(levelname)s] - %(message)s"
 
-    FORMATS = {
-        CHATTY_LEVEL_NUM: yellow   + format + " (%(filename)s:%(lineno)d) " + reset, # Added CHATTY level
-        logging.DEBUG:    grey     + format + " (%(filename)s:%(lineno)d) " + reset,
-        logging.INFO:     green    + format + reset,
-        logging.WARNING:  blue     + format + " (%(filename)s:%(lineno)d) " + reset,
-        logging.ERROR:    red      + format + " (%(filename)s:%(lineno)d) " + reset,
-        logging.CRITICAL: bold_red + format + " (%(filename)s:%(lineno)d) " + reset
-    }
+    def _base_format(self):
+        return self.datetime_format if self.show_datetime else self.plain_format
 
     def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno, self.format)
-        formatter = logging.Formatter(log_fmt)
+        base_format = self._base_format()
+        formats = {
+            CHATTY_LEVEL_NUM: self.yellow + base_format + " (%(filename)s:%(lineno)d) " + self.reset, # Added CHATTY level
+            logging.DEBUG:    self.grey + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
+            logging.INFO:     self.green + base_format + self.reset,
+            logging.WARNING:  self.blue + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
+            logging.ERROR:    self.red + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
+            logging.CRITICAL: self.bold_red + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
+        }
+        formatter = logging.Formatter(formats.get(record.levelno, base_format))
         return formatter.format(record)
+
+
+def set_log_timestamps_enabled(enabled: bool):
+    CustomFormatter.show_datetime = enabled
 
 # ============================================================================
 slogger = logging.getLogger( 'sphenixprod' )
