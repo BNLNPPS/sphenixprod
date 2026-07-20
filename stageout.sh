@@ -18,13 +18,29 @@ fi
 filename=${1}
 destination=${2}
 dbid=${3:--1} # dbid for faster db lookup, -1 means no dbid
+
+finish_stageout_error() {
+    status_f4a=$1
+    shift
+    echo "ERROR: $*"
+    . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
+}
+
+require_integer_metadata() {
+    local name=$1
+    local value=$2
+    if [[ ! "${value}" =~ ^-?[0-9]+$ ]]; then
+        finish_stageout_error 31 "Invalid ${name} metadata for ${filename}: ${value:-<empty>}"
+    fi
+}
+
 if [ $dbid -eq -1 ] || [ $dbid -eq 0 ]; then
     # I don't quite understand why dbid can be 0, need to dig around --> later
     # Fallback (or rather default): Use environment variable exported by wrapper
     dbid=${PRODDB_DBID:--1}
 fi
 
-if [ ! -f ${filename} ]; then
+if [ ! -f "${filename}" ]; then
     echo "${filename} not found!"
     echo ls -lahtr
     ls -lahtr
@@ -56,15 +72,31 @@ cat cleannumbers.txt
 rm -f numbers.txt cleannumbers.txt
 
 # md5sum:
-md5=`/usr/bin/env md5sum ${filename} | cut -d ' ' -f 1`
+md5=`/usr/bin/env md5sum "${filename}" | cut -d ' ' -f 1`
+if [ -z "${md5}" ]; then
+    finish_stageout_error 31 "Could not compute md5 for ${filename}"
+fi
 
 # size and ctime
 #stat -c '%s %Y'
-size=`stat -c '%s' ${filename}`
-ctime=`stat -c '%Y' ${filename}`
+size_error=$(mktemp "${_CONDOR_SCRATCH_DIR:-/tmp}/sphenixprod_stageout_size.XXXXXX")
+ctime_error=$(mktemp "${_CONDOR_SCRATCH_DIR:-/tmp}/sphenixprod_stageout_ctime.XXXXXX")
+if ! size=$(stat -c "%s" "${filename}" 2>"${size_error}"); then
+    finish_stageout_error 31 "Could not determine file size for ${filename}: $(cat "${size_error}")"
+fi
+if ! ctime=$(stat -c "%Y" "${filename}" 2>"${ctime_error}"); then
+    finish_stageout_error 31 "Could not determine file ctime for ${filename}: $(cat "${ctime_error}")"
+fi
+rm -f "${size_error}" "${ctime_error}"
+
+require_integer_metadata nevents "${nevents}"
+require_integer_metadata first "${first}"
+require_integer_metadata last "${last}"
+require_integer_metadata size "${size}"
+require_integer_metadata ctime "${ctime}"
 
 #change the destination filename
-destname=`basename ${filename}`
+destname=`basename "${filename}"`
 destname="${destname}:nevents:${nevents}"
 destname="${destname}:first:${first}"
 destname="${destname}:last:${last}"
@@ -85,12 +117,11 @@ fi
 mkdir -p "${destination}"
 
 dd_dest="${destination}/${destname}"
-dd_action="dd if=${filename} of=${dd_dest} bs=12MB"
 max_tries=2
 
 for try in $(seq 1 ${max_tries}); do
-    echo ${dd_action}
-    eval ${dd_action} 2>&1 | awk '
+    echo dd if="${filename}" of="${dd_dest}" bs=12MB
+    dd if="${filename}" of="${dd_dest}" bs=12MB 2>&1 | awk '
         /records in|records out/ { next }
         /copied/ { print; next }
         { print > "/dev/stderr" }
