@@ -182,12 +182,12 @@ def find_flagged_units(
             input_events = sorted_event_counts[0]
             tolerated_mismatch_examples += 1
             if tolerated_mismatch_examples <= example_limit:
-                CHATTY(
+                DEBUG(
                     f"Run {runnumber}, segment {segment}: input event counts differ slightly; "
                     f"using minimum {input_events} from {sorted_event_counts}."
                 )
             elif tolerated_mismatch_examples == example_limit + 1:
-                CHATTY(f"Additional tolerated input event count mismatches suppressed after {example_limit} examples.")
+                DEBUG(f"Additional tolerated input event count mismatches suppressed after {example_limit} examples.")
         else:
             input_events = -1
         output = outputs_by_unit.get((runnumber, segment))
@@ -397,6 +397,127 @@ def _format_event_fraction(events: float, total_events: int) -> str:
     return f"{human_event_count(round(events))} events ({pct:.2f}% of total)"
 
 
+def _format_run_segment_examples(units: List[Tuple[int, int]]) -> str:
+    return ", ".join(f"{runnumber}/{segment}" for runnumber, segment in units)
+
+
+def _work_units_from_rows(rows: Iterable[Any], cut_segment: int = 1) -> Set[Tuple[int, int]]:
+    units = set()
+    for row in rows:
+        info = _dataset_info_from_row(row)
+        if cut_segment and info.segment % cut_segment != 0:
+            continue
+        units.add((info.runnumber, info.segment))
+    return units
+
+
+def _possible_unit_count(goodruns: Dict[int, int], events_per_job: int, cut_segment: int) -> int:
+    return sum(_expected_unit_counts_by_run(goodruns, events_per_job, cut_segment).values())
+
+
+def _format_file_count_ratio(numerator: int, denominator: int) -> str:
+    pct = 100.0 * numerator / denominator if denominator else 0.0
+    return f"{numerator} / {denominator} files ({pct:.2f}%)"
+
+
+def count_failed_jobs_for_units(
+    units: Set[Tuple[int, int]],
+    match: Any,
+    batch_size: int = 500,
+) -> int:
+    if not units:
+        return 0
+
+    quote = chr(39)
+    total = 0
+    sorted_units = sorted(units)
+    for start in range(0, len(sorted_units), batch_size):
+        batch = sorted_units[start:start + batch_size]
+        query = f"""
+            SELECT COUNT(*)
+            FROM production_jobs
+            WHERE dataset={quote}{match.dataset}{quote}
+              AND tag={quote}{match.outtriplet}{quote}
+              AND dsttype={quote}{match.dsttype}{quote}
+              AND status={quote}failed{quote}
+              AND {_unit_tuple_condition(batch)}
+        """
+        total += _count_query_result(query, "statr")
+    return total
+
+
+def log_single_input_file_summary(
+    goodruns: Dict[int, int],
+    input_rows: Iterable[Any],
+    output_rows: Iterable[Any],
+    input_type: str,
+    match: Any,
+    events_per_job: int,
+    cut_segment: int,
+    example_limit: int = 5,
+) -> None:
+    """Summarize one-input downstream jobs by file-count coverage."""
+    available_input_units = _work_units_from_rows(input_rows, cut_segment)
+    output_units = _work_units_from_rows(output_rows, cut_segment)
+    outputs_for_available_inputs = output_units.intersection(available_input_units)
+    missing_available_inputs = available_input_units - output_units
+    unmatched_outputs = output_units - available_input_units
+
+    INFO(
+        f"Summary: single-input downstream shortcut for input dsttype={input_type}; "
+        "using file-count coverage."
+    )
+    INFO(
+        f"Summary: primary output files vs available input files: "
+        f"{_format_file_count_ratio(len(outputs_for_available_inputs), len(available_input_units))}."
+    )
+
+    if events_per_job:
+        possible_inputs = _possible_unit_count(goodruns, events_per_job, cut_segment)
+        INFO(
+            f"Summary: available input files vs DAQ-possible input files: "
+            f"{_format_file_count_ratio(len(available_input_units), possible_inputs)}."
+        )
+        INFO(
+            f"Summary: primary output files vs DAQ-possible input files: "
+            f"{_format_file_count_ratio(len(output_units), possible_inputs)}."
+        )
+    else:
+        INFO("Summary: DAQ-possible input file count unavailable because events/neventsper is not configured.")
+
+    INFO(
+        f"Summary: {len(missing_available_inputs)} available input files do not have "
+        f"a matching primary output file."
+    )
+    failed_missing_jobs = count_failed_jobs_for_units(missing_available_inputs, match)
+    INFO(
+        f"Summary: {failed_missing_jobs} production_jobs rows for input files without output "
+        "are in status failed."
+    )
+    if example_limit and missing_available_inputs:
+        examples = sorted(missing_available_inputs)[:example_limit]
+        DEBUG(
+            f"Examples: available input files without primary output "
+            f"(run/segment): {_format_run_segment_examples(examples)}."
+        )
+        if len(missing_available_inputs) > len(examples):
+            DEBUG(f"Additional missing-output examples suppressed after {len(examples)} examples.")
+
+    if unmatched_outputs:
+        INFO(
+            f"Summary: {len(unmatched_outputs)} primary output files do not match "
+            f"an available input file."
+        )
+        if example_limit:
+            examples = sorted(unmatched_outputs)[:example_limit]
+            DEBUG(
+                f"Examples: primary outputs without available input "
+                f"(run/segment): {_format_run_segment_examples(examples)}."
+            )
+            if len(unmatched_outputs) > len(examples):
+                DEBUG(f"Additional unmatched-output examples suppressed after {len(examples)} examples.")
+
+
 def log_event_summary(
     goodruns: Dict[int, int],
     output_rows: Iterable[Any],
@@ -408,6 +529,7 @@ def log_event_summary(
     events_per_job: int,
     cut_segment: int,
     failing_daq_runs: Set[int],
+    example_limit: int = 5,
 ) -> None:
     daq_runs = len([events for events in goodruns.values() if events])
     if daq_runs:
@@ -527,6 +649,19 @@ def log_event_summary(
             f"Summary: downstream work units below ratio cut {ratio_cut}: {len(flagged)} work units, "
             f"estimated {_format_event_fraction(estimated_events, total_possible_events)}."
         )
+        if example_limit:
+            flagged_examples = sorted(
+                {(unit.runnumber, unit.segment) for unit in flagged}
+            )[:example_limit]
+            DEBUG(
+                f"Examples: downstream work units below ratio cut {ratio_cut} "
+                f"(run/segment): {_format_run_segment_examples(flagged_examples)}."
+            )
+            if len(flagged) > len(flagged_examples):
+                DEBUG(
+                    f"Additional downstream work unit examples suppressed after "
+                    f"{len(flagged_examples)} examples."
+                )
         breakdown_lines += 1
         estimated_breakdown_events += estimated_events
 
@@ -879,15 +1014,28 @@ def main():
         INFO(f"{len(daqhost_failed_runs)} runs fail required daqhost availability checks.")
         INFO(f"{len(daqhost_failed_units)} run-segment combinations fail required daqhost availability checks.")
 
+    output_rows = _query_outputs(match, runnumbers)
+    INFO(f"{len(output_rows)} primary output FileCatalog rows found.")
+
+    if len(match.in_types) == 1:
+        log_single_input_file_summary(
+            goodruns=goodruns,
+            input_rows=input_rows,
+            output_rows=output_rows,
+            input_type=match.in_types[0],
+            match=match,
+            events_per_job=neventsper or 0,
+            cut_segment=match.input_config.cut_segment,
+            example_limit=args.example_limit,
+        )
+        return
+
     eligible_units = build_eligible_units(
         input_rows=input_rows,
         required_input_types=match.in_types,
         cut_segment=match.input_config.cut_segment,
     )
     INFO(f"{len(eligible_units)} available input combinations found.")
-
-    output_rows = _query_outputs(match, runnumbers)
-    INFO(f"{len(output_rows)} primary output FileCatalog rows found.")
 
     # Run-level coverage check: compare summed input events to summed outputs
     _failing_runs = check_run_level_coverage(
@@ -932,6 +1080,7 @@ def main():
         events_per_job=neventsper or 0,
         cut_segment=match.input_config.cut_segment,
         failing_daq_runs=failing_daq,
+        example_limit=args.example_limit,
     )
 
     print_report(args.report, flagged, daqhost_failed_runs, daqhost_failed_units, eligible_units)
