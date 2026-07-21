@@ -58,7 +58,7 @@ def main():
         host_data = yaml_data[hostname]
     except KeyError:
         INFO(f"Host '{hostname}' not found in {args.steerfile}")
-        exit(0)
+        sys.exit(2)
 
     ### defaultlocations is special
     # pop removes it so the remainder are rules
