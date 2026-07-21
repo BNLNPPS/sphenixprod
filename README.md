@@ -55,8 +55,8 @@ Submission-side scripts (`create_submission.py`, `production_control.py`, `execu
 
 | Code | Stage | Meaning |
 |------|-------|---------|
-| 0 | — | Success, or graceful soft-stop (nothing to do, queue full, already running, host not in steering) |
-| 2 | Config | Bad args, invalid/missing YAML, conflicting fields, outdated YAML, script not found/not executable |
+| 0 | — | Success, or graceful soft-stop (nothing to do, queue full, already running) |
+| 2 | Config | Bad args, invalid/missing YAML, conflicting fields, outdated YAML, script not found/not executable, host not in steering |
 | 3 | Environment | Required module not importable, CVMFS build tag not found, init script missing |
 | 10 | Input | No runs to process (empty or missing runlist, runmax < runmin) |
 | 40 | Database | Write failure (failed insert/update) |
@@ -94,5 +94,4 @@ create_submission.py --config config.yaml --rulename RULE --runlist runs.txt --c
 2. **Better Resource Management**: Spread processing over time to avoid overwhelming resources
 3. **Incremental Progress**: See results from earlier chunks while later chunks are still processing
 4. **Easier Debugging**: Smaller chunks make it easier to identify and fix issues
-
 
