@@ -117,9 +117,13 @@ def _db_query(cnxn_string: str, query: str, ntries: int = 5, dryrun: bool = Fals
         return None
     for itry in range(ntries):
         try:
+            INFO(f"DB connect starting | RSS {_rss_mb()} MB")
             conn = pyodbc.connect(cnxn_string)
+            INFO(f"DB connect complete | RSS {_rss_mb()} MB")
             curs = conn.cursor()
+            INFO(f"DB execute starting | RSS {_rss_mb()} MB")
             curs.execute(query)
+            INFO(f"DB execute complete | RSS {_rss_mb()} MB")
             return curs  # pyodbc cursor holds a ref to conn; connection stays alive
         except pyodbc.Error as exc:
             state = exc.args[0]
@@ -137,12 +141,20 @@ def _db_query(cnxn_string: str, query: str, ntries: int = 5, dryrun: bool = Fals
     ERROR("Exhausted all DB attempts. Stop.")
     sys.exit(41)
 
+def _close_cursor(curs) -> None:
+    conn = getattr(curs, 'connection', None)
+    curs.close()
+    if conn is not None:
+        conn.close()
+
+
 # ============================================================================
 # Run-number condition builder  (mirrors sphenixdbutils.list_to_condition)
 # ============================================================================
 def _run_condition(runs: list, table: str = '') -> str:
     col = f"{table}.runnumber" if table else "runnumber"
     runs = sorted(runs)
+
     n = len(runs)
     if n == 0:
         ERROR("No run numbers supplied.")
@@ -156,50 +168,102 @@ def _run_condition(runs: list, table: str = '') -> str:
 # ============================================================================
 # Subcommand: generate
 # ============================================================================
+def _sql_literal(val: str) -> str:
+    return "'" + val.replace("'", "''") + "'"
+
 def _sql_cond(col: str, val: str) -> str:
     op = 'like' if '%' in val else '='
-    return f"{col} {op} '{val}'"
+    return f"{col} {op} {_sql_literal(val)}"
+
+
+def _warn_about_home_outfile(outfile: str) -> None:
+    home = Path.home().resolve()
+    outpath = Path(outfile).expanduser().resolve()
+    if home == outpath or home in outpath.parents:
+        WARN(f"Output file {str(outpath)!r} is under your home directory. Do not generate large deletion work lists there; use /tmp or a scratch area.")
+    else:
+        WARN("Do not generate large deletion work lists in your home directory; use /tmp or a scratch area.")
+
 
 
 def cmd_generate(args):
     runs = _resolve_runs(args)
     INFO(f"Run selection: {len(runs)} run(s), first={runs[0]}, last={runs[-1]}")
 
+    if args.fetch_size <= 0:
+        ERROR("--fetch-size must be positive.")
+        sys.exit(2)
+
     run_cond = _run_condition(runs, table='d')
-    query = f"""
-SELECT f.lfn, f.full_file_path
-FROM   files f
-LEFT JOIN datasets d ON f.lfn = d.filename
+    where_clause = f"""
 WHERE  {run_cond}
   AND  {_sql_cond('d.dataset', args.dataset)}
   AND  {_sql_cond('d.dsttype', args.dsttype)}
   AND  {_sql_cond('d.tag',     args.tag)}
-ORDER BY d.runnumber ASC, d.dsttype ASC, f.lfn ASC
+"""
+    estimate_query = f"""
+SELECT COUNT(*)
+FROM   files f
+LEFT JOIN datasets d ON f.lfn = d.filename
+{where_clause}
+;
+"""
+    def page_query(last_lfn: str = None) -> str:
+        page_where = where_clause
+        if last_lfn is not None:
+            page_where += f"  AND  f.lfn > {_sql_literal(last_lfn)}\n"
+        return f"""
+SELECT f.lfn, f.full_file_path
+FROM   files f
+LEFT JOIN datasets d ON f.lfn = d.filename
+{page_where}
+ORDER BY f.lfn ASC
+LIMIT {args.fetch_size}
 ;
 """
     INFO(f"Querying FileCatalog: dataset={args.dataset!r} dsttype={args.dsttype!r} tag={args.tag!r}")
+    _warn_about_home_outfile(args.outfile)
+    INFO(f"Generate RSS at start: {_rss_mb()} MB")
 
     if args.dryrun:
-        INFO(f'[dryrun] would execute:\n{query}')
+        INFO(f'[dryrun] would estimate line count with:\n{estimate_query}')
+        INFO(f'[dryrun] would execute first page:\n{page_query()}')
         INFO(f'[dryrun] would write TSV to {args.outfile!r}')
         return
 
-    curs = _db_query(_FCR, query)
+    estimate_curs = _db_query(_FCR, estimate_query)
+    estimated_entries = int(estimate_curs.fetchone()[0])
+    _close_cursor(estimate_curs)
+    estimated_lines = estimated_entries + 3
+    INFO(f"Estimated output size: {estimated_entries:,} entries, about {estimated_lines:,} TSV lines including header. RSS {_rss_mb()} MB.")
+
     count = 0
+    last_lfn = None
     with open(args.outfile, 'w') as fh:
         fh.write(f"# dataset: {args.dataset}\n")
         fh.write(f"# dsttype: {args.dsttype}\n")
         fh.write(f"# tag:     {args.tag}\n")
         while True:
+            INFO(f"Page query starting at {count:,} entries | RSS {_rss_mb()} MB")
+            curs = _db_query(_FCR, page_query(last_lfn))
+            INFO(f"Page query opened | RSS {_rss_mb()} MB")
+            INFO(f"Fetch starting at {count:,} entries | RSS {_rss_mb()} MB")
             batch = curs.fetchmany(args.fetch_size)
+            fetch_rss = _rss_mb()
+            _close_cursor(curs)
             if not batch:
+                INFO(f"Fetch returned no rows | RSS {fetch_rss} MB")
                 break
+            batch_count = len(batch)
+            INFO(f"Fetch returned {batch_count:,} rows | RSS {fetch_rss} MB")
             for lfn, path in batch:
                 fh.write(f"{lfn}\t{path}\n")
-            count += len(batch)
-            INFO(f"  … {count} entries written")
+            last_lfn = batch[-1][0]
+            count += batch_count
+            del batch
+            INFO(f"  ... {count:,} entries written | RSS {_rss_mb()} MB")
 
-    INFO(f"Done. {count} entries written to {args.outfile!r}.")
+    INFO(f"Done. {count} entries written to {args.outfile!r}. Final RSS {_rss_mb()} MB.")
     INFO(f"Inspect the list, then run:  dst_deleter.py execute --infile {args.outfile}")
 
 # ============================================================================
@@ -537,8 +601,10 @@ Examples:
 
     sub = parser.add_subparsers(dest='command', required=True)
 
-    # ── generate ──────────────────────────────────────────────────────────────
+    # -- generate -------------------------------------------------------------
     gen = sub.add_parser('generate', help='Query FileCatalog and write TSV work list.')
+    gen.add_argument('--fetch-size', dest='fetch_size', type=int, default=50_000,
+                     help='Rows fetched per paged DB query (default: 50000).')
 
     rgroup = gen.add_mutually_exclusive_group(required=True)
     rgroup.add_argument('--runs', nargs='+', type=int, metavar='RUN',
@@ -550,8 +616,6 @@ Examples:
     gen.add_argument('--dsttype', required=True, help="DST type, e.g. 'DST_TRIGGERED_%' (% triggers LIKE)")
     gen.add_argument('--tag',     required=True, help='Production tag, e.g. pro001_pcdb001_v001')
     gen.add_argument('-o', '--outfile', required=True, help='Output TSV file (lfn<TAB>full_file_path).')
-    gen.add_argument('--fetch-size', dest='fetch_size', type=int, default=50_000,
-                     help='Rows fetched per DB round-trip (default: 50000).')
     gen.add_argument('-n', '--dryrun', action='store_true', default=False,
                      help='Print SQL without querying or writing.')
     _add_verbosity(gen)
