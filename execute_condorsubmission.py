@@ -131,10 +131,11 @@ WHERE id in
 
     INFO(f"Received a total of {len(sub_files)} submission files.")
     INFO(f"Submitted a total of {submitted_jobs} jobs.")
-    # Remove submission directory if empty
-    submitdir = Path(f'{args.submitdir}').resolve()
-    if not args.dryrun and submitdir.is_dir() and not any(submitdir.iterdir()):
-        submitdir.rmdir()
+    # Do not remove submitdir when submission files are gone.
+    # It may also hold persistent audit/error logs for spider and submission tooling.
+    # submitdir = Path(f'{args.submitdir}').resolve()
+    # if not args.dryrun and submitdir.is_dir() and not any(submitdir.iterdir()):
+    #     submitdir.rmdir()
 
 
 # ============================================================================================

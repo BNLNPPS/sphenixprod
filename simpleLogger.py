@@ -1,4 +1,5 @@
 import logging
+import time
 
 # Consider https://signoz.io/guides/how-should-i-log-while-using-multiprocessing-in-python/
 # for multiprocessing logging and/or buffered logging for I/O performance.
@@ -26,12 +27,18 @@ class CustomFormatter(logging.Formatter):
     bold_red = "\x1b[31;1m"
     reset    = "\x1b[0m"
     datetime_format = "%(asctime)s [%(levelname)s] - %(message)s"
+    timestamp_format = "%Y-%m-%d %H:%M:%S"
     plain_format = "[%(levelname)s] - %(message)s"
 
     def _base_format(self):
         return self.datetime_format if self.show_datetime else self.plain_format
 
+    def formatTime(self, record, datefmt=None):
+        return time.strftime(datefmt or self.timestamp_format, self.converter(record.created))
+
     def format(self, record):
+        if self.show_datetime:
+            record.asctime = self.formatTime(record, self.timestamp_format)
         base_format = self._base_format()
         formats = {
             CHATTY_LEVEL_NUM: self.yellow + base_format + " (%(filename)s:%(lineno)d) " + self.reset, # Added CHATTY level
@@ -41,7 +48,10 @@ class CustomFormatter(logging.Formatter):
             logging.ERROR:    self.red + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
             logging.CRITICAL: self.bold_red + base_format + " (%(filename)s:%(lineno)d) " + self.reset,
         }
-        formatter = logging.Formatter(formats.get(record.levelno, base_format))
+        render_format = formats.get(record.levelno, base_format)
+        if self.show_datetime:
+            render_format = render_format.replace("%(asctime)s", record.asctime)
+        formatter = logging.Formatter(render_format)
         return formatter.format(record)
 
 

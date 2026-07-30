@@ -11,13 +11,31 @@ import sys
 from typing import Dict, Any, Tuple
 
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from logging.handlers import RotatingFileHandler
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+import logging
 from pathlib import Path
 from datetime import datetime
 from sphenixprodrules import check_params
 
 from collections import namedtuple
-SubmitDstHist = namedtuple('SubmitDstHist',['submit','dstspider','histspider','finishmon'])
+SubmitDstHist = namedtuple('SubmitDstHist', ['submit', 'dstspider', 'histspider', 'finishmon'])
+_production_control_log_rule = "-"
+
+
+def set_production_control_log_rule(rule: str):
+    global _production_control_log_rule
+    _production_control_log_rule = rule
+
+
+class ProductionControlProblemFilter(logging.Filter):
+    def __init__(self, pilot: str):
+        super().__init__()
+        self.pilot = pilot
+
+    def filter(self, record):
+        record.pilot = self.pilot
+        record.rulename = _production_control_log_rule
+        return True
 
 # ============================================================================================
 def main():
@@ -74,6 +92,7 @@ def main():
 
     ### Walk through the rules.
     for rule in host_data:
+        set_production_control_log_rule(rule)
         INFO(f"Working on {rule}")
         thisprod,ruleargs,sdh_tuple=collect_yaml_data(host_data=host_data,rule=rule,defaultlocations=defaultlocations,dryrun=args.dryrun)
 
@@ -241,6 +260,26 @@ def setup_my_rot_handler(args):
     )
     RotFileHandler.setFormatter(CustomFormatter())
     slogger.addHandler(RotFileHandler)
+
+    # Keep concise production-control errors in a stable weekly log.
+    # Rotate weekly and keep old files indefinitely; the main rotating log still gets full context.
+    problems_log = Path("/sphenix/data/data02/sphnxpro/production/production_control_problems.log")
+    problems_log.parent.mkdir(parents=True, exist_ok=True)
+    ProblemsFileHandler = TimedRotatingFileHandler(
+        filename=problems_log,
+        when="W0",
+        interval=1,
+        backupCount=0,
+        encoding=None,
+        delay=0,
+    )
+    ProblemsFileHandler.setLevel(logging.ERROR)
+    ProblemsFileHandler.addFilter(ProductionControlProblemFilter(Path(args.steerfile).name))
+    ProblemsFileHandler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s | pilot=%(pilot)s rule=%(rulename)s %(filename)s:%(lineno)d",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    slogger.addHandler(ProblemsFileHandler)
 
     return sublogdir
 

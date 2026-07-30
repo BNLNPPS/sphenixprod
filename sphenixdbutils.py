@@ -414,12 +414,12 @@ def mark_resubmitted(dbid: int, cluster_id: int, request_memory: int, dryrun: bo
         prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql, maintenance_wait=1500)
         if prodstate_curs:
             if prodstate_curs.rowcount == 0:
-                WARN(f"No production_jobs row found for id={dbid}; resubmission DB update skipped.")
+                ERROR(f"No production_jobs row found for id={dbid}; resubmission DB update skipped.")
                 return False
             prodstate_curs.commit()
             return True
         else:
-            WARN(f"Failed to mark production_jobs id={dbid} as resubmitted in database {dbstring}")
+            ERROR(f"Failed to mark production_jobs id={dbid} as resubmitted in database {dbstring}")
             return False
     return True
 
@@ -444,12 +444,12 @@ def mark_killed(dbid: int, exit_code: int = 51, dryrun: bool = False):
         prodstate_curs = dbQuery(cnxn_string_map[dbstring], update_jobs_sql, maintenance_wait=1500)
         if prodstate_curs:
             if prodstate_curs.rowcount == 0:
-                WARN(f"No production_jobs row found for id={dbid}; kill DB update skipped.")
+                ERROR(f"No production_jobs row found for id={dbid}; kill DB update skipped.")
                 return False
             prodstate_curs.commit()
             return True
         else:
-            WARN(f"Failed to mark production_jobs id={dbid} as killed in database {dbstring}")
+            ERROR(f"Failed to mark production_jobs id={dbid} as killed in database {dbstring}")
             return False
     return True
 
@@ -496,8 +496,8 @@ def dbQuery( cnxn_string, query, ntries=5, maintenance_wait=0, dryrun=False ):
                 return curs
             except pyodbc.Error as E:
                 state = E.args[0]
-                ERROR(f"Phase {phase}, attempt {itry+1}/{ntries} failed: {E}")
                 if state in retryable_states:
+                    WARN(f"Phase {phase}, attempt {itry+1}/{ntries} failed: {E}")
                     delay = min(60, (2 ** itry) * (0.5 + random.random()))
                     WARN(f"Retrying in {delay:.1f}s...")
                     time.sleep(delay)
