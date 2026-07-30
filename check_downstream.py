@@ -49,6 +49,8 @@ class RequiredDaqhostFilterResult:
     allowed_runs: Set[int]
     failing_runs: Set[int]
     failing_units: List[Tuple[int, int]]
+    raw_available_by_run: Dict[int, int]
+    catalog_available_by_run: Dict[int, int]
 
 
 def _row_value(row: Any, name: str, index: int) -> Any:
@@ -110,7 +112,7 @@ def filter_runs_by_required_daqhosts(
 ) -> RequiredDaqhostFilterResult:
     """Apply the required-daqhost run-level availability check."""
     if not required_hosts:
-        return RequiredDaqhostFilterResult(allowed_runs=set(), failing_runs=set(), failing_units=[])
+        return RequiredDaqhostFilterResult(allowed_runs=set(), failing_runs=set(), failing_units=[], raw_available_by_run={}, catalog_available_by_run={})
 
     present_by_run: Dict[int, Set[str]] = defaultdict(set)
     units_by_run: Dict[int, Set[int]] = defaultdict(set)
@@ -128,10 +130,14 @@ def filter_runs_by_required_daqhosts(
     allowed = set()
     failing = set()
     all_runs = set(raw_daqhosts_by_run) | set(present_by_run)
+    raw_available_by_run: Dict[int, int] = {}
+    catalog_available_by_run: Dict[int, int] = {}
     failure_examples = 0
     for runnumber in all_runs:
         available_required = raw_daqhosts_by_run.get(runnumber, set()).intersection(required_hosts)
+        raw_available_by_run[runnumber] = len(available_required)
         present_required = present_by_run.get(runnumber, set())
+        catalog_available_by_run[runnumber] = len(present_required)
         if len(available_required) >= min_hosts and len(present_required) >= min_hosts:
             allowed.add(runnumber)
         else:
@@ -153,6 +159,8 @@ def filter_runs_by_required_daqhosts(
         allowed_runs=allowed,
         failing_runs=failing,
         failing_units=failing_units,
+        raw_available_by_run=raw_available_by_run,
+        catalog_available_by_run=catalog_available_by_run,
     )
 
 
@@ -993,6 +1001,8 @@ def main():
     required_hosts = required_daqhosts(match.dsttype)
     daqhost_failed_runs: Set[int] = set()
     daqhost_failed_units: List[Tuple[int, int]] = []
+    raw_available_by_run: Dict[int, int] = {}
+    catalog_available_by_run: Dict[int, int] = {}
     if required_hosts:
         raw_daqhosts_by_run = _query_raw_daqhosts(runnumbers)
         daqhost_filter = filter_runs_by_required_daqhosts(
@@ -1006,6 +1016,8 @@ def main():
         allowed_runs = daqhost_filter.allowed_runs
         daqhost_failed_runs = daqhost_filter.failing_runs
         daqhost_failed_units = daqhost_filter.failing_units
+        raw_available_by_run = daqhost_filter.raw_available_by_run
+        catalog_available_by_run = daqhost_filter.catalog_available_by_run
         input_rows = [
             row for row in input_rows
             if int(_row_value(row, "runnumber", 1)) in allowed_runs
@@ -1083,7 +1095,7 @@ def main():
         example_limit=args.example_limit,
     )
 
-    print_report(args.report, flagged, daqhost_failed_runs, daqhost_failed_units, eligible_units)
+    print_report(args.report, flagged, daqhost_failed_runs, daqhost_failed_units, raw_available_by_run, catalog_available_by_run, eligible_units)
 
     warn_input_mismatch_outputs(flagged, args)
 
@@ -1265,6 +1277,8 @@ def print_report(
     flagged: List[FlaggedWorkUnit],
     daqhost_failed_runs: Set[int],
     daqhost_failed_units: List[Tuple[int, int]],
+    raw_available_by_run: Dict[int, int],
+    catalog_available_by_run: Dict[int, int],
     eligible_units: Dict[Tuple[int, int], List[DatasetInfo]],
 ) -> None:
     if report == "none":
@@ -1289,12 +1303,16 @@ def print_report(
 
     if report == "daqhost":
         for runnumber, segment in daqhost_failed_units:
-            print(f"{runnumber} {segment}")
+            raw_available = raw_available_by_run.get(runnumber, 0)
+            catalog_available = catalog_available_by_run.get(runnumber, 0)
+            print(f"{runnumber} {segment} raw={raw_available} catalog={catalog_available}")
         return
 
     if report == "daqhost_runs":
         for runnumber in sorted(daqhost_failed_runs):
-            print(runnumber)
+            raw_available = raw_available_by_run.get(runnumber, 0)
+            catalog_available = catalog_available_by_run.get(runnumber, 0)
+            print(f"{runnumber} raw={raw_available} catalog={catalog_available}")
         return
 
     if report in ("reproduce_runs", "stage_runs"):
