@@ -207,7 +207,7 @@ def main():
                            dryrun=args.dryrun # only prints the query if True
                            )
         except Exception as e:
-            WARN( f"dstspider is ignoring the database exception and moving on: {e}")
+            ERROR( f"dstspider is ignoring the database exception and moving on: {e}")
             ### database errors can happen when there are multiples of a file in the prod db.
             ### Why _that_ happens should be investigated, but here, we can just move on to the next chunk.
             continue
@@ -219,7 +219,7 @@ def main():
                     os.rename( fullinfo.origfile, fullinfo.full_file_path )
                     # shutil.move( fullinfo.origfile, fullinfo.full_file_path )
                 except Exception as e:
-                    WARN(e)
+                    ERROR(e)
                     # exit(-1)
                 # end of chunk move loop
             # dryrun?

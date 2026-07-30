@@ -188,7 +188,7 @@ class RuleConfig:
             f"/cvmfs/sphenix.sdcc.bnl.gov/alma9.2-gcc-14.2.0/release/release_*/{build_tag}"
         )
         if not cvmfs_matches:
-            CRITICAL(
+            ERROR(
                 f"Build tag '{build_tag}' not found under "
                 f"/cvmfs/sphenix.sdcc.bnl.gov/alma9.2-gcc-14.2.0/release/release_*/ — "
                 f"check spelling or cvmfs availability."
@@ -298,7 +298,7 @@ class RuleConfig:
         if argv_choose20 :
             choose20=True
         if choose20:
-            CRITICAL("Option choose20 shouldn't be used.")
+            ERROR("Option choose20 shouldn't be used.")
             exit(2)
             ### Use choose20 only for combination jobs.
             if 'raw' in input_data["db"]:
