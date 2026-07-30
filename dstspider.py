@@ -174,22 +174,12 @@ def main():
         tlast = now
 
         fullinfo_chunk=[]
-        seen_lfns=set()
         for file_and_info in chunk:
             file,info=file_and_info
             dsttype,run,seg,lfn,nevents,first,last,md5,size,time=info
-            ## lfn duplication can happen for reproductions where only the db was updated without deleting existing output.
-            ## The "best" one isn't always clear, so assume the latest one is better than what's old.
-            if lfn in seen_lfns:
-                existing = str(Path(file).parent)+'/'+lfn
-                INFO(f"We already have a file with lfn {lfn}. Deleting {existing}.")
-                if not args.dryrun:
-                    Path(existing).unlink(missing_ok=True)
-                continue
-            seen_lfns.add(lfn)
 
             fileparent=Path(file).parent
-            full_file_path = f'{fileparent}/{lfn}'
+            full_file_path = f"{fileparent}/{lfn}"
             fullinfo_chunk.append(full_db_info(
                 origfile=file,
                 info=info,
@@ -201,29 +191,48 @@ def main():
             # end of chunk creation loop
 
         ###### Here be dragons
-        ### Register first, then move.
-        try:
-            upsert_filecatalog(fullinfos=fullinfo_chunk,
-                           dryrun=args.dryrun # only prints the query if True
-                           )
-        except Exception as e:
-            ERROR( f"dstspider is ignoring the database exception and moving on: {e}")
-            ### database errors can happen when there are multiples of a file in the prod db.
-            ### Why _that_ happens should be investigated, but here, we can just move on to the next chunk.
-            continue
-            exit(1)
+        ### Move first, verify, then register. This prevents FileCatalog from
+        ### pointing at new metadata while an old final file remains in place.
+        verified_fullinfos_by_lfn={}
+        for fullinfo in fullinfo_chunk:
+            if args.dryrun:
+                verified_fullinfos_by_lfn[fullinfo.lfn] = fullinfo
+                continue
 
-        if not args.dryrun:
-            for fullinfo in fullinfo_chunk:
-                try:
-                    os.rename( fullinfo.origfile, fullinfo.full_file_path )
-                    # shutil.move( fullinfo.origfile, fullinfo.full_file_path )
-                except Exception as e:
-                    ERROR(e)
-                    # exit(-1)
-                # end of chunk move loop
-            # dryrun?
-        pass # End of DST loop
+            orig_path = Path(fullinfo.origfile)
+            final_path = Path(fullinfo.full_file_path)
+            try:
+                if final_path.exists():
+                    INFO(f"Deleting existing final file before rename: {final_path}")
+                    final_path.unlink()
+                os.rename(orig_path, final_path)
+            except Exception as e:
+                ERROR(f"Failed to rename {orig_path} to {final_path}: {e}")
+                continue
+
+            try:
+                final_size = final_path.stat().st_size
+            except Exception as e:
+                ERROR(f"Failed to stat final file after rename {final_path}: {e}")
+                continue
+            if fullinfo.size >= 0 and final_size != fullinfo.size:
+                ERROR(f"Final file size mismatch after rename for {final_path}: expected {fullinfo.size}, got {final_size}")
+                continue
+
+            if fullinfo.lfn in verified_fullinfos_by_lfn:
+                ERROR(f"Duplicate incoming staged file for lfn {fullinfo.lfn}; keeping latest verified file at {final_path}")
+            verified_fullinfos_by_lfn[fullinfo.lfn] = fullinfo
+
+        verified_fullinfos=list(verified_fullinfos_by_lfn.values())
+        if verified_fullinfos:
+            try:
+                upsert_filecatalog(fullinfos=verified_fullinfos,
+                               dryrun=args.dryrun # only prints the query if True
+                               )
+            except Exception as e:
+                ERROR( f"dstspider moved verified files but FileCatalog registration failed: {e}")
+                continue
+        # End of DST loop
 
     if args.profile:
         profiler.disable()
