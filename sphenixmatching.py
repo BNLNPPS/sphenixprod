@@ -631,7 +631,7 @@ order by runnumber
                             present_seb_files.add(required)
                             continue
                 if len(present_seb_files) < min_seb and not self.physicsmode=='cosmics':
-                    WARN(f"Skip run {runnumber}. Only {len(present_seb_files)} required SEB detectors actually in the run.")
+                    WARN(f"Skip run {runnumber}. Only {len(present_seb_files)} required SEB detectors are currently available.")
                     missing_hosts = sorted(required_seb.difference(present_seb_files))
                     if missing_hosts:
                         WARN(f"Missing required SEB hosts: {missing_hosts}")
@@ -660,7 +660,7 @@ order by runnumber
                             present_tpc_files.add(host)
                             continue                
                 if len(present_tpc_files) < minNTPC and not self.physicsmode=='cosmics':
-                    WARN(f"Skip run {runnumber}. Only {len(present_tpc_files)} TPC detectors actually in the run.")
+                    WARN(f"Skip run {runnumber}. Only {len(present_tpc_files)} TPC detectors are currently available.")
                     missing_hosts = [host for host in available_tpc if not any(host in present for present in present_tpc_files)]
                     if missing_hosts:
                         CHATTY(f"Missing TPC hosts: {missing_hosts}")
@@ -672,7 +672,7 @@ order by runnumber
                 CHATTY(f"Available non-TPC hosts in the daq db: {present_tracking}")
                 ### TODO: Only checking length here. Probably okay forever though.
                 if len(present_tracking) != len(available_tracking) and not self.physicsmode=='cosmics':
-                    WARN(f"Skip run {runnumber}. Only {len(present_tracking)} non-TPC detectors actually in the run. {len(available_tracking)} possible.")
+                    WARN(f"Skip run {runnumber}. Only {len(present_tracking)} non-TPC detectors are currently available. {len(available_tracking)} possible.")
                     missing_hosts = [host for host in available_tracking if not any(host in present for present in present_tracking)]
                     if missing_hosts:
                         WARN(f"Missing non-TPC hosts: {missing_hosts}")

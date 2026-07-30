@@ -6,7 +6,6 @@ import sys
 import pprint # noqa F401
 
 from argparsing import submission_args
-from sphenixdbutils import test_mode as dbutils_test_mode
 from simpleLogger import slogger, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
@@ -114,8 +113,8 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True, delete_files: b
     INFO(f"Found {len(existing_lfns)} entries in the FileCatalog")
 
     ### 4. Delete from datasets and files
-    dbstring = 'testw' if dbutils_test_mode else 'fcw'
-    datasets_table='test_datasets' if dbutils_test_mode else 'datasets'
+    dbstring = 'fcw'
+    datasets_table='datasets'
     datasets_query="SELECT" if dryrun else "DELETE"
     datasets_query+=f"""    
     FROM {datasets_table}
@@ -123,7 +122,7 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True, delete_files: b
     filename in
     """
 
-    files_table='test_files' if dbutils_test_mode else 'files'
+    files_table='files'
     files_query="SELECT" if dryrun else "DELETE"
     files_query+=f"""    
     FROM {files_table}
@@ -158,13 +157,6 @@ def eradicate_runs(match_config: MatchConfig, dryrun: bool=True, delete_files: b
 def main():
     args = submission_args()
 
-    #################### Test mode?
-    test_mode = (
-            dbutils_test_mode
-            or args.test_mode
-            # or ( hasattr(rule, 'test_mode') and rule.test_mode ) ## allow in the yaml file?
-        )
-
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)
     slogger.setLevel(args.loglevel)
@@ -175,11 +167,7 @@ def main():
         exit(0)
     INFO(f"Logging to {sublogdir}, level {args.loglevel}")
 
-    if test_mode:
-        INFO("Running in testbed mode.")
-        args.mangle_dirpath = 'production-testbed'
-    else:
-        INFO("Running in production mode.")
+    INFO("Running in production mode.")
 
     # Prepare param_overrides for RuleConfig
     param_overrides = {}

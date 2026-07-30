@@ -101,12 +101,14 @@ def submission_args():
                         help="(checkers) Maximum number of example rows to print for each diagnostic category (default: 5).")
     parser.add_argument('--report', dest='report', default='none',
                         choices=['none', 'nofc', 'flagged', 'daqhost', 'daqhost_runs',
-                                 'input_mismatch', 'missing_output'],
+                                 'input_mismatch', 'missing_output', 'reproduce_runs', 'stage_runs'],
                         help="(checkers) Plain stdout report to print at the end (default: none).")
     parser.add_argument('--output', dest='output', default=None,
                         help="(checkers) Write flagged work units to this file.")
     parser.add_argument('--delete', dest='delete', action='store_true', default=False,
-                        help="(check_eventcombiner only) Delete incomplete output. Requires --andgo to execute.")
+                        help="(checkers) Delete incomplete bookkeeping rows. Requires --andgo to execute; otherwise dry-run.")
+    parser.add_argument('--mismatch-delete', dest='mismatch_delete', action='store_true', default=False,
+                        help="(check_downstream) Include input_mismatch work units in --delete cleanup.")
 
     return parse_and_set_loglevel(parser)
 
@@ -122,6 +124,8 @@ def monitor_args():
 
     # Can be used to query/manipulate the queue directly
     parser.add_argument('--base_batchname', default=None, help="Select a specific condor batch by name.")
+    parser.add_argument('--condor-ids', dest='condor_ids', nargs='+', default=None,
+                        help="Select specific Condor jobs by ClusterId.ProcId, e.g. 194490.13.")
 
     parser.add_argument('-p', '--plot', dest='plot', default=True, action='store_true',
                         help='Create plots for held jobs')
@@ -136,6 +140,26 @@ def monitor_args():
     parser.add_argument('-k', '--kill', dest='kill', default=False, action='store_true',
                         help='Held jobs above max-mem are serialized, then killed and not resubmitted')
 
-    return parse_and_set_loglevel(parser)
+    args = parse_and_set_loglevel(parser)
+
+    config_selector = args.config is not None or args.rulename is not None
+    if config_selector and (args.config is None or args.rulename is None):
+        parser.error("--config and --rulename must be used together.")
+
+    selector_count = sum([
+        bool(args.condor_ids),
+        args.base_batchname is not None,
+        config_selector,
+    ])
+    if selector_count > 1:
+        parser.error("--condor-ids, --base_batchname, and --config/--rulename are mutually exclusive selectors.")
+
+    if args.condor_ids and (args.runs is not None or args.runlist is not None):
+        parser.error("--condor-ids cannot be combined with --runs or --runlist.")
+
+    if selector_count == 0:
+        parser.error("Select jobs with one of --condor-ids, --base_batchname, or --config/--rulename.")
+
+    return args
 
 # ============================================================================================

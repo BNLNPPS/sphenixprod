@@ -46,6 +46,7 @@ All job scripts report a final exit code via `common_runscript_finish.sh`, which
 | 21 | Stage-in | Input file md5 mismatch after copy |
 | 30 | Stage-out | Output file not found (macro produced no output) |
 | 31 | Stage-out | Output file copy failed (dd retries exhausted) |
+| 90 | Manual | Manual intervention / administratively marked failed |
 | 111 | Input | Streaming: wrong number of GL1 or detector list files |
 | other | Macro | Propagated directly from `root.exe` exit code |
 

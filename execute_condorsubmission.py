@@ -74,10 +74,13 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool
                 for line in f:
                     parts = line.strip().rsplit(" ", 1)
                     dbids.append(str(parts[-1]))
+                    queue_fields = parts[0]
                     # Filename is derived from the log file (first element in the CSV-like arguments)
-                    if len(parts) > 0:
-                        log_file = parts[0].split(",", 1)[0]
-                        filenames.append(Path(log_file).stem + ".root")
+                    log_file = queue_fields.split(",", 1)[0]
+                    filenames.append(Path(log_file).stem + ".root")
+                    if not args.dryrun:
+                        for file_in_dir in queue_fields.split(",", 3)[:3]:
+                            Path(file_in_dir).parent.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             ERROR(f"Error while parsing {in_file}:\n{e}")
             exit(2)

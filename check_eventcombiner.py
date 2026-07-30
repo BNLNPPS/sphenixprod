@@ -21,13 +21,22 @@ from sphenixmatching import MatchConfig
 from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
 from sphenixmisc import human_event_count
 
+
+def daqhost_to_dst_leaf(daqhost, match):
+    if isinstance(match.input_stem, dict):
+        for leaf, raw_daqhost in match.input_stem.items():
+            if raw_daqhost == daqhost:
+                return leaf
+    return str(daqhost).replace(":", "_")
+
 # ============================================================================================
 def main():
     args = submission_args()
     args.example_limit = max(0, args.example_limit)
 
-    from simpleLogger import slogger
+    from simpleLogger import slogger, set_log_timestamps_enabled
     import logging
+    set_log_timestamps_enabled(False)
     slogger.setLevel(logging.getLevelName(args.loglevel))
 
     if args.profile:
@@ -45,11 +54,15 @@ def main():
     if args.physicsmode:
         param_overrides["physicsmode"] = args.physicsmode
 
-    rule = RuleConfig.from_yaml_file(
-        yaml_file       = args.config,
-        rule_name       = args.rulename,
-        param_overrides = param_overrides,
-    )
+    try:
+        rule = RuleConfig.from_yaml_file(
+            yaml_file       = args.config,
+            rule_name       = args.rulename,
+            param_overrides = param_overrides,
+        )
+    except (ValueError, FileNotFoundError) as e:
+        ERROR(f"Error loading rule configuration: {e}")
+        sys.exit(2)
 
     match = MatchConfig.from_rule_config(rule)
 
@@ -127,7 +140,7 @@ def main():
     lustre_no_fc = [
         (run, daqhost)
         for run, daqhost in lustre_combos
-        if not any(daqhost in dsttype for dsttype in fc_dsttypes_by_run.get(run, []))
+        if not any(daqhost_to_dst_leaf(daqhost, match) in dsttype for dsttype in fc_dsttypes_by_run.get(run, []))
     ]
     INFO(f"{len(lustre_no_fc)} lustre combos have no FileCatalog entry.")
     if lustre_no_fc:
@@ -137,7 +150,7 @@ def main():
     all_no_fc = [
         (int(r), h)
         for r, h in all_combos
-        if not any(h in dsttype for dsttype in fc_dsttypes_by_run.get(int(r), []))
+        if not any(daqhost_to_dst_leaf(h, match) in dsttype for dsttype in fc_dsttypes_by_run.get(int(r), []))
     ]
     if all_no_fc:
         WARN(f"{len(all_no_fc)} raw DB combos (lustre or not) have no FileCatalog entry. Check for corruption?")

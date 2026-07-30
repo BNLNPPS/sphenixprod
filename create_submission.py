@@ -326,11 +326,6 @@ def main():
                     if not args.dryrun : #  and keep_this_run:
                         Path(condor_job.outdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
                         Path(condor_job.histdir).mkdir( parents=True, exist_ok=True ) # dstlake on lustre
-
-                        # stdout, stderr, and condorlog locations, usually on sphenix02:
-                        for file_in_dir in condor_job.output, condor_job.error, condor_job.log :
-                            Path(file_in_dir).parent.mkdir( parents=True, exist_ok=True )
-
                     # Add to production database
                     dsttype=logbase.split(f'_{rule.dataset}')[0]
                     dstfile=out_file # this is much more robust and correct
