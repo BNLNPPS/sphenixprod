@@ -215,6 +215,21 @@ def main():
             orig_path = Path(fullinfo.origfile)
             final_path = Path(fullinfo.full_file_path)
 
+            if fullinfo.lfn in verified_fullinfos_by_lfn:
+                existing = verified_fullinfos_by_lfn[fullinfo.lfn]
+                if fullinfo.ctime <= existing.ctime:
+                    ERROR(f"Duplicate incoming staged file for lfn {fullinfo.lfn}; deleting older-or-equal file (ctime {fullinfo.ctime} <= {existing.ctime})")
+                    try:
+                        orig_path.unlink()
+                    except Exception as e:
+                        ERROR(f"Failed to delete losing duplicate {orig_path}: {e}")
+                    continue
+                ERROR(f"Duplicate incoming staged file for lfn {fullinfo.lfn}; replacing with newer file (ctime {fullinfo.ctime} > {existing.ctime}); deleting loser {existing.origfile}")
+                try:
+                    Path(existing.origfile).unlink(missing_ok=True)
+                except Exception as e:
+                    ERROR(f"Failed to delete losing duplicate {existing.origfile}: {e}")
+
             try:
                 orig_size = stat_size_with_retry(orig_path)
             except Exception as e:
@@ -253,8 +268,6 @@ def main():
                 ERROR(f"File size changed during rename for {final_path}: expected {fullinfo.size}, got {final_size}")
                 continue
 
-            if fullinfo.lfn in verified_fullinfos_by_lfn:
-                ERROR(f"Duplicate incoming staged file for lfn {fullinfo.lfn}; keeping latest verified file at {final_path}")
             verified_fullinfos_by_lfn[fullinfo.lfn] = fullinfo
 
         verified_fullinfos=list(verified_fullinfos_by_lfn.values())
