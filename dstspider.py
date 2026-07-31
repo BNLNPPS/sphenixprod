@@ -8,6 +8,7 @@ import pstats
 import sys
 import shutil
 import os
+import time
 
 # from dataclasses import fields
 import pprint # noqa F401
@@ -19,6 +20,18 @@ from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig, parse_lfn, parse_spiderstuff
 from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect,shell_command,lock_file,unlock_file
+
+
+def stat_size_with_retry(path, retries=3, delay=0.5):
+    """Return st_size, retrying on transient misreports. Raises OSError on failure."""
+    size = path.stat().st_size
+    for _ in range(retries - 1):
+        again = path.stat().st_size
+        if again == size:
+            return size
+        time.sleep(delay)
+        size = again
+    return size
 
 
 # ============================================================================================
@@ -203,7 +216,7 @@ def main():
             final_path = Path(fullinfo.full_file_path)
 
             try:
-                orig_size = orig_path.stat().st_size
+                orig_size = stat_size_with_retry(orig_path)
             except Exception as e:
                 ERROR(f"Failed to stat incoming file {orig_path}: {e}")
                 continue
@@ -221,7 +234,7 @@ def main():
                 continue
 
             try:
-                final_size = final_path.stat().st_size
+                final_size = stat_size_with_retry(final_path)
             except Exception as e:
                 ERROR(f"Failed to stat final file after rename {final_path}: {e}")
                 continue
