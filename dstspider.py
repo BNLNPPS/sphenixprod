@@ -201,6 +201,16 @@ def main():
 
             orig_path = Path(fullinfo.origfile)
             final_path = Path(fullinfo.full_file_path)
+
+            try:
+                orig_size = orig_path.stat().st_size
+            except Exception as e:
+                ERROR(f"Failed to stat incoming file {orig_path}: {e}")
+                continue
+            if fullinfo.size >= 0 and orig_size != fullinfo.size:
+                ERROR(f"Incoming file size already wrong before rename for {orig_path}: expected {fullinfo.size}, got {orig_size}")
+                continue
+
             try:
                 if final_path.exists():
                     INFO(f"Deleting existing final file before rename: {final_path}")
@@ -216,7 +226,7 @@ def main():
                 ERROR(f"Failed to stat final file after rename {final_path}: {e}")
                 continue
             if fullinfo.size >= 0 and final_size != fullinfo.size:
-                ERROR(f"Final file size mismatch after rename for {final_path}: expected {fullinfo.size}, got {final_size}")
+                ERROR(f"File size changed during rename for {final_path}: expected {fullinfo.size}, got {final_size}")
                 continue
 
             if fullinfo.lfn in verified_fullinfos_by_lfn:
