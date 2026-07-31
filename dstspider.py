@@ -220,14 +220,25 @@ def main():
             except Exception as e:
                 ERROR(f"Failed to stat incoming file {orig_path}: {e}")
                 continue
-            if fullinfo.size >= 0 and orig_size != fullinfo.size:
-                ERROR(f"Incoming file size already wrong before rename for {orig_path}: expected {fullinfo.size}, got {orig_size}")
-                continue
+
+            incoming_size_ok = fullinfo.size < 0 or orig_size == fullinfo.size
+
+            if final_path.exists():
+                if not incoming_size_ok:
+                    WARN(f"Incoming size wrong ({orig_size} != {fullinfo.size}); keeping existing {final_path}")
+                    continue
+                INFO(f"Deleting existing final file before rename: {final_path}")
+                try:
+                    final_path.unlink()
+                except Exception as e:
+                    ERROR(f"Failed to remove existing final file {final_path}: {e}")
+                    continue
+            else:
+                if not incoming_size_ok:
+                    ERROR(f"Incoming file size wrong before rename for {orig_path}: expected {fullinfo.size}, got {orig_size}")
+                    continue
 
             try:
-                if final_path.exists():
-                    INFO(f"Deleting existing final file before rename: {final_path}")
-                    final_path.unlink()
                 os.rename(orig_path, final_path)
             except Exception as e:
                 ERROR(f"Failed to rename {orig_path} to {final_path}: {e}")
