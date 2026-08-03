@@ -144,7 +144,8 @@ order by runnumber
         if not runlist_int:
             return {}
         INFO(f"{len(runlist_int)} runs pass run quality cuts.")
-        CHATTY(f"Runlist: {runlist_int}")
+        DEBUG(f"Rejected: {sorted(set(runlist_to_check) - set(runlist_int))}")
+        # CHATTY(f"Runlist: {runlist_int}")
         return { run: goodruns[run] for run in runlist_int }
 
     # ------------------------------------------------
@@ -675,7 +676,7 @@ order by runnumber
                     WARN(f"Skip run {runnumber}. Only {len(present_tracking)} non-TPC detectors are currently available. {len(available_tracking)} possible.")
                     missing_hosts = [host for host in available_tracking if not any(host in present for present in present_tracking)]
                     if missing_hosts:
-                        WARN(f"Missing non-TPC hosts: {missing_hosts}")
+                        WARN(f"Missing non-TPC hosts in run {runnumber}: {missing_hosts}")
                     continue
                 DEBUG (f"Found {len(present_tracking)} other tracking files in the catalog")
 
