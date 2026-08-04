@@ -18,7 +18,7 @@ from sphenixjobdicts import inputs_from_output, required_seb_hosts
 from sphenixmisc import binary_contains_bisect, shell_command
 
 from collections import namedtuple
-FileHostRunSegStat = namedtuple('FileHostRunSeg',['filename','daqhost','runnumber','segment','status'])
+NameTypeRunSeg = namedtuple('NameTypeRunSeg', ['filename', 'dsttype', 'runnumber', 'segment'])
 
 """ This file contains the classes for matching runs and files to a rule.
     MatchConfig is the steering class for db queries to
@@ -109,6 +109,12 @@ class MatchConfig:
         return { k: str(v) for k, v in asdict(self).items() if v is not None }
 
     # ------------------------------------------------
+    def output_segment_for_input_segment(self, segment: int) -> int:
+        if self.dsttype == 'DST_TRKR_CLUSTER':
+            return 10 * segment
+        return segment
+
+    # ------------------------------------------------
     def good_runlist(self, subset_runlist: List[int] = None) -> Dict[int, int]:
         ### Run quality
         CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
@@ -144,7 +150,8 @@ order by runnumber
         if not runlist_int:
             return {}
         INFO(f"{len(runlist_int)} runs pass run quality cuts.")
-        CHATTY(f"Runlist: {runlist_int}")
+        DEBUG(f"Rejected: {sorted(set(runlist_to_check) - set(runlist_int))}")
+        # CHATTY(f"Runlist: {runlist_int}")
         return { run: goodruns[run] for run in runlist_int }
 
     # ------------------------------------------------
@@ -244,28 +251,6 @@ order by runnumber
                         ret += group_runs
         INFO(f"List creation took {(datetime.now() - tstart).total_seconds():.2f} seconds.")
         return ret
-
-    # ------------------------------------------------
-    def select_matches_for_combination(self, files_for_run: Dict[str, List[FileHostRunSegStat]],
-                                       runnumber: int) -> Dict[str, List[FileHostRunSegStat]]:
-        gl1_files = files_for_run.pop('gl1daq',None)
-        if gl1_files is None:
-            WARN(f"No GL1 files found for run {runnumber}. Skipping this run.")
-            return {}
-        CHATTY(f'All GL1 files for for run {runnumber}:\n{gl1_files}')
-
-        # We need to determine which segments are present
-        segments=set()
-        for host in files_for_run:
-            for f in files_for_run[host]:
-                if f.status==1:
-                    segments.add(f.segment)
-        if segments:
-            CHATTY(f"Run {runnumber} has {len(segments)} segments in the input streams: {sorted(segments)}")
-
-        #segswitch="seg0fromdb"
-
-        return files_for_run
 
     # ------------------------------------------------
     def get_prod_status(self, runnumbers):
@@ -490,9 +475,7 @@ order by runnumber
             eventsinrun_by_run = {int(r.runnumber): r.eventsinrun for r in rows}
             DEBUG(f"eventsinrun found in prod DB for {len(eventsinrun_by_run)} runs.")
 
-        # Need status==1 for all files in a given run,host combination
-        # Easier to check that after the SQL query
-        infile_query = f"""select filename,dsttype as daqhost,runnumber,segment,'1' as status
+        infile_query = f"""select filename,dsttype,runnumber,segment
         from {self.input_config.table}
         where dsttype in {in_types_str}
         """
@@ -518,7 +501,7 @@ order by runnumber
             db_result = dbQuery( cnxn_string_map[ self.input_config.db ], run_query ).fetchall()
             elapsed = (datetime.now() - qnow).total_seconds()
             (WARN if elapsed > 60 else DEBUG)(f'Infile query took {elapsed:.2f} seconds.')
-            candidates = [ FileHostRunSegStat(c.filename,c.daqhost,c.runnumber,c.segment,c.status) for c in db_result ]
+            candidates = [ NameTypeRunSeg(c.filename,c.dsttype,c.runnumber,c.segment) for c in db_result ]
             CHATTY(f"Run: {runnumber}, Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
             if len(candidates) == 0 :
                 DEBUG(f"No input files found for run {runnumber}. Skipping run.")
@@ -562,10 +545,10 @@ order by runnumber
 
             ####### NOT 1-1, requires more work:
             # For every segment, there is exactly one output file, and exactly one input file _from each stream_ OR from the previous step
-            ######## Cut up the candidates into streams/daqhost≈ƒs
-            candidates.sort(key=lambda x: (x.runnumber, x.daqhost)) # itertools.groupby depends on data being sorted
+            ######## Cut up the candidates into streams/dsttypes
+            candidates.sort(key=lambda x: (x.runnumber, x.dsttype)) # itertools.groupby depends on data being sorted
             files_for_run = { k : list(g) for
-                              k, g in itertools.groupby(candidates, operator.attrgetter('daqhost')) }
+                              k, g in itertools.groupby(candidates, operator.attrgetter('dsttype')) }
             
             # daq file lists all need GL1 files. Pull them out and add them to the others
             if ( 'gl1daq' in in_types_str ):
@@ -675,7 +658,7 @@ order by runnumber
                     WARN(f"Skip run {runnumber}. Only {len(present_tracking)} non-TPC detectors are currently available. {len(available_tracking)} possible.")
                     missing_hosts = [host for host in available_tracking if not any(host in present for present in present_tracking)]
                     if missing_hosts:
-                        WARN(f"Missing non-TPC hosts: {missing_hosts}")
+                        WARN(f"Missing non-TPC hosts in run {runnumber}: {missing_hosts}")
                     continue
                 DEBUG (f"Found {len(present_tracking)} other tracking files in the catalog")
 
@@ -692,7 +675,7 @@ order by runnumber
                     segments = list( set(segments).intersection(new_segments))
 
             if len(rejected) > 0  and not self.physicsmode=='cosmics' :
-                DEBUG(f"Run {runnumber}: Removed {len(rejected)} segments not present in all streams.")
+                WARN(f"Run {runnumber}: Removed {len(rejected)} segments between {min(rejected)} and {max(rejected)} not present in all streams.")
                 CHATTY(f"Rejected segments: {rejected}")
 
             # If the output doesn't exist yet, use input files to create the job
@@ -701,7 +684,8 @@ order by runnumber
             for seg in segments:
                 if seg % self.input_config.cut_segment != 0:
                     continue
-                logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
+                outseg = self.output_segment_for_input_segment(seg)
+                logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{outseg:{pSEGFMT}}'
                 dstfile = f'{logbase}.root'
                 if dstfile in existing_output:
                     CHATTY(f"Output file {dstfile} already exists. Not submitting.")

@@ -14,9 +14,10 @@ from sphenixmisc import setup_rot_handler
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 
 
-START_DATE    = datetime(2026, 4, 21, tzinfo=timezone.utc)
-BIN_HOURS     = 2
-ROLLING_BINS  = 12   # rolling average window: 12 bins = 24 hours
+# START_DATE    = datetime(2026, 4, 21, tzinfo=timezone.utc)
+START_DATE    = datetime(2026, 8, 1, tzinfo=timezone.utc)
+BIN_HOURS     = 0.5
+ROLLING_BINS  = 3   # rolling average window: 12 bins = 24 hours
 
 
 def get_start_times(dsttype, tag, dataset, since):
