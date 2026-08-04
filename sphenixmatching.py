@@ -170,7 +170,7 @@ order by runnumber
         return existing_output
 
     # ------------------------------------------------
-    def get_output_files(self, filemask: str = r"\*.root:\*", dstlistname: str=None, dryrun: bool=True) -> List[str]:
+    def get_output_files(self, filemask: str = r"\*.root:\*", dstlistname: str=None, dryrun: bool=True, min_age_minutes: int = 20) -> List[str]:
         ### Which find command to use for lustre?
         find=shutil.which('find')
         lfind = shutil.which('lfs')
@@ -239,7 +239,7 @@ order by runnumber
                 DEBUG(f"For {leafdir}, we have {len(rungroups)} run groups to work on")                
                 for rungroup in rungroups:
                     runs_str=runs_by_group[Path(rungroup).name]
-                    find_command=f"{lfind} {rungroup} -type f -name {filemask}"
+                    find_command=f"{lfind} {rungroup} -type f -name {filemask} -mmin +{min_age_minutes}"
                     CHATTY(find_command)
                     group_runs = shell_command(find_command)
                     # Enforce run number constraint
