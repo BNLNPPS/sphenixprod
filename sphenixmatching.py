@@ -109,6 +109,12 @@ class MatchConfig:
         return { k: str(v) for k, v in asdict(self).items() if v is not None }
 
     # ------------------------------------------------
+    def output_segment_for_input_segment(self, segment: int) -> int:
+        if self.dsttype == 'DST_TRKR_CLUSTER':
+            return 10 * segment
+        return segment
+
+    # ------------------------------------------------
     def good_runlist(self, subset_runlist: List[int] = None) -> Dict[int, int]:
         ### Run quality
         CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
@@ -669,7 +675,7 @@ order by runnumber
                     segments = list( set(segments).intersection(new_segments))
 
             if len(rejected) > 0  and not self.physicsmode=='cosmics' :
-                DEBUG(f"Run {runnumber}: Removed {len(rejected)} segments not present in all streams.")
+                WARN(f"Run {runnumber}: Removed {len(rejected)} segments between {min(rejected)} and {max(rejected)} not present in all streams.")
                 CHATTY(f"Rejected segments: {rejected}")
 
             # If the output doesn't exist yet, use input files to create the job
@@ -678,7 +684,8 @@ order by runnumber
             for seg in segments:
                 if seg % self.input_config.cut_segment != 0:
                     continue
-                logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{seg:{pSEGFMT}}'
+                outseg = self.output_segment_for_input_segment(seg)
+                logbase= f'{outbase}-{runnumber:{pRUNFMT}}-{outseg:{pSEGFMT}}'
                 dstfile = f'{logbase}.root'
                 if dstfile in existing_output:
                     CHATTY(f"Output file {dstfile} already exists. Not submitting.")
