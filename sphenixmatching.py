@@ -201,7 +201,7 @@ order by runnumber
 
         # All leafs:
         leafparent=outlocation.split('/{leafdir}')[0]
-        leafdirs_cmd=rf"{find} {leafparent} -type d -name {self.dsttype}\* -mindepth 1 -a -maxdepth 1"
+        leafdirs_cmd=rf"{find} {leafparent} -mindepth 1 -maxdepth 1 -type d -name {self.dsttype}\* "
         leafdirs = shell_command(leafdirs_cmd)
         CHATTY(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
 
@@ -231,7 +231,7 @@ order by runnumber
         with open(dstlistname,"w") if dstlistname else nullcontext() as dstlistfile:
             for leafdir in leafdirs :
                 CHATTY(f"Searching {leafdir}")
-                available_rungroups = shell_command(rf"{find} {leafdir} -name run_\* -type d -mindepth 1 -a -maxdepth 1")
+                available_rungroups = shell_command(rf"{find} {leafdir} -mindepth 1 -maxdepth 1 -name run_\* -type d ")
                 DEBUG(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
                 
                 # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
@@ -239,7 +239,8 @@ order by runnumber
                 DEBUG(f"For {leafdir}, we have {len(rungroups)} run groups to work on")                
                 for rungroup in rungroups:
                     runs_str=runs_by_group[Path(rungroup).name]
-                    find_command=f"{lfind} {rungroup} -type f -name {filemask} -mmin +{min_age_minutes}"
+                    # find_command=f"{lfind} {rungroup} -type f -name {filemask} -mmin +{min_age_minutes}"
+                    find_command=f"{lfind} {rungroup} -type f -name {filemask}"
                     CHATTY(find_command)
                     group_runs = shell_command(find_command)
                     # Enforce run number constraint
