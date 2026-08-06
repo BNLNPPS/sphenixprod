@@ -239,7 +239,10 @@ order by runnumber
                 DEBUG(f"For {leafdir}, we have {len(rungroups)} run groups to work on")                
                 for rungroup in rungroups:
                     runs_str=runs_by_group[Path(rungroup).name]
-                    # find_command=f"{lfind} {rungroup} -type f -name {filemask} -mmin +{min_age_minutes}"
+                    if 'lfs' in lfind:
+                        find_command=f"{lfind} {rungroup} -type f -name {filemask}  --mtime +{min_age_minutes}m"
+                    else:
+                        find_command=f"{lfind} {rungroup} -type f -name {filemask} -mmin +{min_age_minutes}"
                     find_command=f"{lfind} {rungroup} -type f -name {filemask}"
                     CHATTY(find_command)
                     group_runs = shell_command(find_command)
