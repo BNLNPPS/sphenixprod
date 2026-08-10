@@ -9,7 +9,7 @@ import subprocess
 import pprint # noqa: F401
 
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixjobdicts import inputs_from_output, required_seb_hosts
+from sphenixjobdicts import input_stem_for_rule, required_seb_hosts
 from sphenixcondorjobs import CondorJobConfig,CondorJobConfig_fieldnames,glob_arguments_tmpl
 
 """ This file contains the dataclasses for the rule configuration and matching.
@@ -96,6 +96,7 @@ class InputConfig:
     intriplet:        str = None # ==tag, i.e. new_nocdbtag_v001
     indsttype:        List[str] = None # ['DST_STREAMING_EVENT_epcd01_0','DST_STREAMING_EVENT_epcd01_1'];
     indsttype_str:    str = None        # " ".join(indsttype) for SQL query
+    input_stem:      Any = None        # Frozen input descriptor selected at rule instantiation
     # Rule name. Sometimes needed to identify input files
     rule_name: str = None
     # Run Quality
@@ -255,6 +256,7 @@ class RuleConfig:
         ### Optionals
         physicsmode = params_data.get("physicsmode", "physics")
         physicsmode = param_overrides.get("physicsmode", physicsmode)
+        dataset = params_data.get("dataset", params_data["period"])
 
         ###### Now create InputConfig and CondorJobConfig
         # Extract and validate input_config
@@ -272,7 +274,7 @@ class RuleConfig:
 
         intriplet=input_data.get("intriplet")
         dsttype=params_data["dsttype"]
-        input_stem = inputs_from_output[dsttype]
+        input_stem = input_stem_for_rule(dsttype, dataset)
         CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
         if isinstance(input_stem, dict):
             indsttype = list(input_stem.values())
@@ -347,6 +349,7 @@ class RuleConfig:
             intriplet=intriplet,
             indsttype=indsttype,
             indsttype_str=indsttype_str,
+            input_stem=input_stem,
             rule_name=rule_name,
             min_run_events=min_run_events,
             min_run_time=min_run_time,
@@ -547,7 +550,7 @@ class RuleConfig:
             dsttype=dsttype,
             period=params_data["period"],
             physicsmode=physicsmode,
-            dataset=params_data.get("dataset"),
+            dataset=dataset,
             build=params_data["build"],
             dbtag=params_data["dbtag"],
             version=params_data["version"],

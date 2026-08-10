@@ -14,7 +14,7 @@ from sphenixprodrules import RuleConfig, InputConfig
 from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixjobdicts import inputs_from_output, required_seb_hosts
+from sphenixjobdicts import required_seb_hosts
 from sphenixmisc import binary_contains_bisect, shell_command
 
 from collections import namedtuple
@@ -78,13 +78,10 @@ class MatchConfig:
             dst_type_template += '_%'
             dst_type_template += '%'
 
-        ### Assemble leafs, where needed
-        input_stem = inputs_from_output[dsttype]
+        ### Use the input descriptors frozen at RuleConfig instantiation.
+        input_stem = input_config.input_stem
         CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
-        if isinstance(input_stem, dict):
-            in_types = list(input_stem.values())
-        else :
-            in_types = input_stem
+        in_types = list(input_config.indsttype or [])
         if 'raw' in input_config.db:
             in_types.insert(0,'gl1daq') # all raw daq files need an extra GL1 file
 
@@ -632,7 +629,7 @@ order by runnumber
                 #    This is an early breakpoint to see if the run can be used for tracking
                 #    CHANGE 08/21/2025: On request from jdosbo, change back to requiring all ebdcs.
                 ### Important note: Requirement is NOT enforced for cosmics.
-                minNTPC=48
+                minNTPC = 24 if "run2" in (self.dataset or "") else 48
                 if len(available_tpc) < minNTPC and not self.physicsmode=='cosmics':
                     WARN(f"Skip run {runnumber}. Only {len(available_tpc)} TPC detectors turned on in the run.")
                     continue
