@@ -159,16 +159,18 @@ def _build_query(args) -> str:
         f"started < NOW() - INTERVAL '{args.running_hours} hours'",
     ]
     if args.dataset:
-        conditions.append(f"dataset = '{args.dataset}'")
+        op = 'LIKE' if '%' in args.dataset else '='
+        conditions.append(f"dataset {op} '{args.dataset}'")
     if args.dsttype:
         op = 'LIKE' if '%' in args.dsttype else '='
         conditions.append(f"dsttype {op} '{args.dsttype}'")
     if args.tag:
-        conditions.append(f"tag = '{args.tag}'")
+        op = 'LIKE' if '%' in args.tag else '='
+        conditions.append(f"tag {op} '{args.tag}'")
 
     where = '\n  AND '.join(conditions)
     return (
-        "SELECT ClusterId, ProcId, submission_host, started, out, MemoryProvisioned, dataset, dsttype"
+        "SELECT ClusterId, ProcId, submission_host, started, out, MemoryProvisioned, dataset, dsttype, runnumber"
         " FROM production_jobs"
         f"\nWHERE {where}"
         "\nORDER BY started ASC;"
@@ -204,7 +206,7 @@ def main():
 
     counts = {'STALE': 0, 'ACTIVE': 0, 'MISSING': 0}
     stale_lines = []
-    for cluster_id, proc_id, submission_host, started, out, mem_prov, dataset, dsttype in rows:
+    for cluster_id, proc_id, submission_host, started, out, mem_prov, dataset, dsttype, runnumber in rows:
         condor_id = f"{cluster_id}.{proc_id}" if cluster_id is not None else "?.?"
         submit_host = submission_host or '?'
         running_age = _age_hours(started)
@@ -213,7 +215,7 @@ def main():
         line = f"[{label:7s}]  running {running_age:6.1f} h ago  {detail:30s}  {out}"
         if label == 'STALE':
             ERROR(line)
-            stale_lines.append((condor_id, submit_host, running_age, detail, mem_prov, dataset, dsttype, out))
+            stale_lines.append((condor_id, submit_host, running_age, detail, mem_prov, dataset, dsttype, out, runnumber))
         elif label == 'MISSING':
             WARN(line)
         else:
@@ -234,7 +236,7 @@ def main():
         if args.show_out:
             header += "  OUT"
         print(f"\nStale jobs:\n{header}")
-        for condor_id, submit_host, running_age, detail, mem_prov, dataset, dsttype, out in stale_lines:
+        for condor_id, submit_host, running_age, detail, mem_prov, dataset, dsttype, out, runnumber in stale_lines:
             prov_s = f"{mem_prov:>8}" if mem_prov is not None else f"{'?':>8}"
             row = (f"{condor_id:<{cid_w}}  {submit_host:<{host_w}}"
                    f"  {running_age:>10.1f}h  {detail:<{mtime_w}}"
@@ -243,6 +245,15 @@ def main():
             if args.show_out:
                 row += f"  {out}"
             print(row)
+
+        dsttypes_by_run = {}
+        for _, _, _, _, _, _, dsttype, _, runnumber in stale_lines:
+            dsttypes_by_run.setdefault(runnumber, set()).add(dsttype)
+
+        print("\nStale dsttypes by runnumber:")
+        for runnumber in sorted(dsttypes_by_run):
+            dsttypes = ",".join(sorted(dsttypes_by_run[runnumber]))
+            print(f"{runnumber} {dsttypes}")
 
 # ============================================================================
 # Argument parsing
@@ -289,9 +300,9 @@ Examples:
                         help='Select jobs running for at least this many hours (default: same as --out-hours).')
     parser.add_argument('--out-hours',     dest='out_hours',     type=float, default=24.0,
                         help='Flag out file as STALE when its mtime is older than this many hours (default: 24).')
-    parser.add_argument('--dataset',  default=None, help='Filter by dataset name.')
+    parser.add_argument('--dataset',  default=None, help='Filter by dataset name (%% triggers LIKE).')
     parser.add_argument('--dsttype',  default=None, help='Filter by dsttype (%% triggers LIKE).')
-    parser.add_argument('--tag',      default=None, help='Filter by production tag.')
+    parser.add_argument('--tag',      default=None, help='Filter by production tag (%% triggers LIKE).')
     parser.add_argument('--show-out', dest='show_out', action='store_true', default=False,
                         help='Include the OUT file path in the final stale-jobs table.')
     parser.add_argument('-n', '--dryrun', action='store_true', default=False,
