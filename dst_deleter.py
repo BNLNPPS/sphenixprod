@@ -151,7 +151,7 @@ def _close_cursor(curs) -> None:
 # ============================================================================
 # Run-number condition builder  (mirrors sphenixdbutils.list_to_condition)
 # ============================================================================
-def _run_condition(runs: list, table: str = '') -> str:
+def _run_condition(runs: list, table: str = '', pair_is_range: bool = True) -> str:
     col = f"{table}.runnumber" if table else "runnumber"
     runs = sorted(runs)
 
@@ -161,7 +161,7 @@ def _run_condition(runs: list, table: str = '') -> str:
         sys.exit(2)
     if n == 1:
         return f"{col} = {runs[0]}"
-    if n == 2:
+    if n == 2 and pair_is_range:
         return f"{col} >= {runs[0]} and {col} <= {runs[1]}"
     return f"{col} in ({','.join(str(r) for r in runs)})"
 
@@ -194,7 +194,7 @@ def cmd_generate(args):
         ERROR("--fetch-size must be positive.")
         sys.exit(2)
 
-    run_cond = _run_condition(runs, table='d')
+    run_cond = _run_condition(runs, table='d', pair_is_range=args.runs is not None)
     where_clause = f"""
 WHERE  {run_cond}
   AND  {_sql_cond('d.dataset', args.dataset)}
