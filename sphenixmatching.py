@@ -35,6 +35,7 @@ NameTypeRunSeg = namedtuple('NameTypeRunSeg', ['filename', 'dsttype', 'runnumber
 class MatchConfig:
     dsttype:        str
     runlist_int:    str
+    runlist:        str
     input_config:   InputConfig
     dataset:        str
     outtriplet:     str
@@ -64,6 +65,7 @@ class MatchConfig:
         dsttype       = rule_config.dsttype
         runlist_int   = rule_config.runlist_int
         input_config  = rule_config.input_config
+        runlist       = rule_config.runlist
         dataset       = rule_config.dataset
         outtriplet    = rule_config.outtriplet
         physicsmode   = rule_config.physicsmode
@@ -88,6 +90,7 @@ class MatchConfig:
         return cls(
             dsttype       = dsttype,
             runlist_int   = runlist_int,
+            runlist       = runlist,
             input_config  = input_config,
             dataset       = dataset,
             outtriplet    = outtriplet,
@@ -142,12 +145,42 @@ order by runnumber
         )
         rows = dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall()
         goodruns = { int(r): int(e) for r, e in rows }
+        rejected_runs = sorted(set(runlist_to_check) - set(goodruns))
+
+        if self.runlist:
+            if rejected_runs:
+                WARN(
+                    f"Explicit runlist {self.runlist} given; skipping run quality rejection "
+                    f"for {len(rejected_runs)} run(s): {rejected_runs}"
+                )
+
+            run_info_tmpl="""
+select runnumber, eventsinrun from run
+ where
+runnumber>={runmin} and runnumber <= {runmax}
+ and
+runtype='{physicsmode}'
+order by runnumber
+;"""
+            run_info_query=run_info_tmpl.format(
+                runmin=min(runlist_to_check),
+                runmax=max(runlist_to_check),
+                physicsmode=self.physicsmode,
+            )
+            info_rows = dbQuery( cnxn_string_map['daqr'], run_info_query).fetchall()
+            eventsinrun_by_run = { int(r): int(e) for r, e in info_rows }
+            missing_run_info = sorted(set(runlist_to_check) - set(eventsinrun_by_run))
+            if missing_run_info:
+                WARN(f"No DAQ run table entry found for runlist run(s): {missing_run_info}")
+            INFO(f"Using {len(runlist_to_check)} runs from explicit runlist; run quality cuts are warnings only.")
+            return { run: eventsinrun_by_run.get(run) for run in runlist_to_check }
+
         # tighten run condition now
         runlist_int = [ run for run in runlist_to_check if run in goodruns ]
         if not runlist_int:
             return {}
         INFO(f"{len(runlist_int)} runs pass run quality cuts.")
-        DEBUG(f"Rejected: {sorted(set(runlist_to_check) - set(runlist_int))}")
+        DEBUG(f"Rejected: {rejected_runs}")
         # CHATTY(f"Runlist: {runlist_int}")
         return { run: goodruns[run] for run in runlist_int }
 
