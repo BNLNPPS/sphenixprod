@@ -897,10 +897,10 @@ def _load_rule_and_match(args) -> Tuple[Any, Any]:
     return rule, MatchConfig.from_rule_config(rule)
 
 
-def _query_raw_daqhosts(runnumbers: Iterable[int]) -> Dict[int, Set[str]]:
-    from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
+def _query_raw_daqhosts(match: Any, runnumbers: Iterable[int]) -> Dict[int, Set[str]]:
+    from sphenixdbutils import cnxn_string_map, dbQuery
 
-    run_condition = list_to_condition(list(runnumbers))
+    run_condition = match._run_condition(list(runnumbers))
     if not run_condition:
         return {}
     query = f"""
@@ -915,9 +915,9 @@ def _query_raw_daqhosts(runnumbers: Iterable[int]) -> Dict[int, Set[str]]:
     return hosts_by_run
 
 def _query_inputs(match: Any, runnumbers: Iterable[int]) -> List[Any]:
-    from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
+    from sphenixdbutils import cnxn_string_map, dbQuery
 
-    run_condition = list_to_condition(list(runnumbers))
+    run_condition = match._run_condition(list(runnumbers))
     if not run_condition:
         return []
 
@@ -936,9 +936,9 @@ def _query_inputs(match: Any, runnumbers: Iterable[int]) -> List[Any]:
 
 
 def _query_outputs(match: Any, runnumbers: Iterable[int]) -> List[Any]:
-    from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
+    from sphenixdbutils import cnxn_string_map, dbQuery
 
-    run_condition = list_to_condition(list(runnumbers))
+    run_condition = match._run_condition(list(runnumbers))
     if not run_condition:
         return []
 
@@ -1004,7 +1004,7 @@ def main():
     raw_available_by_run: Dict[int, int] = {}
     catalog_available_by_run: Dict[int, int] = {}
     if required_hosts:
-        raw_daqhosts_by_run = _query_raw_daqhosts(runnumbers)
+        raw_daqhosts_by_run = _query_raw_daqhosts(match, runnumbers)
         daqhost_filter = filter_runs_by_required_daqhosts(
             input_rows=input_rows,
             required_hosts=required_hosts,

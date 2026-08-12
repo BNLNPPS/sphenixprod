@@ -18,7 +18,7 @@ from argparsing import submission_args
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixmatching import MatchConfig
-from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
+from sphenixdbutils import cnxn_string_map, dbQuery
 from sphenixmisc import human_event_count
 
 
@@ -92,7 +92,7 @@ def main():
     n_ideal = sum(sum(1 for h in hosts if h != 'gl1daq') for hosts in daqhosts_dict.values())
     INFO(f"{n_ideal} (run, daqhost) combinations have all segments on lustre.")
 
-    run_condition = list_to_condition(list(eventsinrun_by_run))
+    run_condition = match._run_condition(list(eventsinrun_by_run))
 
     total_query = f"""
         SELECT DISTINCT runnumber, daqhost FROM datasets

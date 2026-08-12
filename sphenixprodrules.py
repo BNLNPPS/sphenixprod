@@ -128,6 +128,7 @@ class RuleConfig:
     version_string: str # v000
     outtriplet: str     # new_2025p000_v000
     runlist_int: List[int] # name chosen to differentiate it from --runlist which points to a text file
+    run_selection_is_range: bool # True only for --runs MIN MAX; these keep DAQ quality filtering
     
     # Nested dataclasses
     input_config: InputConfig
@@ -208,6 +209,7 @@ class RuleConfig:
         INFO(f"runs = {runs}")
         INFO(f"runlist = {runlist_filename}")
         runlist_int=None
+        run_selection_is_range=False
         if runlist_filename: # white-space separated numbers from a file
             INFO(f"Processing runs from file: {runlist_filename}")
             try:
@@ -237,6 +239,7 @@ class RuleConfig:
                 if runmin <= 0 or runmax <= 0:
                     ERROR(f"Run ranges must be positive: {runmin} {runmax}")
                     exit(10)
+                run_selection_is_range=True
                 runlist_int=list(range(runmin, runmax+1))
             else :
                 # dense command here, all it does is make a list of unique ints, and sort it
@@ -556,6 +559,7 @@ class RuleConfig:
             version_string=version_string,
             outtriplet=outtriplet,
             runlist_int=runlist_int,
+            run_selection_is_range=run_selection_is_range,
             runlist=runlist_filename or "",
             input_config=input_config,
             job_config=job_config,
