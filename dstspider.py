@@ -241,6 +241,10 @@ def main():
             if final_path.exists():
                 if not incoming_size_ok:
                     WARN(f"Incoming size wrong ({orig_size} != {fullinfo.size}); keeping existing {final_path}")
+                    try:
+                        orig_path.unlink()
+                    except Exception as e:
+                        ERROR(f"Failed to delete rejected incoming file {orig_path}: {e}")
                     continue
                 INFO(f"Deleting existing final file before rename: {final_path}")
                 try:
@@ -251,6 +255,10 @@ def main():
             else:
                 if not incoming_size_ok:
                     ERROR(f"Incoming file size wrong before rename for {orig_path}: expected {fullinfo.size}, got {orig_size}")
+                    try:
+                        orig_path.unlink()
+                    except Exception as e:
+                        ERROR(f"Failed to delete rejected incoming file {orig_path}: {e}")
                     continue
 
             try:

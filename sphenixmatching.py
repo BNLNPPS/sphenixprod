@@ -36,6 +36,7 @@ class MatchConfig:
     dsttype:        str
     runlist_int:    str
     runlist:        str
+    run_selection_is_range: bool
     input_config:   InputConfig
     dataset:        str
     outtriplet:     str
@@ -66,6 +67,7 @@ class MatchConfig:
         runlist_int   = rule_config.runlist_int
         input_config  = rule_config.input_config
         runlist       = rule_config.runlist
+        run_selection_is_range = rule_config.run_selection_is_range
         dataset       = rule_config.dataset
         outtriplet    = rule_config.outtriplet
         physicsmode   = rule_config.physicsmode
@@ -91,6 +93,7 @@ class MatchConfig:
             dsttype       = dsttype,
             runlist_int   = runlist_int,
             runlist       = runlist,
+            run_selection_is_range = run_selection_is_range,
             input_config  = input_config,
             dataset       = dataset,
             outtriplet    = outtriplet,
@@ -115,15 +118,69 @@ class MatchConfig:
         return segment
 
     # ------------------------------------------------
-    def good_runlist(self, subset_runlist: List[int] = None) -> Dict[int, int]:
-        ### Run quality
-        CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
-        # Here would be a  good spot to check against golden or bad runlists and to enforce quality cuts on the runs
+    def _exact_run_condition(self, runnumbers: Any) -> str:
+        if isinstance(runnumbers, int):
+            runnumbers = [runnumbers]
+        runs = sorted(set(int(run) for run in runnumbers))
+        if not runs:
+            return ""
+        if len(runs) == 1:
+            return f"runnumber={runs[0]}"
+        return "runnumber in  ( " + ",".join(str(run) for run in runs) + " )"
 
-        # Use subset if provided, otherwise use full runlist
-        runlist_to_check = subset_runlist if subset_runlist is not None else self.runlist_int
+    # ------------------------------------------------
+    def _run_condition(self, runnumbers: Any) -> str:
+        if self.run_selection_is_range:
+            return list_to_condition(runnumbers)
+        return self._exact_run_condition(runnumbers)
 
-        INFO("Checking runlist against run quality cuts.")
+    # ------------------------------------------------
+    def _eventsinrun_from_raw(self, runlist_to_check: List[int]) -> Dict[int, int]:
+        run_condition = self._exact_run_condition(runlist_to_check)
+        events_query = f"""
+select runnumber, sum(events) as eventsinrun
+from datasets
+where {run_condition}
+  and daqhost='gl1daq'
+group by runnumber
+order by runnumber
+;"""
+        rows = dbQuery(cnxn_string_map["rawr"], events_query).fetchall()
+        eventsinrun_by_run = {int(r): int(e) for r, e in rows if e is not None}
+        missing = sorted(set(runlist_to_check) - set(eventsinrun_by_run))
+        if missing:
+            WARN(f"No raw gl1daq event count found for run(s): {missing}")
+        return {run: eventsinrun_by_run.get(run) for run in runlist_to_check}
+
+    # ------------------------------------------------
+    def _warn_raw_dataset_mode_mismatches(self, runlist_to_check: List[int]) -> None:
+        run_condition = self._exact_run_condition(runlist_to_check)
+        dataset_query = f"""
+select runnumber, datasets
+from datasets
+where {run_condition}
+group by runnumber, datasets
+order by runnumber, datasets
+;"""
+        rows = dbQuery(cnxn_string_map["rawr"], dataset_query).fetchall()
+        datasets_by_run = {}
+        for runnumber, datasets_value in rows:
+            datasets_by_run.setdefault(int(runnumber), set()).add(str(datasets_value))
+
+        for runnumber in runlist_to_check:
+            datasets_values = datasets_by_run.get(runnumber, set())
+            if not datasets_values:
+                WARN(f"Run {runnumber}: no raw datasets value found; expected physicsmode={self.physicsmode}. Proceeding.")
+            elif len(datasets_values) > 1:
+                WARN(f"Run {runnumber}: multiple raw datasets values {sorted(datasets_values)}; expected physicsmode={self.physicsmode}. Proceeding.")
+            else:
+                datasets_value = next(iter(datasets_values))
+                if datasets_value != self.physicsmode:
+                    WARN(f"Run {runnumber}: raw datasets value {datasets_value} differs from physicsmode={self.physicsmode}. Proceeding.")
+
+    # ------------------------------------------------
+    def _good_run_range_from_daq(self, runlist_to_check: List[int]) -> Dict[int, int]:
+        INFO("Checking run range against DAQ run quality cuts.")
         run_quality_tmpl="""
 select runnumber, eventsinrun from run
  where
@@ -143,46 +200,28 @@ order by runnumber
             min_run_events=self.input_config.min_run_events,
             min_run_time=self.input_config.min_run_time,
         )
-        rows = dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall()
-        goodruns = { int(r): int(e) for r, e in rows }
+        rows = dbQuery(cnxn_string_map["daqr"], run_quality_query).fetchall()
+        goodruns = {int(r): int(e) for r, e in rows}
         rejected_runs = sorted(set(runlist_to_check) - set(goodruns))
-
-        if self.runlist:
-            if rejected_runs:
-                WARN(
-                    f"Explicit runlist {self.runlist} given; skipping run quality rejection "
-                    f"for {len(rejected_runs)} run(s): {rejected_runs}"
-                )
-
-            run_info_tmpl="""
-select runnumber, eventsinrun from run
- where
-runnumber>={runmin} and runnumber <= {runmax}
- and
-runtype='{physicsmode}'
-order by runnumber
-;"""
-            run_info_query=run_info_tmpl.format(
-                runmin=min(runlist_to_check),
-                runmax=max(runlist_to_check),
-                physicsmode=self.physicsmode,
-            )
-            info_rows = dbQuery( cnxn_string_map['daqr'], run_info_query).fetchall()
-            eventsinrun_by_run = { int(r): int(e) for r, e in info_rows }
-            missing_run_info = sorted(set(runlist_to_check) - set(eventsinrun_by_run))
-            if missing_run_info:
-                WARN(f"No DAQ run table entry found for runlist run(s): {missing_run_info}")
-            INFO(f"Using {len(runlist_to_check)} runs from explicit runlist; run quality cuts are warnings only.")
-            return { run: eventsinrun_by_run.get(run) for run in runlist_to_check }
-
-        # tighten run condition now
-        runlist_int = [ run for run in runlist_to_check if run in goodruns ]
+        runlist_int = [run for run in runlist_to_check if run in goodruns]
         if not runlist_int:
             return {}
-        INFO(f"{len(runlist_int)} runs pass run quality cuts.")
+        INFO(f"{len(runlist_int)} runs pass DAQ run quality cuts.")
         DEBUG(f"Rejected: {rejected_runs}")
-        # CHATTY(f"Runlist: {runlist_int}")
-        return { run: goodruns[run] for run in runlist_int }
+        return {run: goodruns[run] for run in runlist_int}
+
+    # ------------------------------------------------
+    def good_runlist(self, subset_runlist: List[int] = None) -> Dict[int, int]:
+        CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
+        runlist_to_check = subset_runlist if subset_runlist is not None else self.runlist_int
+        runlist_to_check = [int(run) for run in runlist_to_check]
+
+        if self.run_selection_is_range:
+            return self._good_run_range_from_daq(runlist_to_check)
+
+        INFO(f"Using {len(runlist_to_check)} explicitly selected runs; run quality cuts are not applied.")
+        self._warn_raw_dataset_mode_mismatches(runlist_to_check)
+        return self._eventsinrun_from_raw(runlist_to_check)
 
     # ------------------------------------------------
     def get_files_in_db(self, runnumbers: Any) :
@@ -192,7 +231,7 @@ order by runnumber
         and tag='{self.outtriplet}'
         and dsttype like '{self.dst_type_template}'"""
 
-        run_condition=list_to_condition(runnumbers)
+        run_condition=self._run_condition(runnumbers)
         if run_condition!="" :
             exist_query += f"\n\tand {run_condition}"
         existing_output = [ c.filename for c in dbQuery( cnxn_string_map['fcr'], exist_query ) ]
@@ -260,13 +299,12 @@ order by runnumber
         tstart=datetime.now()
         with open(dstlistname,"w") if dstlistname else nullcontext() as dstlistfile:
             for leafdir in leafdirs :
-                CHATTY(f"Searching {leafdir}")
                 available_rungroups = shell_command(rf"{find} {leafdir} -mindepth 1 -maxdepth 1 -name run_\* -type d ")
-                DEBUG(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
+                CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
                 
                 # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
                 rungroups = {rg for rg in available_rungroups if any( drg in rg for drg in desirable_rungroups) }
-                DEBUG(f"For {leafdir}, we have {len(rungroups)} run groups to work on")                
+                CHATTY(f"For {leafdir}, we have {len(rungroups)} run groups to work on")                
                 for rungroup in rungroups:
                     runs_str=runs_by_group[Path(rungroup).name]
                     if 'lfs' in lfind:
@@ -290,7 +328,7 @@ order by runnumber
     def get_prod_status(self, runnumbers):
         ### Check production status
         DEBUG(f'Checking for output already in production for {runnumbers}')
-        run_condition=list_to_condition(runnumbers)
+        run_condition=self._run_condition(runnumbers)
         jobs_run_condition   = f"and {run_condition}" if run_condition != "" else ""
 
         # 'finished' jobs _should_ be in the files db. "where status!='finished'"
@@ -326,7 +364,7 @@ order by runnumber
         eventsinrun_by_run=self.good_runlist(subset_runlist)
         if not eventsinrun_by_run:
             return {}, {}
-        run_condition=list_to_condition(list(eventsinrun_by_run))
+        run_condition=self._run_condition(list(eventsinrun_by_run))
 
         # If we only care about segment 0, we can skip a lot of the checks
         if self.input_config.combine_seg0_only:
@@ -497,7 +535,7 @@ order by runnumber
         # eventsinrun: look up from prod DB if we have an intriplet (informational only, best-effort)
         eventsinrun_by_run = {}
         if intriplet and intriplet != "":
-            run_condition_up = list_to_condition(list(goodruns))
+            run_condition_up = self._run_condition(list(goodruns))
             rc_clause = f"AND {run_condition_up}" if run_condition_up else ""
             upstream_query = f"""SELECT DISTINCT ON (runnumber) runnumber, eventsinrun
                 FROM production_jobs
