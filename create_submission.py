@@ -31,7 +31,7 @@ from execute_condorsubmission import locate_submitfiles,execute_submission
 
 def main():
     ### digest arguments
-    args = submission_args()
+    args = submission_args(allow_runs=False)
 
     #################### Set up submission logging before going any further
     # Set up submission logging before going any further
@@ -94,7 +94,7 @@ def main():
         param_overrides = {}
         param_overrides["script_path"]       = script_path
         param_overrides["payload_list"]      = payload_list
-        param_overrides["runs"]              = args.runs
+        param_overrides["runs"]              = None
         param_overrides["runlist"]           = args.runlist
         param_overrides["nevents"]           = args.nevents
         param_overrides["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case

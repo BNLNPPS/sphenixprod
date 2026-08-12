@@ -12,7 +12,7 @@ def parse_and_set_loglevel(parser) -> argparse.Namespace:
     return args
 
 
-def _base_arguments(parser):
+def _base_arguments(parser, allow_runs=True, require_run_selection=False):
     """Add common arguments to the parser."""
     # General arguments
     parser.add_argument('--dryrun', '--no-submit', '-n',
@@ -34,13 +34,19 @@ def _base_arguments(parser):
 
     # Input-specific
     rgroup = parser.add_argument_group('Run selection')
-    exclusive_rgroup = rgroup.add_mutually_exclusive_group()
-    exclusive_rgroup.add_argument('--runs', nargs='*',
-                                  help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list",
-                                  default=None)
-    exclusive_rgroup.add_argument('--runlist',
-                                  help="Flat text file containing list of runs to process, separated by whitespace / newlines.",
-                                  default=None)
+    if allow_runs:
+        exclusive_rgroup = rgroup.add_mutually_exclusive_group(required=require_run_selection)
+        exclusive_rgroup.add_argument('--runs', nargs='+',
+                                      help="One argument for a specific run.  Two arguments an inclusive range.  Three or more, a list",
+                                      default=None)
+        exclusive_rgroup.add_argument('--runlist',
+                                      help="Flat text file containing list of runs to process, separated by whitespace / newlines.",
+                                      default=None)
+    else:
+        rgroup.add_argument('--runlist',
+                            help="Flat text file containing list of runs to process, separated by whitespace / newlines.",
+                            default=None,
+                            required=require_run_selection)
     parser.add_argument('--physics-mode', '--experiment-mode', dest="physicsmode",
                         help="Specifies the experiment mode (cosmics, commissioning, physics) for direct lookup of input files.",
                         default=None)
@@ -52,10 +58,10 @@ def _base_arguments(parser):
     return parser
 
 # ============================================================================================
-def submission_args():
+def submission_args(allow_runs=True):
     """Handle command line tedium for submitting jobs."""
     parser = argparse.ArgumentParser(description='Prepare and submit sPHENIX production jobs to the HTCondor batch system.')
-    parser = _base_arguments(parser)
+    parser = _base_arguments(parser, allow_runs=allow_runs, require_run_selection=True)
 
     parser.add_argument('--print-query', dest='printquery', help="Print the query after parameter substitution and exit",
                         action="store_true")

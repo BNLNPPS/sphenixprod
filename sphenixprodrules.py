@@ -203,14 +203,11 @@ class RuleConfig:
         outtriplet = f'{build_string}_{params_data["dbtag"]}_{version_string}'
 
         ### Which runs to process?
-        runs=param_overrides["runs"]
+        runs=param_overrides.get("runs")
         runlist_filename=param_overrides.get("runlist")
         INFO(f"runs = {runs}")
         INFO(f"runlist = {runlist_filename}")
         runlist_int=None
-        ## By default, run over "physics" runs in run3
-        default_runmin=66456
-        default_runmax=90000
         if runlist_filename: # white-space separated numbers from a file
             INFO(f"Processing runs from file: {runlist_filename}")
             try:
@@ -224,30 +221,31 @@ class RuleConfig:
                 runlist_int=[int(runstr) for runstr in number_strings]
             except Exception as e:
                 ERROR(f"Error: Exception parsing runlist file {runlist_filename}: {e}")
-        else: # Use "--runs". 0 for all default runs; 1, 2 numbers for a single run or a range; 3+ for an explicit list
+        else: # Use "--runs". 1 number for a single run, 2 for an inclusive range, 3+ for an explicit list
             INFO(f"Processing runs argument: {runs}")
             if not runs:
-                WARN("Processing all runs.")
-                runs=['-1','-1']
+                ERROR("No run selection provided. Use --runlist, or --runs for maintenance tools.")
+                exit(10)
             nargs=len( runs )
             if  nargs==1:
                 runlist_int=[int(runs[0])]
-                if runlist_int[0]<=0 :
-                    ERROR(f"Can't run on single run {runlist_int[0]}")
+                if runlist_int[0] <= 0:
+                    ERROR(f"Run numbers must be positive: {runlist_int[0]}")
+                    exit(10)
             elif nargs==2:
                 runmin,runmax=tuple(map(int,runs))
-                if runmin<0:
-                    runmin=default_runmin
-                    WARN(f"Using runmin={runmin}")
-                if runmax<0:
-                    runmax=default_runmax
-                    WARN(f"Using runmax={runmax}")
+                if runmin <= 0 or runmax <= 0:
+                    ERROR(f"Run ranges must be positive: {runmin} {runmax}")
+                    exit(10)
                 runlist_int=list(range(runmin, runmax+1))
             else :
                 # dense command here, all it does is make a list of unique ints, and sort it
                 runlist_int=sorted(set(map(int,runs)))
-                # Remove non-positive entries while we're at it
-                runlist_int=[r for r in runlist_int if r>=0]
+
+        bad_runs = [r for r in runlist_int or [] if r <= 0]
+        if bad_runs:
+            ERROR(f"Run selections must contain only positive runs: {bad_runs}")
+            exit(10)
         if not runlist_int or runlist_int==[]:
             ERROR("Something's wrong parsing the runs to be processed. Maybe runmax < runmin?")
             exit(10)
