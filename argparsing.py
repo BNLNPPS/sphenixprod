@@ -82,8 +82,6 @@ def submission_args(allow_runs=True):
 
     # Input file selection arguments
     parser.add_argument('--onlyseg0', help='Combine only segment 0 files.', action=argparse.BooleanOptionalAction)
-    parser.add_argument('--choose20', help='Randomly choose 20%% of available files for combining only (no effect downstream)',
-                        action="store_true")
     parser.add_argument('--cut-segment', dest='cut_segment', default=1, type=int,
                         help="Only submit jobs for segments where segment %% cut_segment == 0.")
 

@@ -156,15 +156,17 @@ order by runnumber
     def _warn_raw_dataset_mode_mismatches(self, runlist_to_check: List[int]) -> None:
         run_condition = self._exact_run_condition(runlist_to_check)
         dataset_query = f"""
-select runnumber, datasets
+select runnumber, dataset as raw_dataset
 from datasets
 where {run_condition}
-group by runnumber, datasets
-order by runnumber, datasets
+group by runnumber, dataset
+order by runnumber, dataset
 ;"""
         rows = dbQuery(cnxn_string_map["rawr"], dataset_query).fetchall()
         datasets_by_run = {}
-        for runnumber, datasets_value in rows:
+        for row in rows:
+            runnumber = getattr(row, "runnumber", row[0])
+            datasets_value = getattr(row, "raw_dataset", row[1])
             datasets_by_run.setdefault(int(runnumber), set()).add(str(datasets_value))
 
         for runnumber in runlist_to_check:
