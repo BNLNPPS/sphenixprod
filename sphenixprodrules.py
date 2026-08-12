@@ -103,7 +103,6 @@ class InputConfig:
     min_run_events:   Optional[int] = None
     min_run_time:     Optional[int] = None
     combine_seg0_only:          Optional[bool] = True  # For combination jobs, use only segment 0. Default is yes. No effect for downstream jobs.
-    choose20:         Optional[bool] = False  # Randomly choose 20% of available files
     cut_segment:      Optional[int] = 1       # For downstream jobs, submit only if segment % cut_segment == 0
     infile_query_constraints:   Optional[str] = None  # Additional constraints for the input filecatalog query.
     status_query_constraints:   Optional[str] = None  # Additional constraints for the production catalog query
@@ -267,7 +266,7 @@ class RuleConfig:
                     , optional=["db", "table", "intriplet",
                                 "min_run_events","min_run_time",
                                 "direct_path", "dataset",
-                                "combine_seg0_only","choose20",
+                                "combine_seg0_only",
                                 "cut_segment",
                                 "infile_query_constraints",
                                 "status_query_constraints","physicsmode",
@@ -295,20 +294,6 @@ class RuleConfig:
         argv_combine_seg0_only=param_overrides.get("combine_seg0_only")
         if argv_combine_seg0_only is not None:
             combine_seg0_only=argv_combine_seg0_only
-
-        choose20=input_data.get("choose20",False)
-        argv_choose20=param_overrides.get("choose20")
-        if argv_choose20 :
-            choose20=True
-        if choose20:
-            ERROR("Option choose20 shouldn't be used.")
-            exit(2)
-            ### Use choose20 only for combination jobs.
-            if 'raw' in input_data["db"]:
-                WARN ("Selecting only 20% of good runs.")
-            else:
-                WARN ("Option 'choose20' ignored for downstream production.")
-                choose20=False
 
         cut_segment = input_data.get("cut_segment", 1)
         argv_cut_segment = param_overrides.get("cut_segment")
@@ -355,7 +340,6 @@ class RuleConfig:
             min_run_events=min_run_events,
             min_run_time=min_run_time,
             combine_seg0_only=combine_seg0_only,
-            choose20=choose20,
             cut_segment=cut_segment,
             infile_query_constraints=infile_query_constraints,
             status_query_constraints=status_query_constraints,

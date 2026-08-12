@@ -98,7 +98,6 @@ def main():
         param_overrides["runlist"]           = args.runlist
         param_overrides["nevents"]           = args.nevents
         param_overrides["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case
-        param_overrides["choose20"]          = args.choose20  # default is False
         param_overrides["prodmode"]          = "production"
         param_overrides["check_legacy"]      = args.check_legacy
         # For testing, "production" (close to the root of all paths) in the default filesystem) can be replaced
@@ -263,18 +262,6 @@ def main():
                     WARN(f"Reached maximum of {max_queued_jobs} queued, held, or running jobs, stopping here.")
                     should_stop_processing_chunks = True
                     break
-
-                ### Make the decision here whether to skip this run
-                ### This will be recorded in the prod db, so subsequent calls
-                ### will continue to skip the same runs unless and until their rows are deleted.
-                # keep_this_run=True
-                # random.seed()
-                # if rule.input_config.choose20:
-                #         if random.uniform(0,1) > 0.21: # Nudge a bit above 20. Tests indicated we land significantly lower otherwise
-                #         DEBUG(f"Run {submit_run} will be skipped.")
-                #         keep_this_run=False
-                #     else:
-                #         DEBUG(f"Producing run {submit_run}")
 
                 matches=matches_by_run[submit_run]
                 INFO(f"Creating {len(matches)} submission files for run {submit_run}.")

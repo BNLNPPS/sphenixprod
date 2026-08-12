@@ -8,6 +8,7 @@ import pstats
 import sys
 import shutil
 import os
+import time
 from typing import List
 
 # from dataclasses import fields
@@ -20,6 +21,17 @@ from sphenixprodrules import RuleConfig
 from sphenixmatching import parse_lfn, parse_spiderstuff
 from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect
+
+def stat_size_with_retry(path, retries=3, delay=0.5):
+    """Return st_size, retrying on transient misreports. Raises OSError on failure."""
+    size = path.stat().st_size
+    for _ in range(retries - 1):
+        again = path.stat().st_size
+        if again == size:
+            return size
+        time.sleep(delay)
+        size = again
+    return size
 
 # ============================================================================================
 
@@ -128,8 +140,10 @@ def main():
                 WARN(f"{lfn} does not contain run and segment information. Delete.")
                 ## DOUBLE-check to not delete already registered files.
                 if not loopfile.endswith(".root"):
-                    #Path(loopfile).unlink()
-                    print(loopfile)
+                    try:
+                        Path(loopfile).unlink()
+                    except Exception as delete_error:
+                        ERROR(f"Failed to delete malformed incoming file {loopfile}: {delete_error}")
                     continue
                 else:
                     WARN(f"{loopfile} looks like one we shouldn't have caught here anyway. Keep.")
@@ -162,9 +176,12 @@ def main():
     INFO(f"Found {fmax} in the specified run range")
 
     ###### Here be dragons
+    ### Move first, verify, then register. This mirrors dstspider and prevents
+    ### FileCatalog from pointing at metadata whose final file was not placed.
     tstart = datetime.now()
     tlast = tstart
     when2blurb=2000
+    verified_fullinfos_by_lfn = {}
     for f, (full_file_path,fullinfo) in enumerate(act_on_hists):
         if f%when2blurb == 0:
             now = datetime.now()
@@ -172,21 +189,84 @@ def main():
             print( f'                  time since the start      :\t {(now - tstart).total_seconds():.2f} seconds (cum. {f/(now - tstart).total_seconds():.2f} Hz). ' )
             tlast = now
 
-        origfile=fullinfo.origfile
-        ### Register first, then move.
-        upsert_filecatalog(fullinfos=fullinfo,
-                           dryrun=args.dryrun # only prints the query if True
-                           )
         if args.dryrun:
-            if not Path(origfile).is_file():
-                ERROR(f"Can't see {origfile}")
+            if not Path(fullinfo.origfile).is_file():
+                ERROR(f"Can't see {fullinfo.origfile}")
                 exit(1)
+            verified_fullinfos_by_lfn[fullinfo.lfn] = fullinfo
+            continue
+
+        orig_path = Path(fullinfo.origfile)
+        final_path = Path(fullinfo.full_file_path)
+
+        if fullinfo.lfn in verified_fullinfos_by_lfn:
+            existing = verified_fullinfos_by_lfn[fullinfo.lfn]
+            if fullinfo.ctime <= existing.ctime:
+                ERROR(f"Duplicate incoming staged histogram for lfn {fullinfo.lfn}; deleting older-or-equal file (ctime {fullinfo.ctime} <= {existing.ctime})")
+                try:
+                    orig_path.unlink()
+                except Exception as e:
+                    ERROR(f"Failed to delete losing duplicate {orig_path}: {e}")
+                continue
+            ERROR(f"Duplicate incoming staged histogram for lfn {fullinfo.lfn}; replacing with newer file (ctime {fullinfo.ctime} > {existing.ctime})")
+
         try:
-            os.rename( origfile, full_file_path )
+            orig_size = stat_size_with_retry(orig_path)
         except Exception as e:
-            print(f" {origfile}\n{full_file_path}" )
+            ERROR(f"Failed to stat incoming histogram {orig_path}: {e}")
+            continue
+
+        incoming_size_ok = fullinfo.size < 0 or orig_size == fullinfo.size
+
+        if final_path.exists():
+            if not incoming_size_ok:
+                WARN(f"Incoming histogram size wrong ({orig_size} != {fullinfo.size}); keeping existing {final_path}")
+                try:
+                    orig_path.unlink()
+                except Exception as e:
+                    ERROR(f"Failed to delete rejected incoming histogram {orig_path}: {e}")
+                continue
+            INFO(f"Deleting existing final histogram before rename: {final_path}")
+            try:
+                final_path.unlink()
+            except Exception as e:
+                ERROR(f"Failed to remove existing final histogram {final_path}: {e}")
+                continue
+        else:
+            if not incoming_size_ok:
+                ERROR(f"Incoming histogram size wrong before rename for {orig_path}: expected {fullinfo.size}, got {orig_size}")
+                try:
+                    orig_path.unlink()
+                except Exception as e:
+                    ERROR(f"Failed to delete rejected incoming histogram {orig_path}: {e}")
+                continue
+
+        try:
+            os.rename(orig_path, final_path)
+        except Exception as e:
+            print(f" {orig_path}\n{final_path}")
             ERROR(e)
-            exit(1)
+            continue
+
+        try:
+            final_size = stat_size_with_retry(final_path)
+        except Exception as e:
+            ERROR(f"Failed to stat final histogram after rename {final_path}: {e}")
+            continue
+        if fullinfo.size >= 0 and final_size != fullinfo.size:
+            ERROR(f"Histogram size changed during rename for {final_path}: expected {fullinfo.size}, got {final_size}")
+            continue
+
+        verified_fullinfos_by_lfn[fullinfo.lfn] = fullinfo
+
+    verified_fullinfos = list(verified_fullinfos_by_lfn.values())
+    if verified_fullinfos:
+        try:
+            upsert_filecatalog(fullinfos=verified_fullinfos,
+                               dryrun=args.dryrun
+                               )
+        except Exception as e:
+            ERROR(f"histspider moved verified files but FileCatalog registration failed: {e}")
 
     if args.profile:
         profiler.disable()
