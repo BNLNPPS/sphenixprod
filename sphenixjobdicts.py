@@ -37,6 +37,22 @@ inputs_from_output['DST_JETS'] = ['DST_CALO']
 inputs_from_output['DST_JETCALO'] = ['DST_CALOFITTING']
 
 
+def _dst_streaming_event_run2():
+    return { f"intt{n}"       : f"intt{n}"      for n in range(0,8) } \
+        |  { f"mvtx{n}"       : f"mvtx{n}"      for n in range(0,6) } \
+        |  { f"ebdc{n:02}"    : f"ebdc{n:02}"   for n in range(0,24) } \
+        |  {  "ebdc39"        :  "ebdc39" }
+
+
+def input_stem_for_rule(dsttype, dataset):
+    if "run2" in (dataset or ""):
+        if dsttype == "DST_STREAMING_EVENT":
+            return _dst_streaming_event_run2()
+        if dsttype in ("DST_TRKR_CLUSTER", "DST_TRKR_MVTXME"):
+            return list("DST_STREAMING_EVENT_" + LEAF for LEAF in _dst_streaming_event_run2().keys())
+    return inputs_from_output[dsttype]
+
+
 def required_seb_hosts(dsttype):
     input_stem = inputs_from_output[dsttype]
     input_types = input_stem.values() if isinstance(input_stem, dict) else input_stem

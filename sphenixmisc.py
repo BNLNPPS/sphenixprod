@@ -88,22 +88,23 @@ def setup_rot_handler(args):
 
     # Keep concise high-severity messages in submitdir for routine inspection.
     # Rotate weekly and keep old files indefinitely; the main rotating log still gets full context.
-    important_log = Path(args.submitdir).resolve() / "important.log"
-    important_log.parent.mkdir(parents=True, exist_ok=True)
-    ImportantFileHandler = TimedRotatingFileHandler(
-        filename=important_log,
-        when="W0",
-        interval=1,
-        backupCount=0,
-        encoding=None,
-        delay=0,
-    )
-    ImportantFileHandler.setLevel(logging.ERROR)
-    ImportantFileHandler.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
-    slogger.addHandler(ImportantFileHandler)
+    if not getattr(args, "dryrun", False):
+        important_log = Path(args.submitdir).resolve() / "important.log"
+        important_log.parent.mkdir(parents=True, exist_ok=True)
+        ImportantFileHandler = TimedRotatingFileHandler(
+            filename=important_log,
+            when="W0",
+            interval=1,
+            backupCount=0,
+            encoding=None,
+            delay=0,
+        )
+        ImportantFileHandler.setLevel(logging.ERROR)
+        ImportantFileHandler.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        ))
+        slogger.addHandler(ImportantFileHandler)
 
     return sublogdir
 

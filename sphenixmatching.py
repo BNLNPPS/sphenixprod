@@ -14,7 +14,7 @@ from sphenixprodrules import RuleConfig, InputConfig
 from sphenixprodrules import pRUNFMT,pSEGFMT
 from sphenixdbutils import cnxn_string_map, dbQuery, list_to_condition
 from simpleLogger import CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixjobdicts import inputs_from_output, required_seb_hosts
+from sphenixjobdicts import required_seb_hosts
 from sphenixmisc import binary_contains_bisect, shell_command
 
 from collections import namedtuple
@@ -35,6 +35,7 @@ NameTypeRunSeg = namedtuple('NameTypeRunSeg', ['filename', 'dsttype', 'runnumber
 class MatchConfig:
     dsttype:        str
     runlist_int:    str
+    runlist:        str
     input_config:   InputConfig
     dataset:        str
     outtriplet:     str
@@ -64,6 +65,7 @@ class MatchConfig:
         dsttype       = rule_config.dsttype
         runlist_int   = rule_config.runlist_int
         input_config  = rule_config.input_config
+        runlist       = rule_config.runlist
         dataset       = rule_config.dataset
         outtriplet    = rule_config.outtriplet
         physicsmode   = rule_config.physicsmode
@@ -78,19 +80,17 @@ class MatchConfig:
             dst_type_template += '_%'
             dst_type_template += '%'
 
-        ### Assemble leafs, where needed
-        input_stem = inputs_from_output[dsttype]
+        ### Use the input descriptors frozen at RuleConfig instantiation.
+        input_stem = input_config.input_stem
         CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
-        if isinstance(input_stem, dict):
-            in_types = list(input_stem.values())
-        else :
-            in_types = input_stem
+        in_types = list(input_config.indsttype or [])
         if 'raw' in input_config.db:
             in_types.insert(0,'gl1daq') # all raw daq files need an extra GL1 file
 
         return cls(
             dsttype       = dsttype,
             runlist_int   = runlist_int,
+            runlist       = runlist,
             input_config  = input_config,
             dataset       = dataset,
             outtriplet    = outtriplet,
@@ -145,12 +145,42 @@ order by runnumber
         )
         rows = dbQuery( cnxn_string_map['daqr'], run_quality_query).fetchall()
         goodruns = { int(r): int(e) for r, e in rows }
+        rejected_runs = sorted(set(runlist_to_check) - set(goodruns))
+
+        if self.runlist:
+            if rejected_runs:
+                WARN(
+                    f"Explicit runlist {self.runlist} given; skipping run quality rejection "
+                    f"for {len(rejected_runs)} run(s): {rejected_runs}"
+                )
+
+            run_info_tmpl="""
+select runnumber, eventsinrun from run
+ where
+runnumber>={runmin} and runnumber <= {runmax}
+ and
+runtype='{physicsmode}'
+order by runnumber
+;"""
+            run_info_query=run_info_tmpl.format(
+                runmin=min(runlist_to_check),
+                runmax=max(runlist_to_check),
+                physicsmode=self.physicsmode,
+            )
+            info_rows = dbQuery( cnxn_string_map['daqr'], run_info_query).fetchall()
+            eventsinrun_by_run = { int(r): int(e) for r, e in info_rows }
+            missing_run_info = sorted(set(runlist_to_check) - set(eventsinrun_by_run))
+            if missing_run_info:
+                WARN(f"No DAQ run table entry found for runlist run(s): {missing_run_info}")
+            INFO(f"Using {len(runlist_to_check)} runs from explicit runlist; run quality cuts are warnings only.")
+            return { run: eventsinrun_by_run.get(run) for run in runlist_to_check }
+
         # tighten run condition now
         runlist_int = [ run for run in runlist_to_check if run in goodruns ]
         if not runlist_int:
             return {}
         INFO(f"{len(runlist_int)} runs pass run quality cuts.")
-        DEBUG(f"Rejected: {sorted(set(runlist_to_check) - set(runlist_int))}")
+        DEBUG(f"Rejected: {rejected_runs}")
         # CHATTY(f"Runlist: {runlist_int}")
         return { run: goodruns[run] for run in runlist_int }
 
@@ -632,7 +662,7 @@ order by runnumber
                 #    This is an early breakpoint to see if the run can be used for tracking
                 #    CHANGE 08/21/2025: On request from jdosbo, change back to requiring all ebdcs.
                 ### Important note: Requirement is NOT enforced for cosmics.
-                minNTPC=48
+                minNTPC = 24 if "run2" in (self.dataset or "") else 48
                 if len(available_tpc) < minNTPC and not self.physicsmode=='cosmics':
                     WARN(f"Skip run {runnumber}. Only {len(available_tpc)} TPC detectors turned on in the run.")
                     continue
