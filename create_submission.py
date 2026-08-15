@@ -13,8 +13,7 @@ import itertools
 import random
 
 import pprint # noqa F401
-if os.uname().sysname!='Darwin' :
-    import htcondor # type: ignore
+import htcondor2 as htcondor
 
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit, shell_command, lock_file, unlock_file, parse_to_mb, parse_to_kb # Modified import
