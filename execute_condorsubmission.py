@@ -105,6 +105,9 @@ WHERE id in
             try:
                 # Capture output to get cluster ID
                 res = subprocess.run(f"condor_submit {sub_file}", shell=True, check=True, capture_output=True, text=True)
+                if res.stderr:
+                    for line in res.stderr.splitlines():
+                        WARN(line)
                 # Parse Cluster ID
                 for line in res.stdout.splitlines():
                     if "submitted to cluster" in line:
@@ -118,8 +121,13 @@ WHERE id in
                 Path(in_file).unlink()
                 submitted_jobs+=len(dbids)
             except subprocess.CalledProcessError as e:
-                ERROR(f"Submission failed for {sub_file}: {e.stderr}")
+                if e.stderr:
+                    for line in e.stderr.splitlines():
+                        WARN(line)
+                ERROR(f"Submission failed for {sub_file}: {e}")
                 continue
+        else:
+            print(f"condor_submit {sub_file}")
 
         # After successful submission, add ClusterId to production_jobs
         if not args.dryrun and cluster > 0:
