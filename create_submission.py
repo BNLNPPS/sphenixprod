@@ -273,7 +273,9 @@ def main():
                     # (Re-) create the "header" - common job parameters
                     Path(condor_subfile).unlink(missing_ok=True)
                     with open(condor_subfile, "w") as f:
-                        f.write(str(base_job))
+                        # Using "f.write(str(base_job))" produces unwanted extras like a bare "queue"
+                        for key, value in base_job.items():
+                            f.write(f"{key} = {value}\n")
                         f.write(
         f"""
         log = $(log)
