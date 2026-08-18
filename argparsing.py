@@ -19,11 +19,6 @@ def _base_arguments(parser, allow_runs=True, require_run_selection=False):
                         help="Job will not be submitted, DBs not updated. Just print things", dest="dryrun", action="store_true")
     parser.add_argument('--profile', help="Enable profiling", action="store_true")
 
-    # sPHENIX files have specific names and locations. Override for testing or special purposes.
-    parser.add_argument('--mangle-dirpath', dest='mangle_dirpath',
-                        help="Inserts string after sphnxpro/ (or tmp/) in the directory structure", default=None,
-                        type=int)
-
     vgroup = parser.add_argument_group('Logging level')
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()
     exclusive_vgroup.add_argument('-v', '--verbose', help="Prints more information per repetition", action='count', default=0)

@@ -95,9 +95,6 @@ def main():
         param_overrides["physicsmode"] = args.physicsmode # e.g. physics
 
     param_overrides["prodmode"] = "production"
-    if args.mangle_dirpath:
-        param_overrides["prodmode"] = args.mangle_dirpath
-
     CHATTY(f"Rule substitutions: {param_overrides}")
     INFO("Now loading and building rule configuration.")
 
