@@ -1,8 +1,0 @@
-pyodbc
-pyyaml
-#htcondor2
-classad2
-psutil
-matplotlib
-#lipsum
-#nanoid
