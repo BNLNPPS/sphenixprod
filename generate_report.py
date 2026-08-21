@@ -8,8 +8,10 @@ For now this supports raw/event-combiner rules. Downstream rules are detected
 and rejected explicitly so the macro name and CLI can be reused later.
 """
 
+import cProfile
 import csv
 import math
+import pstats
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -59,6 +61,8 @@ def csv_join(values):
     return ";".join(str(value) for value in sorted(values, key=str))
 
 
+
+
 def output_path(args):
     return Path(args.output) if args.output else Path(f"{args.rulename}.csv")
 
@@ -85,6 +89,7 @@ def load_rule_and_match(args):
     return rule, MatchConfig.from_rule_config(rule)
 
 
+
 def query_error_codes(args, match, run_condition):
     # what about ExitCode is Null?
     query = f"""
@@ -107,43 +112,50 @@ def query_error_codes(args, match, run_condition):
     return codes_by_run
 
 
-def write_csv_report(path, args, runnumbers, possible_daqhosts_by_run,
-                     missing_daqhosts_by_run, possible_segments_by_run,
-                     total_segments_by_run, possible_events_by_run, total_events_by_run, error_codes_by_run, flagged_by_run,
-                     not_on_lustre_by_run, runs_without_gl1daq):
+def add_reason(reasons_by_run, runnumber, reason):
+    reasons_by_run[int(runnumber)].add(reason)
+
+
+def write_csv_report(
+    path,
+    args,
+    runnumbers,
+    possible_daqhosts_by_run,
+    total_daqhosts_by_run,
+    possible_segments_by_run,
+    total_segments_by_run,
+    possible_events_by_run,
+    total_events_by_run,
+    error_codes_by_run,
+    reasons_by_run,
+    expected_skipped_events_by_run=None,
+):
     rows_written = 0
+    expected_skipped_events_by_run = expected_skipped_events_by_run or {}
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
         writer.writeheader()
         for runnumber in sorted(runnumbers):
             possible_daqhosts = int(possible_daqhosts_by_run.get(runnumber, 0))
-            missing_daqhosts = len(missing_daqhosts_by_run.get(runnumber, set()))
-            total_daqhosts = max(possible_daqhosts - missing_daqhosts, 0)
+            total_daqhosts = int(total_daqhosts_by_run.get(runnumber, 0))
+            missing_daqhosts = max(possible_daqhosts - total_daqhosts, 0)
             possible_segments = int(possible_segments_by_run.get(runnumber, 0))
             total_segments = int(total_segments_by_run.get(runnumber, 0))
             missing_segments = max(possible_segments - total_segments, 0)
             possible_events = int(possible_events_by_run.get(runnumber, 0))
             total_events = int(total_events_by_run.get(runnumber, 0))
-            expected_skipped_events = EXPECTED_SKIPPED_EVENTS_PER_DAQHOST * possible_daqhosts
+            expected_skipped_events = int(expected_skipped_events_by_run.get(runnumber, 0))
             missing_events = max(possible_events - total_events - expected_skipped_events, 0)
             error_codes = error_codes_by_run.get(runnumber, set())
 
-            reasons = set()
+            reasons = set(reasons_by_run.get(runnumber, set()))
             if missing_daqhosts:
                 reasons.add("missing_daqhosts")
             if missing_segments:
                 reasons.add("missing_segments")
-            if runnumber in flagged_by_run:
-                reasons.add("low_event_ratio")
             if error_codes:
                 reasons.add("error_codes")
-            if runnumber in not_on_lustre_by_run:
-                reasons.add("not_on_lustre")
-            if runnumber in runs_without_gl1daq:
-                reasons.add("missing_gl1daq")
-            if possible_events and total_events / possible_events < args.ratio_cut:
-                reasons.add("low_run_event_ratio")
 
             writer.writerow({
                 "rule_name": args.rulename,
@@ -166,34 +178,22 @@ def write_csv_report(path, args, runnumbers, possible_daqhosts_by_run,
     INFO(f"Wrote {rows_written} run-level rows to {path}")
 
 
-def main():
-    args = submission_args()
-    args.example_limit = max(0, args.example_limit)
+def normalized_neventsper(job_config):
+    neventsper = getattr(job_config, "neventsper", None)
+    try:
+        return int(neventsper) if neventsper is not None else 0
+    except (TypeError, ValueError):
+        return 0
 
-    from simpleLogger import slogger, set_log_timestamps_enabled
-    import logging
-    set_log_timestamps_enabled(False)
-    slogger.setLevel(logging.getLevelName(args.loglevel))
 
-    rule, match = load_rule_and_match(args)
 
-    if "raw" not in match.input_config.db:
-        ERROR(
-            f"Rule '{args.rulename}' is a downstream rule (db={match.input_config.db}). "
-            "generate_report.py only supports event-combiner/raw rules for now."
-        )
-        sys.exit(2)
-
+def generate_eventcombiner_report(args, rule, match, report_path):
     daqhosts_dict, eventsinrun_by_run = match.daqhosts_for_combining()
     if not eventsinrun_by_run:
         INFO("No runs pass run quality cuts; no report written.")
-        sys.exit(0)
+        return False
 
-    neventsper = getattr(rule.job_config, "neventsper", None)
-    try:
-        neventsper = int(neventsper) if neventsper is not None else 0
-    except Exception:
-        neventsper = 0
+    neventsper = normalized_neventsper(rule.job_config)
     if neventsper:
         total_expected_outputs = sum(
             math.ceil(eventsinrun / neventsper)
@@ -293,6 +293,7 @@ def main():
 
     possible_daqhost_sets_by_run = defaultdict(set)
     possible_daqhosts_by_run = defaultdict(int)
+    total_daqhosts_by_run = defaultdict(int)
     possible_events_by_run = defaultdict(int)
     for runnumber, daqhost in all_combos:
         runnumber = int(runnumber)
@@ -300,9 +301,14 @@ def main():
         possible_daqhosts_by_run[runnumber] += 1
         possible_events_by_run[runnumber] += int(eventsinrun_by_run.get(runnumber, 0))
 
-    missing_daqhosts_by_run = defaultdict(set)
+    missing_daqhost_sets_by_run = defaultdict(set)
     for runnumber, daqhost in all_no_fc:
-        missing_daqhosts_by_run[int(runnumber)].add(daqhost)
+        missing_daqhost_sets_by_run[int(runnumber)].add(daqhost)
+    for runnumber, possible_daqhosts in possible_daqhosts_by_run.items():
+        total_daqhosts_by_run[runnumber] = max(
+            possible_daqhosts - len(missing_daqhost_sets_by_run.get(runnumber, set())),
+            0,
+        )
 
     possible_segments_by_run = defaultdict(int)
     if neventsper:
@@ -331,32 +337,39 @@ def main():
             segment_depths.append(min(possible_segments, math.ceil(adjusted_events / neventsper)))
         total_segments_by_run[runnumber] = min(segment_depths) if segment_depths else 0
 
-    flagged_by_run = defaultdict(set)
-    for runnumber, dsttype in flagged:
-        flagged_by_run[int(runnumber)].add(dsttype)
+    reasons_by_run = defaultdict(set)
+    for runnumber, _ in flagged:
+        add_reason(reasons_by_run, runnumber, "low_event_ratio")
+    for runnumber, _ in not_on_lustre:
+        add_reason(reasons_by_run, runnumber, "not_on_lustre")
+    for runnumber in runs_without_gl1daq:
+        add_reason(reasons_by_run, runnumber, "missing_gl1daq")
+    for runnumber, possible_events in possible_events_by_run.items():
+        total_events = total_events_by_run.get(runnumber, 0)
+        expected_skipped = EXPECTED_SKIPPED_EVENTS_PER_DAQHOST * possible_daqhosts_by_run.get(runnumber, 0)
+        if possible_events and (total_events + expected_skipped) / possible_events < args.ratio_cut:
+            add_reason(reasons_by_run, runnumber, "low_run_event_ratio")
 
-    not_on_lustre_by_run = defaultdict(set)
-    for runnumber, daqhost in not_on_lustre:
-        not_on_lustre_by_run[int(runnumber)].add(daqhost)
-
+    expected_skipped_events_by_run = {
+        runnumber: EXPECTED_SKIPPED_EVENTS_PER_DAQHOST * possible_daqhosts
+        for runnumber, possible_daqhosts in possible_daqhosts_by_run.items()
+    }
     error_codes_by_run = query_error_codes(args, match, run_condition)
 
     all_report_runs = set(eventsinrun_by_run) | set(possible_events_by_run) | set(total_events_by_run)
-    report_path = output_path(args)
     write_csv_report(
         report_path,
         args,
         all_report_runs,
         possible_daqhosts_by_run,
-        missing_daqhosts_by_run,
+        total_daqhosts_by_run,
         possible_segments_by_run,
         total_segments_by_run,
         possible_events_by_run,
         total_events_by_run,
         error_codes_by_run,
-        flagged_by_run,
-        not_on_lustre_by_run,
-        runs_without_gl1daq,
+        reasons_by_run,
+        expected_skipped_events_by_run,
     )
 
     files_db_events = sum(total_events_by_run.values())
@@ -368,13 +381,49 @@ def main():
         f"({event_pct:.1f}%)."
     )
     INFO(f"Available: {raw_combo_events} \t Done {files_db_events}")
+    return True
+
+
+def main():
+    args = submission_args()
+    args.example_limit = max(0, args.example_limit)
+
+    from simpleLogger import slogger, set_log_timestamps_enabled
+    import logging
+    set_log_timestamps_enabled(False)
+    slogger.setLevel(logging.getLevelName(args.loglevel))
+
+    profiler = None
+    if args.profile:
+        DEBUG("Profiling is ENABLED.")
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+    rule, match = load_rule_and_match(args)
+    report_path = output_path(args)
+
+    if "raw" not in match.input_config.db:
+        ERROR(
+            f"Rule '{args.rulename}' is a downstream rule (db={match.input_config.db}). "
+            "generate_report.py only supports event-combiner/raw rules for now."
+        )
+        sys.exit(2)
+
+    wrote_report = generate_eventcombiner_report(args, rule, match, report_path)
 
     if args.report != "none":
         WARN("--report is accepted for argument compatibility but ignored by generate_report.py; CSV was written instead.")
     if args.delete:
         WARN("--delete is accepted for argument compatibility but ignored by generate_report.py.")
 
-    print(f"Report written to: {report_path}")
+    if wrote_report:
+        print(f"Result written to: {report_path}")
+
+    if profiler:
+        profiler.disable()
+        DEBUG("Profiling finished. Printing stats...")
+        stats = pstats.Stats(profiler)
+        stats.strip_dirs().sort_stats("time").print_stats(20)
 
 
 if __name__ == "__main__":
