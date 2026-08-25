@@ -99,10 +99,6 @@ def main():
         param_overrides["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case
         param_overrides["prodmode"]          = "production"
         param_overrides["check_legacy"]      = args.check_legacy
-        # For testing, "production" (close to the root of all paths) in the default filesystem) can be replaced
-        if args.mangle_dirpath:
-            param_overrides["prodmode"] = args.mangle_dirpath
-
         # Rest of the input substitutions
         if args.physicsmode is not None:
             param_overrides["physicsmode"] = args.physicsmode # e.g. physics

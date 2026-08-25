@@ -199,12 +199,7 @@ def base_batchname_from_args(args: argparse.Namespace) -> str:
     if args.physicsmode is not None:
         param_overrides["physicsmode"] = args.physicsmode
 
-    # filesystem is the base for all output, allow for mangling here
-    # "production" (in the default filesystem) is replaced
     param_overrides["prodmode"] = "production"
-    if args.mangle_dirpath:
-        param_overrides["prodmode"] = args.mangle_dirpath
-
     # Load specific rule from the given yaml file.
     try:
         rule = RuleConfig.from_yaml_file(

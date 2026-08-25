@@ -240,9 +240,6 @@ def main():
         param_overrides["physicsmode"] = args.physicsmode
 
     param_overrides["prodmode"] = "production"
-    if args.mangle_dirpath:
-        param_overrides["prodmode"] = args.mangle_dirpath
-
     try:
         rule = RuleConfig.from_yaml_file(
             yaml_file=args.config,

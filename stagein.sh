@@ -48,6 +48,9 @@ fi
 # Must be sourced so it can exit the calling wrapper on failure.
 # infile_paths.list format (from create_full_filelist_run_seg.py):
 #   full_file_path md5 size full_host_name
+stagein_wall_sec=${stagein_wall_sec:-0}
+_stagein_start=$(date +%s.%N)
+
 infile_paths="infile_paths.list"
 if [[ ! -s "${infile_paths}" ]]; then
     echo "ERROR: ${infile_paths} not found or empty. Cannot stage in files."
@@ -97,5 +100,9 @@ while IFS=' ' read -r full_file_path md5 size full_host_name; do
     echo "md5 check passed."
 
 done < "${infile_paths}"
+
+_stagein_end=$(date +%s.%N)
+_stagein_dt=$(awk "BEGIN {print ${_stagein_end} - ${_stagein_start}}")
+stagein_wall_sec=$(awk "BEGIN {print ${stagein_wall_sec} + ${_stagein_dt}}")
 
 return 0

@@ -75,12 +75,7 @@ def main():
     if args.physicsmode is not None:
         param_overrides["physicsmode"] = args.physicsmode # e.g. physics
 
-    # filesystem is the base for all output, allow for mangling here
-    # "production" (in the default filesystem) is replaced
     param_overrides["prodmode"] = "production"
-    if args.mangle_dirpath:
-        param_overrides["prodmode"] = args.mangle_dirpath
-
     CHATTY(f"Rule substitutions: {param_overrides}")
     INFO("Now loading and building rule configuration.")
 

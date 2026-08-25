@@ -880,8 +880,6 @@ def _load_rule_and_match(args) -> Tuple[Any, Any]:
         "check_legacy": args.check_legacy,
         "cut_segment": args.cut_segment,
     }
-    if args.mangle_dirpath:
-        param_overrides["prodmode"] = args.mangle_dirpath
     if args.physicsmode:
         param_overrides["physicsmode"] = args.physicsmode
 

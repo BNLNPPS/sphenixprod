@@ -12,6 +12,7 @@ odbc_test.ini
 *.pdf
 *.pkl
 *.json
+*.csv
 
 
 # For MacOS:

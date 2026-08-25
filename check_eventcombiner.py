@@ -49,8 +49,6 @@ def main():
     param_overrides["runlist"]  = args.runlist
     param_overrides["nevents"]  = args.nevents
     param_overrides["prodmode"] = "production"
-    if args.mangle_dirpath:
-        param_overrides["prodmode"] = args.mangle_dirpath
     if args.physicsmode:
         param_overrides["physicsmode"] = args.physicsmode
 
