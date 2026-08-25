@@ -15,6 +15,9 @@ if [ "$#" -lt "$MIN_ARG_COUNT" ] || [ "$#" -gt "$MAX_ARG_COUNT" ] ; then
     . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
 fi
 
+stageout_wall_sec=${stageout_wall_sec:-0}
+_stageout_start=$(date +%s.%N)
+
 filename=${1}
 destination=${2}
 dbid=${3:--1} # dbid for faster db lookup, -1 means no dbid
@@ -141,6 +144,10 @@ for try in $(seq 1 ${max_tries}); do
 done
 
 rm -v "${filename}"
+
+_stageout_end=$(date +%s.%N)
+_stageout_dt=$(awk "BEGIN {print ${_stageout_end} - ${_stageout_start}}")
+stageout_wall_sec=$(awk "BEGIN {print ${stageout_wall_sec} + ${_stageout_dt}}")
 
 if [ "${stageout_sourced}" -eq 1 ]; then
     return 0

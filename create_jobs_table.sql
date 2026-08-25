@@ -35,6 +35,10 @@ CREATE TABLE production_jobs (
     finished              TIMESTAMP WITH TIME ZONE,
     RemoteUserCpu         FLOAT,
     RemoteSysCpu          FLOAT,
+    ExecWallSec           FLOAT,
+    ExecCpuPercent        FLOAT,
+    StageInWallSec        FLOAT,
+    StageOutWallSec       FLOAT,
     MemoryUsage           INT,
     MemoryProvisioned     INT,
     DiskUsage             INT,
@@ -72,8 +76,12 @@ COMMENT ON COLUMN production_jobs.status IS 'The production status of the job.';
 COMMENT ON COLUMN production_jobs.submitted IS 'Timestamp when the job was submitted to the batch system. From Condor''s QDate attribute.';
 COMMENT ON COLUMN production_jobs.started IS 'Timestamp when the job execution began. From Condor''s JobStartDate attribute.';
 COMMENT ON COLUMN production_jobs.finished IS 'Timestamp when the job execution finished. From Condor''s CompletionDate attribute.';
-COMMENT ON COLUMN production_jobs.RemoteUserCpu IS 'User CPU time used by the job, in seconds. From Condor''s RemoteUserCpu attribute.';
-COMMENT ON COLUMN production_jobs.RemoteSysCpu IS 'System CPU time used by the job, in seconds. From Condor''s RemoteSysCpu attribute.';
+COMMENT ON COLUMN production_jobs.RemoteUserCpu IS 'User CPU time used by the payload command, in seconds. From /usr/bin/time.';
+COMMENT ON COLUMN production_jobs.RemoteSysCpu IS 'System CPU time used by the payload command, in seconds. From /usr/bin/time.';
+COMMENT ON COLUMN production_jobs.ExecWallSec IS 'Elapsed wall-clock seconds for the timed payload command, from /usr/bin/time.';
+COMMENT ON COLUMN production_jobs.ExecCpuPercent IS 'CPU percent for the timed payload command, from /usr/bin/time; computed as CPU time divided by elapsed wall time and can exceed 100 for multicore jobs.';
+COMMENT ON COLUMN production_jobs.StageInWallSec IS 'Aggregate wall-clock seconds spent in stagein.sh for this job.';
+COMMENT ON COLUMN production_jobs.StageOutWallSec IS 'Aggregate wall-clock seconds spent in stageout.sh for this job.';
 COMMENT ON COLUMN production_jobs.MemoryUsage IS 'Peak memory usage of the job, in MB. From Condor''s MemoryUsage attribute.';
 COMMENT ON COLUMN production_jobs.DiskUsage IS 'Peak disk usage of the job, in KB. From Condor''s DiskUsage attribute.';
 COMMENT ON COLUMN production_jobs.ExitCode IS 'The exit code of the job process. From Condor''s ExitCode attribute.';

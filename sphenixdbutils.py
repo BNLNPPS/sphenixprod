@@ -31,6 +31,10 @@ def get_parser():
     parser_jobended.add_argument('--sys-cpu', required=False, type=float, default=None, help='System CPU time (seconds), from /usr/bin/time -v.')
     parser_jobended.add_argument('--memory-kb', required=False, type=int, default=None, help='Peak RSS (KB), from /usr/bin/time -v. Stored as MB.')
     parser_jobended.add_argument('--disk-kb', required=False, type=int, default=None, help='Peak scratch disk usage (KB), from stageout polling.')
+    parser_jobended.add_argument('--exec-wall-sec', required=False, type=float, default=None, help='Payload elapsed wall time (seconds), from /usr/bin/time.')
+    parser_jobended.add_argument('--exec-cpu-percent', required=False, type=float, default=None, help='Payload CPU percent, from /usr/bin/time.')
+    parser_jobended.add_argument('--stagein-wall-sec', required=False, type=float, default=None, help='Aggregate stage-in wall time (seconds).')
+    parser_jobended.add_argument('--stageout-wall-sec', required=False, type=float, default=None, help='Aggregate stage-out wall time (seconds).')
     parser_jobended.add_argument('-n','--dryrun', action='store_true', help='Do not perform database updates.')
 
     return parser.parse_args()
@@ -297,7 +301,9 @@ def jobstarted(dbid: int, dryrun: bool = False):
 
 def jobended(dbid: int, exit_code: int, dryrun: bool = False,
              user_cpu: float = None, sys_cpu: float = None, memory_kb: int = None,
-             disk_kb: int = None):
+             disk_kb: int = None, exec_wall_sec: float = None,
+             exec_cpu_percent: float = None, stagein_wall_sec: float = None,
+             stageout_wall_sec: float = None):
     """
     Marks a job as ended in the production database.
     The final status is determined by the exit_code. Resource usage metrics
@@ -342,6 +348,14 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False,
         set_clauses.append(f"RemoteSysCpu = {sys_cpu}")
     if memory_kb is not None:
         set_clauses.append(f"MemoryUsage = {memory_kb // 1024}")
+    if exec_wall_sec is not None:
+        set_clauses.append(f"ExecWallSec = {exec_wall_sec}")
+    if exec_cpu_percent is not None:
+        set_clauses.append(f"ExecCpuPercent = {exec_cpu_percent}")
+    if stagein_wall_sec is not None:
+        set_clauses.append(f"StageInWallSec = {stagein_wall_sec}")
+    if stageout_wall_sec is not None:
+        set_clauses.append(f"StageOutWallSec = {stageout_wall_sec}")
     if disk_kb is None:
         # Try to read peak disk usage written by stageout.sh
         diskpeak_file = os.path.join(os.getenv("_CONDOR_SCRATCH_DIR", "/tmp"), "sphenixprod_diskpeak")
@@ -399,6 +413,10 @@ def mark_resubmitted(dbid: int, cluster_id: int, request_memory: int, dryrun: bo
             finished = NULL,
             RemoteUserCpu = NULL,
             RemoteSysCpu = NULL,
+            ExecWallSec = NULL,
+            ExecCpuPercent = NULL,
+            StageInWallSec = NULL,
+            StageOutWallSec = NULL,
             MemoryUsage = NULL,
             MemoryProvisioned = NULL,
             DiskUsage = NULL,
@@ -591,7 +609,10 @@ def main():
     elif args.command == 'jobended':
         jobended(dbid, getattr(args, 'exit_code', 1), args.dryrun,
                  user_cpu=args.user_cpu, sys_cpu=args.sys_cpu, memory_kb=args.memory_kb,
-                 disk_kb=args.disk_kb)
+                 disk_kb=args.disk_kb, exec_wall_sec=args.exec_wall_sec,
+                 exec_cpu_percent=args.exec_cpu_percent,
+                 stagein_wall_sec=args.stagein_wall_sec,
+                 stageout_wall_sec=args.stageout_wall_sec)
 
 
 if __name__ == '__main__':
