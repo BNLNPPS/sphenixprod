@@ -4,8 +4,9 @@ generate_report.py
 
 Generate a run-level CSV report for sPHENIX production rules.
 
-For now this supports raw/event-combiner rules. Downstream rules are detected
-and rejected explicitly so the macro name and CLI can be reused later.
+This supports raw/event-combiner rules and a first-pass downstream report.
+Downstream reporting starts with run-level possible-vs-present events and segments
+from production_jobs and the FileCatalog.
 """
 
 import cProfile
@@ -23,8 +24,6 @@ from sphenixmatching import MatchConfig
 from sphenixdbutils import cnxn_string_map, dbQuery
 from sphenixmisc import human_event_count
 
-
-EXPECTED_SKIPPED_EVENTS_PER_DAQHOST = 2
 
 
 CSV_COLUMNS = [
@@ -128,10 +127,12 @@ def write_csv_report(
     total_events_by_run,
     error_codes_by_run,
     reasons_by_run,
-    expected_skipped_events_by_run=None,
+    missing_event_tolerance_by_run=None,
 ):
     rows_written = 0
-    expected_skipped_events_by_run = expected_skipped_events_by_run or {}
+    complete_runs = 0
+    status_counts = defaultdict(int)
+    missing_event_tolerance_by_run = missing_event_tolerance_by_run or {}
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
@@ -145,17 +146,29 @@ def write_csv_report(
             missing_segments = max(possible_segments - total_segments, 0)
             possible_events = int(possible_events_by_run.get(runnumber, 0))
             total_events = int(total_events_by_run.get(runnumber, 0))
-            expected_skipped_events = int(expected_skipped_events_by_run.get(runnumber, 0))
-            missing_events = max(possible_events - total_events - expected_skipped_events, 0)
+            missing_event_tolerance = int(missing_event_tolerance_by_run.get(runnumber, 0))
+            missing_events = max(possible_events - total_events - missing_event_tolerance, 0)
             error_codes = error_codes_by_run.get(runnumber, set())
 
             reasons = set(reasons_by_run.get(runnumber, set()))
+            status_reasons = set(reasons)
             if missing_daqhosts:
                 reasons.add("missing_daqhosts")
+                status_reasons.add("missing_daqhosts")
             if missing_segments:
                 reasons.add("missing_segments")
+                status_reasons.add("missing_segments")
             if error_codes:
                 reasons.add("error_codes")
+                status_reasons.add("error_codes")
+
+            if missing_events:
+                status = "partial" if total_events else "missing"
+            else:
+                status = "questionable" if status_reasons - {"missing_production_jobs"} else "complete"
+            status_counts[status] += 1
+            if status == "complete":
+                complete_runs += 1
 
             writer.writerow({
                 "rule_name": args.rulename,
@@ -171,11 +184,18 @@ def write_csv_report(
                 "missing_events": missing_events,
                 "error_codes": csv_join(error_codes),
                 "incomplete_reasons": csv_join(reasons),
-                "status": "incomplete" if missing_events else ("questionable" if reasons else "complete"),
+                "status": status,
             })
             rows_written += 1
 
     INFO(f"Wrote {rows_written} run-level rows to {path}")
+    remainder = rows_written - complete_runs
+    INFO(
+        f"Complete runs: {complete_runs}; remainder: {remainder} "
+        f"(partial: {status_counts['partial']}; "
+        f"missing: {status_counts['missing']}; "
+        f"questionable: {status_counts['questionable']})"
+    )
 
 
 def normalized_neventsper(job_config):
@@ -185,6 +205,82 @@ def normalized_neventsper(job_config):
     except (TypeError, ValueError):
         return 0
 
+
+
+def segment_set(value):
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        return {int(part) for part in value.strip("{}").split(",") if part.strip()}
+    return {int(segment) for segment in value if segment is not None}
+
+
+def add_partial_segment_analysis(
+    possible_segments_by_run,
+    possible_events_by_run,
+    total_events_by_run,
+    present_segments_by_run,
+    missing_event_tolerance_by_run,
+    reasons_by_run,
+    example_limit,
+):
+    counts = defaultdict(int)
+    examples = defaultdict(list)
+    for runnumber in sorted(set(possible_events_by_run) | set(total_events_by_run)):
+        possible_events = int(possible_events_by_run.get(runnumber, 0))
+        total_events = int(total_events_by_run.get(runnumber, 0))
+        tolerance = int(missing_event_tolerance_by_run.get(runnumber, 0))
+        missing_events = max(possible_events - total_events - tolerance, 0)
+        if not missing_events or not total_events:
+            continue
+
+        possible_segments = int(possible_segments_by_run.get(runnumber, 0))
+        present_segments = set(present_segments_by_run.get(runnumber, set()))
+        if not possible_segments or not present_segments:
+            continue
+
+        expected_start = 0
+        expected_last = expected_start + possible_segments - 1
+        contiguous_end = expected_start - 1
+        while contiguous_end + 1 in present_segments:
+            contiguous_end += 1
+
+        max_present = max(present_segments)
+        if contiguous_end < max_present:
+            reason = "missing_segment_gaps"
+        elif max_present < expected_last:
+            reason = "missing_segment_tail"
+        else:
+            reason = "short_segment_events"
+            ERROR(
+                f"short_segment_events: run={runnumber}, "
+                f"possible_events={possible_events}, total_events={total_events}, "
+                f"missing_events={missing_events}, tolerance={tolerance}, "
+                f"possible_segments={possible_segments}, contiguous_end={contiguous_end}, "
+                f"max_present={max_present}, expected_last={expected_last}"
+            )
+
+        add_reason(reasons_by_run, runnumber, reason)
+        counts[reason] += 1
+        if len(examples[reason]) < example_limit:
+            examples[reason].append((runnumber, contiguous_end, max_present, expected_last))
+
+    if not counts:
+        INFO("Partial segment analysis: no partial runs with segment lists to classify.")
+        return
+
+    INFO(
+        "Partial segment analysis: "
+        f"tail={counts['missing_segment_tail']}, "
+        f"gaps={counts['missing_segment_gaps']}, "
+        f"short_events={counts['short_segment_events']}"
+    )
+    for reason in ("missing_segment_tail", "missing_segment_gaps", "short_segment_events"):
+        for runnumber, contiguous_end, max_present, expected_last in examples.get(reason, []):
+            DEBUG(
+                f"  {reason}: run={runnumber}, contiguous_end={contiguous_end}, "
+                f"max_present={max_present}, expected_last={expected_last}"
+            )
 
 
 def generate_eventcombiner_report(args, rule, match, report_path):
@@ -283,7 +379,7 @@ def generate_eventcombiner_report(args, rule, match, report_path):
         ratio = lastevent / eventsinrun
         msg = f"Run {runnumber} {dsttype}: lastevent={lastevent}, eventsinrun={eventsinrun}, ratio={ratio:.3f}"
         if ratio < args.ratio_cut:
-            WARN(msg)
+            DEBUG(msg)
             flagged.append((runnumber, dsttype))
         elif ratio < 0.999:
             CHATTY(msg)
@@ -333,7 +429,7 @@ def generate_eventcombiner_report(args, rule, match, report_path):
         segment_depths = []
         for daqhost in possible_hosts:
             output_events = output_events_by_run_host.get(runnumber, {}).get(daqhost, 0)
-            adjusted_events = output_events + EXPECTED_SKIPPED_EVENTS_PER_DAQHOST if output_events else 0
+            adjusted_events = output_events + args.missing_event_tolerance if output_events else 0
             segment_depths.append(min(possible_segments, math.ceil(adjusted_events / neventsper)))
         total_segments_by_run[runnumber] = min(segment_depths) if segment_depths else 0
 
@@ -346,13 +442,13 @@ def generate_eventcombiner_report(args, rule, match, report_path):
         add_reason(reasons_by_run, runnumber, "missing_gl1daq")
     for runnumber, possible_events in possible_events_by_run.items():
         total_events = total_events_by_run.get(runnumber, 0)
-        expected_skipped = EXPECTED_SKIPPED_EVENTS_PER_DAQHOST * possible_daqhosts_by_run.get(runnumber, 0)
-        if possible_events and (total_events + expected_skipped) / possible_events < args.ratio_cut:
+        missing_event_tolerance = args.missing_event_tolerance
+        if possible_events and (total_events + missing_event_tolerance) / possible_events < args.ratio_cut:
             add_reason(reasons_by_run, runnumber, "low_run_event_ratio")
 
-    expected_skipped_events_by_run = {
-        runnumber: EXPECTED_SKIPPED_EVENTS_PER_DAQHOST * possible_daqhosts
-        for runnumber, possible_daqhosts in possible_daqhosts_by_run.items()
+    missing_event_tolerance_by_run = {
+        runnumber: args.missing_event_tolerance
+        for runnumber in possible_daqhosts_by_run
     }
     error_codes_by_run = query_error_codes(args, match, run_condition)
 
@@ -369,7 +465,7 @@ def generate_eventcombiner_report(args, rule, match, report_path):
         total_events_by_run,
         error_codes_by_run,
         reasons_by_run,
-        expected_skipped_events_by_run,
+        missing_event_tolerance_by_run,
     )
 
     files_db_events = sum(total_events_by_run.values())
@@ -381,6 +477,137 @@ def generate_eventcombiner_report(args, rule, match, report_path):
         f"({event_pct:.1f}%)."
     )
     INFO(f"Available: {raw_combo_events} \t Done {files_db_events}")
+    return True
+
+
+def generate_downstream_report(args, rule, match, report_path):
+    goodruns = match.good_runlist()
+    if not goodruns:
+        INFO("No runs pass run quality cuts; no report written.")
+        return False
+
+    run_condition = match._run_condition(list(goodruns))
+    neventsper_default = normalized_neventsper(rule.job_config)
+
+    possible_query = f"""
+        SELECT runnumber,
+               MAX(eventsinrun) AS eventsinrun,
+               MAX(neventsper) AS neventsper,
+               MAX(maxjobsexpected) AS maxjobsexpected
+        FROM production_jobs
+        WHERE rulename={sql_literal(args.rulename)}
+          AND dataset={sql_literal(match.dataset)}
+          AND tag={sql_literal(match.outtriplet)}
+          AND dsttype={sql_literal(match.dsttype)}
+          AND {run_condition}
+        GROUP BY runnumber
+        ORDER BY runnumber
+    """
+    possible_rows = dbQuery(cnxn_string_map["statr"], possible_query).fetchall()
+    INFO(f"{len(possible_rows)} runs found in production_jobs for downstream possible counts.")
+
+    possible_events_by_run = defaultdict(int)
+    possible_segments_by_run = defaultdict(int)
+    neventsper_by_run = {}
+    for row in possible_rows:
+        runnumber = int(getattr(row, "runnumber", row[0]))
+        eventsinrun = getattr(row, "eventsinrun", row[1])
+        neventsper = getattr(row, "neventsper", row[2])
+        maxjobsexpected = getattr(row, "maxjobsexpected", row[3])
+
+        if eventsinrun is not None:
+            possible_events_by_run[runnumber] = int(eventsinrun)
+        if neventsper is not None:
+            neventsper_by_run[runnumber] = int(neventsper)
+        elif neventsper_default:
+            neventsper_by_run[runnumber] = neventsper_default
+        if maxjobsexpected is not None:
+            possible_segments_by_run[runnumber] = int(maxjobsexpected)
+
+    for runnumber, eventsinrun in goodruns.items():
+        if not possible_events_by_run.get(runnumber) and eventsinrun is not None:
+            possible_events_by_run[runnumber] = int(eventsinrun)
+        neventsper = neventsper_by_run.get(runnumber, neventsper_default)
+        if not possible_segments_by_run.get(runnumber) and possible_events_by_run.get(runnumber) and neventsper:
+            possible_segments_by_run[runnumber] = math.ceil(possible_events_by_run[runnumber] / neventsper)
+
+    output_query = f"""
+        SELECT runnumber,
+               COUNT(DISTINCT segment) AS total_segments,
+               SUM(events) AS total_events,
+               ARRAY_AGG(DISTINCT segment ORDER BY segment) AS segments
+        FROM datasets
+        WHERE dataset={sql_literal(match.dataset)}
+          AND tag={sql_literal(match.outtriplet)}
+          AND dsttype={sql_literal(match.dsttype)}
+          AND {run_condition}
+        GROUP BY runnumber
+        ORDER BY runnumber
+    """
+    output_rows = dbQuery(cnxn_string_map["fcr"], output_query).fetchall()
+    INFO(f"{len(output_rows)} runs found in FileCatalog for downstream output counts.")
+
+    total_segments_by_run = defaultdict(int)
+    total_events_by_run = defaultdict(int)
+    present_segments_by_run = defaultdict(set)
+    for row in output_rows:
+        runnumber = int(getattr(row, "runnumber", row[0]))
+        total_segments = getattr(row, "total_segments", row[1])
+        total_events = getattr(row, "total_events", row[2])
+        segments = getattr(row, "segments", row[3])
+        total_segments_by_run[runnumber] = int(total_segments or 0)
+        total_events_by_run[runnumber] = int(total_events or 0)
+        present_segments_by_run[runnumber] = segment_set(segments)
+
+    reasons_by_run = defaultdict(set)
+    prod_runs = {int(getattr(row, "runnumber", row[0])) for row in possible_rows}
+    for runnumber in sorted(set(goodruns) - prod_runs):
+        add_reason(reasons_by_run, runnumber, "missing_production_jobs")
+    for runnumber, possible_events in possible_events_by_run.items():
+        total_events = total_events_by_run.get(runnumber, 0)
+        if possible_events and (total_events + args.missing_event_tolerance) / possible_events < args.ratio_cut:
+            add_reason(reasons_by_run, runnumber, "low_run_event_ratio")
+
+    missing_event_tolerance_by_run = {
+        runnumber: args.missing_event_tolerance
+        for runnumber in set(goodruns) | set(possible_events_by_run) | set(total_events_by_run)
+    }
+    add_partial_segment_analysis(
+        possible_segments_by_run,
+        possible_events_by_run,
+        total_events_by_run,
+        present_segments_by_run,
+        missing_event_tolerance_by_run,
+        reasons_by_run,
+        args.example_limit,
+    )
+    error_codes_by_run = query_error_codes(args, match, run_condition)
+
+    all_report_runs = set(goodruns) | set(possible_events_by_run) | set(total_events_by_run)
+    write_csv_report(
+        report_path,
+        args,
+        all_report_runs,
+        defaultdict(int),
+        defaultdict(int),
+        possible_segments_by_run,
+        total_segments_by_run,
+        possible_events_by_run,
+        total_events_by_run,
+        error_codes_by_run,
+        reasons_by_run,
+        missing_event_tolerance_by_run,
+    )
+
+    files_db_events = sum(total_events_by_run.values())
+    possible_events = sum(possible_events_by_run.values())
+    event_pct = 100.0 * files_db_events / possible_events if possible_events else 0.0
+    INFO(
+        f"Summary: FileCatalog has {human_event_count(files_db_events)}/"
+        f"{human_event_count(possible_events)} possible downstream events "
+        f"({event_pct:.1f}%)."
+    )
+    INFO(f"Available: {possible_events} \t Done {files_db_events}")
     return True
 
 
@@ -402,14 +629,10 @@ def main():
     rule, match = load_rule_and_match(args)
     report_path = output_path(args)
 
-    if "raw" not in match.input_config.db:
-        ERROR(
-            f"Rule '{args.rulename}' is a downstream rule (db={match.input_config.db}). "
-            "generate_report.py only supports event-combiner/raw rules for now."
-        )
-        sys.exit(2)
-
-    wrote_report = generate_eventcombiner_report(args, rule, match, report_path)
+    if "raw" in match.input_config.db:
+        wrote_report = generate_eventcombiner_report(args, rule, match, report_path)
+    else:
+        wrote_report = generate_downstream_report(args, rule, match, report_path)
 
     if args.report != "none":
         WARN("--report is accepted for argument compatibility but ignored by generate_report.py; CSV was written instead.")

@@ -185,6 +185,25 @@ def _warn_about_home_outfile(outfile: str) -> None:
         WARN("Do not generate large deletion work lists in your home directory; use /tmp or a scratch area.")
 
 
+def _format_bytes(num_bytes: int) -> str:
+    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+    value = float(num_bytes)
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.1f} {unit}" if unit != "B" else f"{num_bytes} B"
+        value /= 1024
+
+
+def _disk_free_for_outfile(outfile: str):
+    outpath = Path(outfile).expanduser()
+    parent = outpath if outpath.exists() and outpath.is_dir() else outpath.parent
+    while not parent.exists():
+        if parent.parent == parent:
+            return None, None
+        parent = parent.parent
+    usage = shutil.disk_usage(str(parent))
+    return parent.resolve(), usage.free
+
 
 def cmd_generate(args):
     runs = _resolve_runs(args)
@@ -202,7 +221,8 @@ WHERE  {run_cond}
   AND  {_sql_cond('d.tag',     args.tag)}
 """
     estimate_query = f"""
-SELECT COUNT(*)
+SELECT COUNT(*) AS entries,
+       COALESCE(SUM(LENGTH(COALESCE(f.lfn::text, '')) + 1 + LENGTH(COALESCE(f.full_file_path::text, '')) + 1), 0) AS tsv_bytes
 FROM   files f
 LEFT JOIN datasets d ON f.lfn = d.filename
 {where_clause}
@@ -232,10 +252,20 @@ LIMIT {args.fetch_size}
         return
 
     estimate_curs = _db_query(_FCR, estimate_query)
-    estimated_entries = int(estimate_curs.fetchone()[0])
+    estimate_row = estimate_curs.fetchone()
+    estimated_entries = int(estimate_row[0])
+    estimated_tsv_bytes = int(estimate_row[1])
     _close_cursor(estimate_curs)
+    header_bytes = len(f"# dataset: {args.dataset}\n# dsttype: {args.dsttype}\n# tag:     {args.tag}\n".encode("utf-8"))
+    estimated_output_bytes = estimated_tsv_bytes + header_bytes
     estimated_lines = estimated_entries + 3
-    INFO(f"Estimated output size: {estimated_entries:,} entries, about {estimated_lines:,} TSV lines including header. RSS {_rss_mb()} MB.")
+    disk_path, disk_free = _disk_free_for_outfile(args.outfile)
+    disk_note = "disk free unavailable"
+    if disk_free is not None:
+        disk_note = f"{_format_bytes(disk_free)} free on {disk_path}"
+        if estimated_output_bytes > disk_free:
+            disk_note += " [estimated output exceeds free space]"
+    INFO(f"Estimated output size: {estimated_entries:,} entries, about {estimated_lines:,} TSV lines / {_format_bytes(estimated_output_bytes)} including header; {disk_note}. RSS {_rss_mb()} MB.")
 
     count = 0
     last_lfn = None

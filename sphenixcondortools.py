@@ -65,7 +65,7 @@ condor_monitor_attrs = [
     'JobStatus',  'QDate', 'CompletionDate',
     'ExitCode', 'HoldReason', 'RemoveReason',
     'RemoteHost', 'NumJobStarts',
-    'ResidentSetSize', 'MemoryProvisioned', 'LastHoldReasonCode',
+    'ResidentSetSize', 'MemoryProvisioned', 'HoldReasonCode', 'HoldReasonSubCode',
     'EnteredCurrentStatus',
         # Important for cloning
     'Owner', 'JobBatchName','Environment', 'JobPrio',

@@ -18,6 +18,8 @@ def _base_arguments(parser, allow_runs=True, require_run_selection=False):
     parser.add_argument('--dryrun', '--no-submit', '-n',
                         help="Job will not be submitted, DBs not updated. Just print things", dest="dryrun", action="store_true")
     parser.add_argument('--profile', help="Enable profiling", action="store_true")
+    parser.add_argument('-f', '--force', dest="force", default=False, action="store_true",
+                        help="Force handling of unusual or normally skipped conditions.")
 
     vgroup = parser.add_argument_group('Logging level')
     exclusive_vgroup = vgroup.add_mutually_exclusive_group()
@@ -104,6 +106,8 @@ def submission_args(allow_runs=True):
                         help="(checkers) Plain stdout report to print at the end (default: none).")
     parser.add_argument('--output', dest='output', default=None,
                         help="(checkers) Write flagged work units to this file.")
+    parser.add_argument('--missing-event-tolerance', dest='missing_event_tolerance', default=200, type=int,
+                        help="(generate_report) Missing events allowed before a run is marked incomplete (default: 200).")
     parser.add_argument('--delete', dest='delete', action='store_true', default=False,
                         help="(checkers) Delete incomplete bookkeeping rows. Requires --andgo to execute; otherwise dry-run.")
     parser.add_argument('--mismatch-delete', dest='mismatch_delete', action='store_true', default=False,

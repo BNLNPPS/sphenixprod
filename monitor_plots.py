@@ -147,7 +147,7 @@ def main():
             hold_reason = job_ad.get('HoldReason', 'Not Available')
             job_id = f"{job_ad.get('ClusterId')}.{job_ad.get('ProcId')}"
             DEBUG(f"Job {job_id} held with mu ({mu:.0f}MB) < rm ({rm}MB). Reason: {hold_reason}")
-            reason_code = job_ad.get('LastHoldReasonCode', 0) # Default to 0 (None)
+            reason_code = job_ad.get('HoldReasonCode', 0) # Default to 0 (None)
             if reason_code !=26 :
                 WARN(f'Job {job_id} held with mu ({mu:.0f}MB) < rm ({rm}MB). Reason Code {reason_code}:\n\t"{hold_reason}"')
             under_memory_hold_reasons[reason_code] += 1

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from pathlib import Path
-import collections
 import pickle
 import json
 
@@ -18,6 +17,9 @@ from sphenixcondortools import (
 )
 from sphenixdbutils import mark_killed, mark_resubmitted
 import htcondor2 as htcondor # type: ignore
+
+MEMORY_HOLD_REASON_CODE = 34
+MEMORY_HOLD_REASON_SUBCODE = 102
 
 def main():
     args = monitor_args()
@@ -44,25 +46,32 @@ def main():
 
     INFO(f"Found {len(jobs)} total jobs, {len(held_jobs_ads)} of which are held.")
 
-    held_memory_usage = []
-    held_request_memory = []
     kill_suggestion = []
-    under_memory_hold_reasons = collections.Counter()
+    nonstandard_hold_jobs = []
     for job_ad in held_jobs_ads:
-        # MemoryUsage and RequestMemory are in MB
-        mu = int(job_ad.get('ResidentSetSize', 0))/1024  # Convert from KB to MB
+        # MemoryProvisioned is in MB. Use it as the basis for the increased request.
         rm = int(job_ad.get('MemoryProvisioned', 0))
-        held_memory_usage.append(mu)
-        held_request_memory.append(rm)
-        # If memory usage is below request, it's interesting to see why it's held.
-        if mu < rm:
-            hold_reason = job_ad.get('HoldReason', 'Not Available')
-            job_id = f"{job_ad.get('ClusterId')}.{job_ad.get('ProcId')}"
-            DEBUG(f"Job {job_id} held with mu ({mu:.0f}MB) < rm ({rm}MB). Reason: {hold_reason}")
-            reason_code = job_ad.get('LastHoldReasonCode', 0) # Default to 0 (None)
-            if reason_code !=26 :
-                WARN(f'Job {job_id} held with mu ({mu:.0f}MB) < rm ({rm}MB). Reason Code {reason_code}:\n\t"{hold_reason}"')
-            under_memory_hold_reasons[reason_code] += 1
+        hold_reason = job_ad.get('HoldReason', 'Not Available')
+        job_id = f"{job_ad.get('ClusterId')}.{job_ad.get('ProcId')}"
+        reason_code = job_ad.get('HoldReasonCode', 0)
+        reason_subcode = job_ad.get('HoldReasonSubCode', 0)
+        standard_memory_hold = (
+            reason_code == MEMORY_HOLD_REASON_CODE
+            and reason_subcode == MEMORY_HOLD_REASON_SUBCODE
+        )
+        if not standard_memory_hold:
+            if args.force:
+                WARN(
+                    f'Job {job_id} held for nonstandard reason; treating anyway because --force was set. \n'
+                    f'HoldReasonCode={reason_code}, HoldReasonSubCode={reason_subcode}:\n\t"{hold_reason}"'
+                )
+            else:
+                WARN(
+                    f'Job {job_id} held for nonstandard reason; skipping. \n'
+                    f'HoldReasonCode={reason_code}, HoldReasonSubCode={reason_subcode}:\n\t"{hold_reason}"'
+                )
+                nonstandard_hold_jobs.append(job_id)
+                continue
 
         # Now let's kill and resubmit this job
         dbid = production_dbid_from_job_ad(job_ad)
@@ -126,7 +135,13 @@ def main():
             INFO(f"You may want to kill them manually: \n{' '.join(kill_procs)}")
 
 
-    INFO(f"{Path(__file__).name} DONE.")
+    if nonstandard_hold_jobs:
+        ERROR(
+            f"{Path(__file__).name} DONE with errors: "
+            f"{len(nonstandard_hold_jobs)} held job(s) were not treated because of nonstandard hold reasons."
+        )
+    else:
+        INFO(f"{Path(__file__).name} DONE.")
 
 if __name__ == '__main__':
     main()

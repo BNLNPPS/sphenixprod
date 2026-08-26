@@ -135,6 +135,20 @@ class MatchConfig:
         return self._exact_run_condition(runnumbers)
 
     # ------------------------------------------------
+    def _eventsinrun_from_daq(self, runlist_to_check: List[int]) -> Dict[int, int]:
+        run_condition = self._exact_run_condition(runlist_to_check)
+        if not run_condition:
+            return {}
+        events_query = f"""
+select runnumber, eventsinrun
+from run
+where {run_condition}
+order by runnumber
+;"""
+        rows = dbQuery(cnxn_string_map["daqr"], events_query).fetchall()
+        return {int(r): int(e) for r, e in rows if e is not None}
+
+    # ------------------------------------------------
     def _eventsinrun_from_raw(self, runlist_to_check: List[int]) -> Dict[int, int]:
         run_condition = self._exact_run_condition(runlist_to_check)
         events_query = f"""
@@ -147,6 +161,15 @@ order by runnumber
 ;"""
         rows = dbQuery(cnxn_string_map["rawr"], events_query).fetchall()
         eventsinrun_by_run = {int(r): int(e) for r, e in rows if e is not None}
+        negative_runs = sorted(run for run, events in eventsinrun_by_run.items() if events < 0)
+        if negative_runs:
+            WARN(f"Raw gl1daq event count is negative for run(s): {negative_runs}; falling back to DAQ run table.")
+            daq_events = self._eventsinrun_from_daq(negative_runs)
+            for run in negative_runs:
+                if daq_events.get(run) is None:
+                    WARN(f"Run {run}: no DAQ eventsinrun fallback found; keeping raw value {eventsinrun_by_run[run]}.")
+                    continue
+                eventsinrun_by_run[run] = daq_events[run]
         missing = sorted(set(runlist_to_check) - set(eventsinrun_by_run))
         if missing:
             WARN(f"No raw gl1daq event count found for run(s): {missing}")
