@@ -44,12 +44,16 @@ def _dst_streaming_event_run2():
         |  {  "ebdc39"        :  "ebdc39" }
 
 
-def input_stem_for_rule(dsttype, dataset):
+def input_stem_for_rule(dsttype, dataset, inputmode=None):
     if "run2" in (dataset or ""):
         if dsttype == "DST_STREAMING_EVENT":
             return _dst_streaming_event_run2()
         if dsttype in ("DST_TRKR_CLUSTER", "DST_TRKR_MVTXME"):
             return list("DST_STREAMING_EVENT_" + LEAF for LEAF in _dst_streaming_event_run2().keys())
+        if dsttype == "DST_TRKR_SEED" and inputmode == "input4polyseed":
+            return list("DST_STREAMING_EVENT_" + LEAF for LEAF in _dst_streaming_event_run2().keys())
+    if dsttype == "DST_TRKR_SEED" and inputmode == "input4polyseed":
+        return list("DST_STREAMING_EVENT_" + LEAF for LEAF in inputs_from_output["DST_STREAMING_EVENT"].keys())
     return inputs_from_output[dsttype]
 
 

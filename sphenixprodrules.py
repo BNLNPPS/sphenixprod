@@ -99,6 +99,7 @@ class InputConfig:
     input_stem:      Any = None        # Frozen input descriptor selected at rule instantiation
     # Rule name. Sometimes needed to identify input files
     rule_name: str = None
+    inputmode: str = None
     # Run Quality
     min_run_events:   Optional[int] = None
     min_run_time:     Optional[int] = None
@@ -270,11 +271,13 @@ class RuleConfig:
                                 "cut_segment",
                                 "infile_query_constraints",
                                 "status_query_constraints","physicsmode",
+                                "inputmode",
                                 "min_seb"] )
 
         intriplet=input_data.get("intriplet")
+        inputmode=input_data.get("inputmode")
         dsttype=params_data["dsttype"]
-        input_stem = input_stem_for_rule(dsttype, dataset)
+        input_stem = input_stem_for_rule(dsttype, dataset, inputmode)
         CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
         if isinstance(input_stem, dict):
             indsttype = list(input_stem.values())
@@ -337,6 +340,7 @@ class RuleConfig:
             indsttype_str=indsttype_str,
             input_stem=input_stem,
             rule_name=rule_name,
+            inputmode=inputmode,
             min_run_events=min_run_events,
             min_run_time=min_run_time,
             combine_seg0_only=combine_seg0_only,
