@@ -18,7 +18,7 @@ BEGIN
     END IF;
 END$$;
 
-CREATE TABLE production_jobs (
+CREATE TABLE IF NOT EXISTS production_jobs (
     id                    SERIAL                  PRIMARY KEY,
     ClusterId             BIGINT,
     ProcId                INT,
@@ -29,7 +29,7 @@ CREATE TABLE production_jobs (
     filename              TEXT,
     runnumber             INT                     NOT NULL,
     segment               INT,
-    status                prodstate,
+    status                prodstate                NOT NULL DEFAULT 'submitting',
     submitted             TIMESTAMP WITH TIME ZONE  DEFAULT CURRENT_TIMESTAMP,
     started               TIMESTAMP WITH TIME ZONE,
     finished              TIMESTAMP WITH TIME ZONE,
@@ -103,10 +103,11 @@ COMMENT ON COLUMN production_jobs.eventsinrun IS 'Total number of events in the 
 COMMENT ON COLUMN production_jobs.maxjobsexpected IS 'Expected maximum number of jobs for this run, derived from eventsinrun and neventsper.';
 
 -- Create indexes on frequently queried columns for better performance.
-CREATE INDEX ON production_jobs (runnumber);
-CREATE INDEX ON production_jobs (status);
-CREATE INDEX ON production_jobs (rulename);
-CREATE INDEX ON production_jobs (tag);
+CREATE INDEX IF NOT EXISTS production_jobs_runnumber_idx ON production_jobs (runnumber);
+CREATE INDEX IF NOT EXISTS production_jobs_status_idx ON production_jobs (status);
+CREATE INDEX IF NOT EXISTS production_jobs_rulename_idx ON production_jobs (rulename);
+CREATE INDEX IF NOT EXISTS production_jobs_tag_idx ON production_jobs (tag);
 
--- A composite unique index can be useful for queries that filter on both cluster and process id.
-CREATE UNIQUE INDEX production_jobs_cluster_process_id_idx ON production_jobs (ClusterId, ProcId);
+-- Condor cluster.process ids are useful for lookup, but are not globally unique.
+CREATE INDEX IF NOT EXISTS production_jobs_cluster_process_id_idx ON production_jobs (ClusterId, ProcId)
+    WHERE ClusterId IS NOT NULL AND ProcId IS NOT NULL;
