@@ -7,9 +7,27 @@ fi
 
 MIN_ARG_COUNT=2
 MAX_ARG_COUNT=3
+stageout_copy_command=dd
+stageout_args=()
+for arg in "$@"; do
+    case "${arg}" in
+        --use-cp|--cp)
+            stageout_copy_command=cp
+            ;;
+        --use-dd|--dd)
+            stageout_copy_command=dd
+            ;;
+        *)
+            stageout_args+=("${arg}")
+            ;;
+    esac
+done
+set -- "${stageout_args[@]}"
+
 if [ "$#" -lt "$MIN_ARG_COUNT" ] || [ "$#" -gt "$MAX_ARG_COUNT" ] ; then
     echo "Unsupported call:"
-    echo $0 $@
+    echo "$0 $*"
+    echo "Supported copy flags: --use-dd (default), --use-cp"
     echo Abort.
     status_f4a=2
     . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
@@ -119,23 +137,28 @@ fi
 
 mkdir -p "${destination}"
 
-dd_dest="${destination}/${destname}"
+copy_dest="${destination}/${destname}"
 max_tries=2
 
 for try in $(seq 1 ${max_tries}); do
-    echo dd if="${filename}" of="${dd_dest}" bs=12MB
-    dd if="${filename}" of="${dd_dest}" bs=12MB 2>&1 | awk '
-        /records in|records out/ { next }
-        /copied/ { print; next }
-        { print > "/dev/stderr" }
-    '
+    if [ "${stageout_copy_command}" = "cp" ]; then
+        echo cp -p "${filename}" "${copy_dest}"
+        cp -p "${filename}" "${copy_dest}"
+    else
+        echo dd if="${filename}" of="${copy_dest}" bs=12MB
+        dd if="${filename}" of="${copy_dest}" bs=12MB 2>&1 | awk '
+            /records in|records out/ { next }
+            /copied/ { print; next }
+            { print > "/dev/stderr" }
+        '
+    fi
 
-    dest_size=$(stat -c '%s' "${dd_dest}" 2>/dev/null)
+    dest_size=$(stat -c '%s' "${copy_dest}" 2>/dev/null)
     if [ "${dest_size}" = "${size}" ]; then
         break
     fi
     echo "Size mismatch on attempt ${try}/${max_tries} (expected ${size}, got ${dest_size:-<missing>})."
-    rm -f "${dd_dest}"
+    rm -f "${copy_dest}"
     if [ ${try} -eq ${max_tries} ]; then
         echo "ERROR: All ${max_tries} attempts failed. Giving up."
         status_f4a=31
