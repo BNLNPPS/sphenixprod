@@ -274,7 +274,7 @@ class RuleConfig:
 
         intriplet=input_data.get("intriplet")
         dsttype=params_data["dsttype"]
-        input_stem = input_stem_for_rule(dsttype, dataset)
+        input_stem = input_stem_for_rule(dsttype, dataset, rule_name)
         CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
         if isinstance(input_stem, dict):
             indsttype = list(input_stem.values())
@@ -324,7 +324,7 @@ class RuleConfig:
         DEBUG(f"Input query constraints: {infile_query_constraints}" )
         DEBUG(f"Status query constraints: {status_query_constraints}" )
 
-        default_min_seb = len(required_seb_hosts(dsttype)) or 20
+        default_min_seb = len(required_seb_hosts(dsttype, dataset, rule_name, input_stem)) or 20
         min_seb = input_data.get("min_seb", default_min_seb)
         if "min_seb" in input_data and min_seb != default_min_seb:
             WARN(f"Non-default min_seb={min_seb} (default is {default_min_seb}).")
