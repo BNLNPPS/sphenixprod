@@ -8,26 +8,46 @@ fi
 MIN_ARG_COUNT=2
 MAX_ARG_COUNT=3
 stageout_copy_command=dd
+stageout_ddflags="bs=12MB"
 stageout_args=()
-for arg in "$@"; do
-    case "${arg}" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         --use-cp|--cp)
             stageout_copy_command=cp
+            shift
             ;;
         --use-dd|--dd)
             stageout_copy_command=dd
+            shift
+            ;;
+        --ddflags=*)
+            stageout_ddflags="${1#*=}"
+            shift
+            ;;
+        --ddflags)
+            if [ $# -lt 2 ]; then
+                echo "ERROR: --ddflags requires an argument"
+                status_f4a=2
+                . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
+            fi
+            stageout_ddflags="$2"
+            shift 2
             ;;
         *)
-            stageout_args+=("${arg}")
+            stageout_args+=("$1")
+            shift
             ;;
     esac
 done
 set -- "${stageout_args[@]}"
+read -r -a stageout_dd_args <<< "${stageout_ddflags}"
 
 if [ "$#" -lt "$MIN_ARG_COUNT" ] || [ "$#" -gt "$MAX_ARG_COUNT" ] ; then
     echo "Unsupported call:"
     echo "$0 $*"
+    echo "Usage: $0 <filename> <destination> [dbid] [--use-dd|--use-cp] [--ddflags FLAGS]"
     echo "Supported copy flags: --use-dd (default), --use-cp"
+    echo "Supported dd flags: --ddflags FLAGS (default: ${stageout_ddflags})"
     echo Abort.
     status_f4a=2
     . ${SPHENIXPROD_SCRIPT_PATH}/common_runscript_finish.sh
@@ -145,8 +165,8 @@ for try in $(seq 1 ${max_tries}); do
         echo cp -p "${filename}" "${copy_dest}"
         cp -p "${filename}" "${copy_dest}"
     else
-        echo dd if="${filename}" of="${copy_dest}" bs=12MB
-        dd if="${filename}" of="${copy_dest}" bs=12MB 2>&1 | awk '
+        echo dd if="${filename}" of="${copy_dest}" "${stageout_dd_args[@]}"
+        dd if="${filename}" of="${copy_dest}" "${stageout_dd_args[@]}" 2>&1 | awk '
             /records in|records out/ { next }
             /copied/ { print; next }
             { print > "/dev/stderr" }
