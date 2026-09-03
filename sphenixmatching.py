@@ -692,7 +692,7 @@ order by runnumber
 
             # Calo hardcoding
             min_seb=self.input_config.min_seb
-            required_seb = required_seb_hosts(self.dsttype)
+            required_seb = required_seb_hosts(self.dsttype, self.dataset, self.input_config.rule_name, self.input_config.input_stem)
             if required_seb:
                 # 1. How many required SEB hosts are turned on in this run according to the daq db?
                 available_required_seb = available_seb.intersection(required_seb)

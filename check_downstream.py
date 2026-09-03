@@ -996,7 +996,7 @@ def main():
     input_rows = _query_inputs(match, runnumbers)
     INFO(f"{len(input_rows)} available input FileCatalog rows found.")
 
-    required_hosts = required_daqhosts(match.dsttype)
+    required_hosts = required_daqhosts(match.dsttype, match.dataset, match.input_config.rule_name, match.input_config.input_stem)
     daqhost_failed_runs: Set[int] = set()
     daqhost_failed_units: List[Tuple[int, int]] = []
     raw_available_by_run: Dict[int, int] = {}
