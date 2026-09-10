@@ -161,8 +161,8 @@ def main():
         if binary_contains_bisect(rule.runlist_int,run):  # Safety net to move only specified runs
             fullpath,nevents,first,last,md5,size,ctime,dbid = parse_spiderstuff(file)
             if dbid <= 0:
-                ERROR("dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
-                exit(0)
+                ERROR(f"dbid is {dbid}. Can happen for legacy files, but it shouldn't currently.")
+                # exit(0)
             info=filedb_info(dsttype,run,seg,fullpath,nevents,first,last,md5,size,ctime)
             mvfiles_info.append( (file,info) )
 

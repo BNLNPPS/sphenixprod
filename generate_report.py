@@ -60,6 +60,10 @@ def csv_join(values):
     return ";".join(str(value) for value in sorted(values, key=str))
 
 
+def sql_in_list(values):
+    return "(" + ",".join(sql_literal(value) for value in values) + ")"
+
+
 
 
 def output_path(args):
@@ -152,9 +156,6 @@ def write_csv_report(
 
             reasons = set(reasons_by_run.get(runnumber, set()))
             status_reasons = set(reasons)
-            if missing_daqhosts:
-                reasons.add("missing_daqhosts")
-                status_reasons.add("missing_daqhosts")
             if missing_segments:
                 reasons.add("missing_segments")
                 status_reasons.add("missing_segments")
@@ -531,6 +532,36 @@ def generate_downstream_report(args, rule, match, report_path):
         if not possible_segments_by_run.get(runnumber) and possible_events_by_run.get(runnumber) and neventsper:
             possible_segments_by_run[runnumber] = math.ceil(possible_events_by_run[runnumber] / neventsper)
 
+    input_dsttypes = list(match.in_types or [])
+    possible_daqhosts_by_run = defaultdict(int, {int(runnumber): len(input_dsttypes) for runnumber in goodruns})
+    total_daqhosts_by_run = defaultdict(int)
+    if input_dsttypes:
+        input_tag_clause = (
+            f"AND tag={sql_literal(match.input_config.intriplet)}"
+            if match.input_config.intriplet
+            else ""
+        )
+        input_constraints = match.input_config.infile_query_constraints or ""
+        input_coverage_query = f"""
+            SELECT runnumber,
+                   COUNT(DISTINCT dsttype) AS total_daqhosts
+            FROM {match.input_config.table}
+            WHERE dsttype IN {sql_in_list(input_dsttypes)}
+              {input_tag_clause}
+              AND {run_condition}
+              {input_constraints}
+            GROUP BY runnumber
+            ORDER BY runnumber
+        """
+        input_coverage_rows = dbQuery(cnxn_string_map[match.input_config.db], input_coverage_query).fetchall()
+        INFO(f"{len(input_coverage_rows)} runs found in FileCatalog for downstream input dsttype coverage.")
+        for row in input_coverage_rows:
+            runnumber = int(getattr(row, "runnumber", row[0]))
+            total_daqhosts = getattr(row, "total_daqhosts", row[1])
+            total_daqhosts_by_run[runnumber] = int(total_daqhosts or 0)
+    else:
+        WARN("No input dsttypes configured for downstream input coverage counts.")
+
     output_query = f"""
         SELECT runnumber,
                COUNT(DISTINCT segment) AS total_segments,
@@ -588,8 +619,8 @@ def generate_downstream_report(args, rule, match, report_path):
         report_path,
         args,
         all_report_runs,
-        defaultdict(int),
-        defaultdict(int),
+        possible_daqhosts_by_run,
+        total_daqhosts_by_run,
         possible_segments_by_run,
         total_segments_by_run,
         possible_events_by_run,

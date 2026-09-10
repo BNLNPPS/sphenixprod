@@ -277,11 +277,7 @@ class RuleConfig:
         intriplet=input_data.get("intriplet")
         inputmode=input_data.get("inputmode")
         dsttype=params_data["dsttype"]
-<<<<<<< HEAD
-        input_stem = input_stem_for_rule(dsttype, dataset, inputmode)
-=======
-        input_stem = input_stem_for_rule(dsttype, dataset, rule_name)
->>>>>>> main
+        input_stem = input_stem_for_rule(dsttype, dataset, rule_name=rule_name, inputmode=inputmode)
         CHATTY( f'Input files are of the form:\n{pprint.pformat(input_stem)}')
         if isinstance(input_stem, dict):
             indsttype = list(input_stem.values())

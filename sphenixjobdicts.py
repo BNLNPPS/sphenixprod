@@ -44,7 +44,7 @@ def _dst_streaming_event_run2():
         |  {  "ebdc39"        :  "ebdc39" }
 
 
-def input_stem_for_rule(dsttype, dataset, rule_name=None):
+def input_stem_for_rule(dsttype, dataset, rule_name=None, inputmode=None):
     if rule_name and "HCALCOSMICS" in rule_name and dsttype == "DST_CALOFITTING":
         return [
             "DST_TRIGGERED_EVENT_seb16",
@@ -64,7 +64,7 @@ def input_stem_for_rule(dsttype, dataset, rule_name=None):
 
 def required_seb_hosts(dsttype, dataset=None, rule_name=None, input_stem=None):
     if input_stem is None:
-        input_stem = input_stem_for_rule(dsttype, dataset, rule_name)
+        input_stem = input_stem_for_rule(dsttype, dataset, rule_name=rule_name)
     input_types = input_stem.values() if isinstance(input_stem, dict) else input_stem
     prefix = 'DST_TRIGGERED_EVENT_'
     return {
