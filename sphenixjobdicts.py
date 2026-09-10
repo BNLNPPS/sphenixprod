@@ -16,6 +16,7 @@ inputs_from_output['DST_TRKR_SEED']    = ['DST_TRKR_CLUSTER']
 
 # Tracks: From clusters and seeds, i.e. 2-1
 inputs_from_output['DST_TRKR_TRACKS']  = ['DST_TRKR_SEED']
+inputs_from_output['DST_COMBINED']     = list('DST_STREAMING_EVENT_' + LEAF for LEAF in inputs_from_output['DST_STREAMING_EVENT'].keys())
 
 ### Calorimeters -
 # Physical detectors are triggered

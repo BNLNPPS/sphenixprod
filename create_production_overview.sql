@@ -39,7 +39,7 @@ DECLARE
     v_prod_type TEXT;
 BEGIN
     v_prod_type := CASE
-        WHEN NEW.dsttype LIKE 'DST_STREAMING_EVENT%' OR NEW.dsttype LIKE 'DST_TRKR_%'
+        WHEN NEW.dsttype LIKE 'DST_STREAMING_EVENT%' OR NEW.dsttype LIKE 'DST_TRKR_%' OR NEW.dsttype = 'DST_COMBINED'
             THEN 'tracking'
         WHEN NEW.dsttype LIKE 'DST_TRIGGERED_EVENT%'
           OR NEW.dsttype IN ('DST_CALOFITTING', 'DST_CALO', 'DST_JETS', 'DST_JETCALO')

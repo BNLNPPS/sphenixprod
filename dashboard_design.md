@@ -16,7 +16,7 @@ The production type is inferred unambiguously from `dsttype`:
 
 | production_type | dsttype patterns |
 |---|---|
-| `tracking` | `DST_STREAMING_EVENT%`, `DST_TRKR_%` |
+| `tracking` | `DST_STREAMING_EVENT%`, `DST_TRKR_%`, `DST_COMBINED` |
 | `calo` | `DST_TRIGGERED_EVENT%`, `DST_CALOFITTING`, `DST_CALO`, `DST_JETS`, `DST_JETCALO` |
 
 Source of truth for all current dsttypes: [sphenixjobdicts.py](sphenixjobdicts.py).
@@ -101,7 +101,7 @@ DECLARE
     v_prod_type TEXT;
 BEGIN
     v_prod_type := CASE
-        WHEN NEW.dsttype LIKE 'DST_STREAMING_EVENT%' OR NEW.dsttype LIKE 'DST_TRKR_%'
+        WHEN NEW.dsttype LIKE 'DST_STREAMING_EVENT%' OR NEW.dsttype LIKE 'DST_TRKR_%' OR NEW.dsttype = 'DST_COMBINED'
             THEN 'tracking'
         WHEN NEW.dsttype LIKE 'DST_TRIGGERED_EVENT%'
           OR NEW.dsttype IN ('DST_CALOFITTING', 'DST_CALO', 'DST_JETS', 'DST_JETCALO')
