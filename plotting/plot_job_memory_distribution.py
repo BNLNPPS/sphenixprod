@@ -93,31 +93,45 @@ def _axis_limits(*arrays):
     return axis_min, 15
 
 
+def _memory_bins(max_axis):
+    fine_until_gb = min(4.0, max_axis)
+    fine_width_gb = 0.1
+    coarse_width_gb = 0.5
+
+    if max_axis <= fine_until_gb:
+        return np.arange(0, max_axis + fine_width_gb, fine_width_gb)
+
+    fine_bins = np.arange(0, fine_until_gb, fine_width_gb)
+    coarse_bins = np.arange(fine_until_gb, max_axis + coarse_width_gb, coarse_width_gb)
+    return np.unique(np.concatenate([fine_bins, coarse_bins]))
+
+
 def plot_memory(ax_hist, ax_scatter, memory_values, title):
     provisioned_gb = np.array([v[0] for v in memory_values])
     usage_gb = np.array([v[1] for v in memory_values])
 
     min_axis, max_axis = _axis_limits(provisioned_gb, usage_gb)
-    bin_width = 0.5
-    bins = np.arange(0, max_axis + bin_width, bin_width)
+    bins = _memory_bins(max_axis)
     if len(bins) < 2:
-        bins = np.array([0, max_axis + bin_width])
+        bins = np.array([0, max_axis])
 
     ax_hist.hist(
         provisioned_gb,
         bins=bins,
+        density=True,
         alpha=0.65,
         label=f'Provisioned (avg: {np.mean(provisioned_gb):.1f} GB)',
     )
     ax_hist.hist(
         usage_gb,
         bins=bins,
+        density=True,
         alpha=0.65,
         label=f'Actual usage (avg: {np.mean(usage_gb):.1f} GB)',
     )
     ax_hist.set_title('Memory distribution')
     ax_hist.set_xlabel('Memory (GB)')
-    ax_hist.set_ylabel('Number of jobs')
+    ax_hist.set_ylabel('Fraction of jobs per GB')
     ax_hist.set_xlim(min_axis, max_axis)
     ax_hist.legend(loc='upper right')
     ax_hist.grid(True, which='both', linestyle='--', linewidth=0.5)
