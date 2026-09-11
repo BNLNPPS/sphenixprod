@@ -60,6 +60,8 @@ def input_stem_for_rule(dsttype, dataset, rule_name=None, inputmode=None):
             return list("DST_STREAMING_EVENT_" + LEAF for LEAF in _dst_streaming_event_run2().keys())
     if dsttype == "DST_TRKR_SEED" and inputmode == "input4polyseed":
         return list("DST_STREAMING_EVENT_" + LEAF for LEAF in inputs_from_output["DST_STREAMING_EVENT"].keys())
+    if dsttype == "DST_TRKR_SEED" and inputmode == "combined4polyseed":
+        return ["DST_COMBINED"]
     return inputs_from_output[dsttype]
 
 
