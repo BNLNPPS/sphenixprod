@@ -219,7 +219,7 @@ def main():
         elif label == 'MISSING':
             WARN(line)
         else:
-            INFO(line)
+            DEBUG(line)
 
     INFO(f"\nSummary: {counts['STALE']} STALE  {counts['ACTIVE']} ACTIVE  {counts['MISSING']} MISSING  (of {len(rows)} total)")
 
