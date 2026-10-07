@@ -269,10 +269,8 @@ LIMIT {args.fetch_size}
 
     count = 0
     last_lfn = None
-    with open(args.outfile, 'w') as fh:
-        fh.write(f"# dataset: {args.dataset}\n")
-        fh.write(f"# dsttype: {args.dsttype}\n")
-        fh.write(f"# tag:     {args.tag}\n")
+    fh = None
+    try:
         while True:
             INFO(f"Page query starting at {count:,} entries | RSS {_rss_mb()} MB")
             curs = _db_query(_FCR, page_query(last_lfn))
@@ -284,6 +282,11 @@ LIMIT {args.fetch_size}
             if not batch:
                 INFO(f"Fetch returned no rows | RSS {fetch_rss} MB")
                 break
+            if fh is None:
+                fh = open(args.outfile, 'w')
+                fh.write(f"# dataset: {args.dataset}\n")
+                fh.write(f"# dsttype: {args.dsttype}\n")
+                fh.write(f"# tag:     {args.tag}\n")
             batch_count = len(batch)
             INFO(f"Fetch returned {batch_count:,} rows | RSS {fetch_rss} MB")
             for lfn, path in batch:
@@ -292,9 +295,15 @@ LIMIT {args.fetch_size}
             count += batch_count
             del batch
             INFO(f"  ... {count:,} entries written | RSS {_rss_mb()} MB")
+    finally:
+        if fh is not None:
+            fh.close()
 
-    INFO(f"Done. {count} entries written to {args.outfile!r}. Final RSS {_rss_mb()} MB.")
-    INFO(f"Inspect the list, then run:  dst_deleter.py execute --infile {args.outfile}")
+    if count:
+        INFO(f"Done. {count} entries written to {args.outfile!r}. Final RSS {_rss_mb()} MB.")
+        INFO(f"Inspect the list, then run:  dst_deleter.py execute --infile {args.outfile}")
+    else:
+        INFO(f"Done. No matching entries found; no work list was created. Final RSS {_rss_mb()} MB.")
 
 # ============================================================================
 # Subcommand: execute
@@ -433,68 +442,82 @@ def cmd_execute(args):
         ERROR(f"Work list not found: {infile!r}")
         sys.exit(2)
 
+    # Validate the complete list before making any changes.  This keeps a hand-
+    # edited or truncated work list from producing a misleading confirmation
+    # count or a partial deletion.
+    header = {}
+    header_end = 0
+    total_records = 0
+    malformed = []
+    first_path = None
+    with open(infile, "rb") as check:
+        in_header = True
+        for line_number, raw in enumerate(check, start=1):
+            try:
+                line = raw.decode("utf-8").rstrip("\r\n")
+            except UnicodeDecodeError as exc:
+                malformed.append(f"line {line_number}: not valid UTF-8 ({exc})")
+                in_header = False
+                continue
+            if in_header and (not line or line.startswith("#")):
+                header_end = check.tell()
+                if line.startswith("#") and ":" in line:
+                    key, _, val = line[1:].partition(":")
+                    header[key.strip()] = val.strip()
+                continue
+            in_header = False
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t", 1)
+            if len(parts) != 2 or not parts[0] or not parts[1]:
+                malformed.append(f"line {line_number}: expected non-empty lfn<TAB>full_file_path")
+                continue
+            total_records += 1
+            if first_path is None:
+                first_path = parts[1]
+
+    if malformed:
+        ERROR(f"Work list {infile!r} has {len(malformed)} malformed record(s); refusing to delete anything.")
+        for detail in malformed[:3]:
+            ERROR(f"  {detail}")
+        if len(malformed) > 3:
+            ERROR(f"  ... and {len(malformed) - 3} more")
+        return
+    if not total_records:
+        INFO(f"Work list {infile!r} contains no deletion entries; nothing to do.")
+        return
+
     if _MUNLINK:
         INFO(f"munlink found at {_MUNLINK}; will use it for bulk unlinking.")
     else:
         INFO("munlink not found; falling back to Python Path.unlink().")
 
+    if not args.dryrun:
+        print(f"This will delete {total_records} files, starting with:\n  {first_path}")
+        answer = input("Are you sure? [y/N] ").strip().lower()
+        if answer not in ("y", "yes"):
+            INFO("Aborted.")
+            return
+
     total_files = total_batches = 0
     shown = [0]
-    header = {}
-    first_path = None
-
-    with open(infile, 'r+b') as fh:
-        # Read header, record its end position and line count.
-        header_lines = 0
-        while True:
-            pos = fh.tell()
-            raw = fh.readline()
-            if not raw:
-                break
-            line = raw.decode().rstrip('\n')
-            if line.startswith('#'):
-                header_lines += 1
-                if ':' in line:
-                    key, _, val = line[1:].partition(':')
-                    header[key.strip()] = val.strip()
-            elif line:
-                parts = line.split('\t', 1)
-                first_line_path = parts[1] if len(parts) == 2 else None
-                fh.seek(pos)   # put the first data line back
-                break
-        header_end = fh.tell()
-
-        wc = subprocess.run(['wc', '-l', infile], capture_output=True, text=True)
-        grand_total = int(wc.stdout.split()[0]) - header_lines
+    t_start = time.monotonic()
+    with open(infile, "r+b") as fh:
         fh.seek(header_end)
-
-        if not args.dryrun:
-            print(f"This will delete {grand_total} files, starting with:\n  {first_line_path}")
-            answer = input("Are you sure? [y/N] ").strip().lower()
-            if answer not in ('y', 'yes'):
-                INFO("Aborted.")
-                return
-
-        t_start = time.monotonic()
-
         while True:
-            # Read one batch of data lines.
+            # The preflight validation above guarantees that all non-comment
+            # records have the expected TSV shape.
             lfns, paths = [], []
             while len(lfns) < args.batch_size:
                 raw = fh.readline()
                 if not raw:
                     break
-                line = raw.decode().rstrip('\n')
-                if not line or line.startswith('#'):
+                line = raw.decode("utf-8").rstrip("\r\n")
+                if not line or line.startswith("#"):
                     continue
-                parts = line.split('\t', 1)
-                if len(parts) == 2:
-                    if first_path is None:
-                        first_path = parts[1]
-                    lfns.append(parts[0])
-                    paths.append(parts[1])
-                else:
-                    WARN(f"Skipping malformed line: {line!r}")
+                lfn, path = line.split("\t", 1)
+                lfns.append(lfn)
+                paths.append(path)
 
             if not lfns:
                 break
@@ -502,13 +525,13 @@ def cmd_execute(args):
             batch_end = fh.tell()
             total_batches += 1
             total_files += len(lfns)
-            pct = 100.0 * total_files / grand_total if grand_total else 0.0
+            pct = 100.0 * total_files / total_records
             elapsed = time.monotonic() - t_start
-            remaining = grand_total - total_files
-            eta_s = int(elapsed * remaining / total_files) if total_files else 0
+            remaining = total_records - total_files
+            eta_s = int(elapsed * remaining / total_files)
             eta = f"{eta_s // 3600}h{eta_s % 3600 // 60}m{eta_s % 60}s"
             INFO(f"Batch {total_batches}: {total_files} | "
-                 f"{grand_total} total ({pct:.1f}%) | ETA {eta} | RSS {_rss_mb()} MB")
+                 f"{total_records} total ({pct:.1f}%) | ETA {eta} | RSS {_rss_mb()} MB")
 
             # DB-first is intentional: avoid leaving catalog rows pointing at
             # files that this process has already started removing.
@@ -525,11 +548,10 @@ def cmd_execute(args):
 
     INFO(f"Done. {total_batches} batch(es), {total_files} files processed.")
 
-    if first_path:
-        base = _cleanup_base_path(first_path, dsttype=header.get('dsttype'))
-        if base:
-            escaped = base.replace('*', r'\*')
-            INFO(f"To remove empty directories, run:\n  dst_deleter.py cleanup --path {escaped}")
+    base = _cleanup_base_path(first_path, dsttype=header.get("dsttype"))
+    if base:
+        escaped = base.replace("*", r"\*")
+        INFO(f"To remove empty directories, run:\n  dst_deleter.py cleanup --path {escaped}")
 
 
 # ============================================================================
