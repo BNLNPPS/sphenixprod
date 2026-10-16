@@ -569,10 +569,12 @@ class RuleConfig:
         try:
             with open(yaml_path, "r") as yamlstream:
                 yaml_data = yaml.safe_load(yamlstream)
-        except yaml.YAMLError as exc:
-            raise ValueError(f"Error parsing YAML file '{yaml_file}': {exc}") from None
         except FileNotFoundError:
-            raise FileNotFoundError(f"YAML file not found: {yaml_file}") from None
+            raise ValueError(f"YAML file not found: {yaml_path}") from None
+        except OSError as exc:
+            raise ValueError(f"Unable to read YAML file '{yaml_path}': {exc}") from None
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Error parsing YAML file '{yaml_path}': {exc}") from None
 
         return cls.from_yaml(yaml_file=yaml_file,
                              yaml_data=yaml_data,
