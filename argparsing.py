@@ -40,10 +40,13 @@ def _base_arguments(parser, allow_runs=True, require_run_selection=False):
                                       help="Flat text file containing list of runs to process, separated by whitespace / newlines.",
                                       default=None)
     else:
-        rgroup.add_argument('--runlist',
-                            help="Flat text file containing list of runs to process, separated by whitespace / newlines.",
-                            default=None,
-                            required=require_run_selection)
+        exclusive_rgroup = rgroup.add_mutually_exclusive_group(required=require_run_selection)
+        exclusive_rgroup.add_argument('--runlist',
+                                    help="Flat text file containing list of runs to process, separated by whitespace / newlines.",
+                                    default=None)
+        exclusive_rgroup.add_argument('--singlerun', type=int,
+                                    help="Submit exactly one run without DAQ run-quality filtering. Emits a warning.",
+                                    default=None)
     parser.add_argument('--physics-mode', '--experiment-mode', dest="physicsmode",
                         help="Specifies the experiment mode (cosmics, commissioning, physics) for direct lookup of input files.",
                         default=None)
