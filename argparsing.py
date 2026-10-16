@@ -40,10 +40,13 @@ def _base_arguments(parser, allow_runs=True, require_run_selection=False):
                                       help="Flat text file containing list of runs to process, separated by whitespace / newlines.",
                                       default=None)
     else:
-        rgroup.add_argument('--runlist',
-                            help="Flat text file containing list of runs to process, separated by whitespace / newlines.",
-                            default=None,
-                            required=require_run_selection)
+        exclusive_rgroup = rgroup.add_mutually_exclusive_group(required=require_run_selection)
+        exclusive_rgroup.add_argument('--runlist',
+                                    help="Flat text file containing list of runs to process, separated by whitespace / newlines.",
+                                    default=None)
+        exclusive_rgroup.add_argument('--singlerun', type=int,
+                                    help="Submit exactly one run without DAQ run-quality filtering. Emits a warning.",
+                                    default=None)
     parser.add_argument('--physics-mode', '--experiment-mode', dest="physicsmode",
                         help="Specifies the experiment mode (cosmics, commissioning, physics) for direct lookup of input files.",
                         default=None)
@@ -55,7 +58,7 @@ def _base_arguments(parser, allow_runs=True, require_run_selection=False):
     return parser
 
 # ============================================================================================
-def submission_args(allow_runs=True):
+def submission_args(allow_runs=True, allow_sql_constraint=False):
     """Handle command line tedium for submitting jobs."""
     parser = argparse.ArgumentParser(description='Prepare and submit sPHENIX production jobs to the HTCondor batch system.')
     parser = _base_arguments(parser, allow_runs=allow_runs, require_run_selection=True)
@@ -63,6 +66,13 @@ def submission_args(allow_runs=True):
     parser.add_argument('--print-query', dest='printquery', help="Print the query after parameter substitution and exit",
                         action="store_true")
     parser.add_argument('--andgo', dest='andgo', help="Submit condor jobs at the end", action="store_true")
+
+    if allow_sql_constraint:
+        parser.add_argument(
+            "--sql-constraint",
+            default=None,
+            help="Additional SQL predicate combined with the plot query using AND.",
+        )
 
     # Job description arguments
     parser.add_argument('--config', dest='config', required=True,
@@ -114,6 +124,13 @@ def submission_args(allow_runs=True):
                         help="(check_downstream) Include input_mismatch work units in --delete cleanup.")
 
     return parse_and_set_loglevel(parser)
+
+
+def sql_constraint_clause(sql_constraint):
+    """Format an optional SQL predicate for a production_jobs WHERE clause."""
+    if not sql_constraint:
+        return ""
+    return f"\n      AND ({sql_constraint})"
 
 # ============================================================================================
 def monitor_args():

@@ -10,14 +10,14 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredOffsetbox, HPacker, TextArea, VPacker
 
-from argparsing import submission_args
+from argparsing import submission_args, sql_constraint_clause
 from sphenixdbutils import dbQuery, cnxn_string_map, list_to_condition
 from sphenixprodrules import RuleConfig
 from sphenixmisc import setup_rot_handler
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 
 
-def get_time_diffs_by_cpus(run_condition, dsttype, tag, dataset):
+def get_time_diffs_by_cpus(run_condition, dsttype, tag, dataset, constraint_clause):
     query = f"""
     SELECT started, finished, request_cpus
     FROM production_jobs
@@ -26,6 +26,7 @@ def get_time_diffs_by_cpus(run_condition, dsttype, tag, dataset):
       AND dataset = '{dataset}'
       AND status = 'finished'
       AND dsttype LIKE '{dsttype}%'
+      {constraint_clause}
       AND started IS NOT NULL
       AND finished IS NOT NULL
     """
@@ -70,7 +71,7 @@ def cpu_label(cpu_count):
     return f"{cpu_count} CPUs"
 
 
-def get_status_counts(run_condition, dsttype, tag, dataset):
+def get_status_counts(run_condition, dsttype, tag, dataset, constraint_clause):
     query = f"""
     SELECT
       SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) AS finished,
@@ -81,6 +82,7 @@ def get_status_counts(run_condition, dsttype, tag, dataset):
       AND dataset = '{dataset}'
       AND status IN ('finished', 'failed')
       AND dsttype LIKE '{dsttype}%'
+      {constraint_clause}
     """
 
     DEBUG(f"Executing query:\n{query}")
@@ -223,7 +225,7 @@ def main():
     """
     Main function to plot job time distribution.
     """
-    args = submission_args()
+    args = submission_args(allow_sql_constraint=True)
 
     plt.rcParams.update({'font.size': 16})
 
@@ -251,14 +253,16 @@ def main():
         ERROR(f"Error: {e}")
         sys.exit(1)
 
+    constraint_clause = sql_constraint_clause(args.sql_constraint)
+
     if args.runs and 1 < len(rule.runlist_int) <= 5:
         output_pdf_path = f'job_time_distribution_{args.rulename}.pdf'
         with PdfPages(output_pdf_path) as pdf:
             for run in rule.runlist_int:
                 INFO(f"Processing run: {run}")
                 run_condition = list_to_condition([run], name="runnumber")
-                time_diffs_by_cpus = get_time_diffs_by_cpus(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
-                status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
+                time_diffs_by_cpus = get_time_diffs_by_cpus(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
+                status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
 
                 if time_diffs_by_cpus is None:
                     sys.exit(1)
@@ -282,8 +286,8 @@ def main():
 
     else:
         run_condition = list_to_condition(rule.runlist_int, name="runnumber")
-        time_diffs_by_cpus = get_time_diffs_by_cpus(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
-        status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
+        time_diffs_by_cpus = get_time_diffs_by_cpus(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
+        status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
         if time_diffs_by_cpus is None:
             sys.exit(1)
         all_time_diffs = flatten_time_diffs(time_diffs_by_cpus)

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import numpy as np
 
-from argparsing import submission_args
+from argparsing import submission_args, sql_constraint_clause
 from sphenixdbutils import dbQuery, cnxn_string_map
 from sphenixprodrules import RuleConfig
 from sphenixmisc import setup_rot_handler
@@ -20,7 +20,7 @@ BIN_HOURS     = 0.5
 ROLLING_BINS  = 3   # rolling average window: 12 bins = 24 hours
 
 
-def get_start_times(dsttype, tag, dataset, since):
+def get_start_times(dsttype, tag, dataset, since, constraint_clause):
     query = f"""
     SELECT started
     FROM production_jobs
@@ -29,6 +29,7 @@ def get_start_times(dsttype, tag, dataset, since):
       AND status = 'finished'
       AND started >= '{since.isoformat()}'
       AND dsttype LIKE '{dsttype}%'
+      {constraint_clause}
       AND started IS NOT NULL
     """
     DEBUG(f"Executing query:\n{query}")
@@ -54,7 +55,7 @@ def get_start_times(dsttype, tag, dataset, since):
 
 
 def main():
-    args = submission_args()
+    args = submission_args(allow_sql_constraint=True)
 
     plt.rcParams.update({'font.size': 16})
 
@@ -82,7 +83,8 @@ def main():
         ERROR(f"Error: {e}")
         sys.exit(1)
 
-    start_times = get_start_times(rule.dsttype, rule.outtriplet, rule.dataset, START_DATE)
+    constraint_clause = sql_constraint_clause(args.sql_constraint)
+    start_times = get_start_times(rule.dsttype, rule.outtriplet, rule.dataset, START_DATE, constraint_clause)
     if start_times is None:
         sys.exit(1)
     if not start_times:

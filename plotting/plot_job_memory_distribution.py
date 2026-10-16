@@ -9,14 +9,14 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredOffsetbox, HPacker, TextArea, VPacker
 
-from argparsing import submission_args
+from argparsing import submission_args, sql_constraint_clause
 from sphenixdbutils import dbQuery, cnxn_string_map, list_to_condition
 from sphenixprodrules import RuleConfig
 from sphenixmisc import setup_rot_handler
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 
 
-def get_memory_values(run_condition, dsttype, tag, dataset):
+def get_memory_values(run_condition, dsttype, tag, dataset, constraint_clause):
     query = f"""
     SELECT MemoryProvisioned, MemoryUsage
     FROM production_jobs
@@ -25,6 +25,7 @@ def get_memory_values(run_condition, dsttype, tag, dataset):
       AND dataset = '{dataset}'
       AND status IN ('finished', 'failed')
       AND dsttype LIKE '{dsttype}%'
+      {constraint_clause}
       AND MemoryProvisioned IS NOT NULL
       AND MemoryUsage IS NOT NULL
       AND MemoryProvisioned > 0
@@ -49,7 +50,7 @@ def get_memory_values(run_condition, dsttype, tag, dataset):
     return memory_values
 
 
-def get_status_counts(run_condition, dsttype, tag, dataset):
+def get_status_counts(run_condition, dsttype, tag, dataset, constraint_clause):
     query = f"""
     SELECT
       SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) AS finished,
@@ -60,6 +61,7 @@ def get_status_counts(run_condition, dsttype, tag, dataset):
       AND dataset = '{dataset}'
       AND status IN ('finished', 'failed')
       AND dsttype LIKE '{dsttype}%'
+      {constraint_clause}
     """
 
     DEBUG(f"Executing query:\n{query}")
@@ -94,16 +96,8 @@ def _axis_limits(*arrays):
 
 
 def _memory_bins(max_axis):
-    fine_until_gb = min(4.0, max_axis)
-    fine_width_gb = 0.1
-    coarse_width_gb = 0.5
-
-    if max_axis <= fine_until_gb:
-        return np.arange(0, max_axis + fine_width_gb, fine_width_gb)
-
-    fine_bins = np.arange(0, fine_until_gb, fine_width_gb)
-    coarse_bins = np.arange(fine_until_gb, max_axis + coarse_width_gb, coarse_width_gb)
-    return np.unique(np.concatenate([fine_bins, coarse_bins]))
+    bin_width_gb = 0.1
+    return np.arange(0, max_axis + bin_width_gb, bin_width_gb)
 
 
 def plot_memory(ax_hist, ax_scatter, memory_values, title):
@@ -115,17 +109,33 @@ def plot_memory(ax_hist, ax_scatter, memory_values, title):
     if len(bins) < 2:
         bins = np.array([0, max_axis])
 
+    provisioned_density, _ = np.histogram(provisioned_gb, bins=bins, density=True)
+    usage_density, _ = np.histogram(usage_gb, bins=bins, density=True)
+    provisioned_peak = np.max(provisioned_density)
+    usage_peak = np.max(usage_density)
+    provisioned_scale = usage_peak / provisioned_peak if provisioned_peak else 1.0
+
+    bin_width_gb = bins[1] - bins[0]
+    provisioned_weights = np.full(
+        len(provisioned_gb),
+        provisioned_scale / (len(provisioned_gb) * bin_width_gb),
+    )
+    usage_weights = np.full(len(usage_gb), 1.0 / (len(usage_gb) * bin_width_gb))
+
     ax_hist.hist(
         provisioned_gb,
         bins=bins,
-        density=True,
+        weights=provisioned_weights,
         alpha=0.65,
-        label=f'Provisioned (avg: {np.mean(provisioned_gb):.1f} GB)',
+        label=(
+            f'Provisioned (scaled x{provisioned_scale:.3g}; '
+            f'avg: {np.mean(provisioned_gb):.1f} GB)'
+        ),
     )
     ax_hist.hist(
         usage_gb,
         bins=bins,
-        density=True,
+        weights=usage_weights,
         alpha=0.65,
         label=f'Actual usage (avg: {np.mean(usage_gb):.1f} GB)',
     )
@@ -133,7 +143,10 @@ def plot_memory(ax_hist, ax_scatter, memory_values, title):
     ax_hist.set_xlabel('Memory (GB)')
     ax_hist.set_ylabel('Fraction of jobs per GB')
     ax_hist.set_xlim(min_axis, max_axis)
-    ax_hist.legend(loc='upper right')
+    displayed_peak = max(provisioned_peak * provisioned_scale, usage_peak)
+    if displayed_peak:
+        ax_hist.set_ylim(top=displayed_peak / 0.8)
+    ax_hist.legend(loc='upper left')
     ax_hist.grid(True, which='both', linestyle='--', linewidth=0.5)
 
     ax_scatter.scatter(provisioned_gb, usage_gb, alpha=0.45, s=18, edgecolors='none')
@@ -225,7 +238,7 @@ def main():
     """
     Main function to plot job memory distribution.
     """
-    args = submission_args()
+    args = submission_args(allow_sql_constraint=True)
 
     plt.rcParams.update({'font.size': 16})
 
@@ -253,14 +266,16 @@ def main():
         ERROR(f"Error: {e}")
         sys.exit(1)
 
+    constraint_clause = sql_constraint_clause(args.sql_constraint)
+
     if args.runs and 1 < len(rule.runlist_int) <= 5:
         output_pdf_path = f'job_memory_distribution_{args.rulename}.pdf'
         with PdfPages(output_pdf_path) as pdf:
             for run in rule.runlist_int:
                 INFO(f"Processing run: {run}")
                 run_condition = list_to_condition([run], name="runnumber")
-                memory_values = get_memory_values(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
-                status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
+                memory_values = get_memory_values(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
+                status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
 
                 if memory_values is None:
                     sys.exit(1)
@@ -275,8 +290,8 @@ def main():
 
     else:
         run_condition = list_to_condition(rule.runlist_int, name="runnumber")
-        memory_values = get_memory_values(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
-        status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset)
+        memory_values = get_memory_values(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
+        status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
         if memory_values is None:
             sys.exit(1)
         if not memory_values:

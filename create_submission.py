@@ -93,7 +93,9 @@ def main():
         param_overrides = {}
         param_overrides["script_path"]       = script_path
         param_overrides["payload_list"]      = payload_list
-        param_overrides["runs"]              = None
+        param_overrides["runs"]              = [args.singlerun] if args.singlerun is not None else None
+        if args.singlerun is not None:
+            WARN(f"WARNING: --singlerun {args.singlerun} bypasses DAQ run-quality filtering.")
         param_overrides["runlist"]           = args.runlist
         param_overrides["nevents"]           = args.nevents
         param_overrides["combine_seg0_only"] = args.onlyseg0  # "None" if not explicitly given, to allow precedence of the yaml in that case
