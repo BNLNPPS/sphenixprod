@@ -61,6 +61,7 @@ CondorJobConfig_fields = [
     ('arguments_tmpl',         str,            field(default=None)),
     ('log_tmpl',               str,            field(default=None)),
     ('rungroup_tmpl',          str,            field(default="run_{a:08d}_{b:08d}")),
+    ('rungroup_size',          int,            field(default=100)),
     ('max_jobs',               int,            field(default=0)),
     ('max_queued_jobs',        int,            field(default=0)),
 ]
@@ -75,7 +76,7 @@ def condor_dict(self):
     - A dictionary keeps desired order (for readability) intact
     """
     all_fields = asdict(self)
-    ignore_fields = { 'neventsper','filesystem','arguments_tmpl','log_tmpl','rungroup_tmpl', 'max_jobs', 'max_queued_jobs' }
+    ignore_fields = { 'neventsper','filesystem','arguments_tmpl','log_tmpl','rungroup_tmpl', 'rungroup_size', 'max_jobs', 'max_queued_jobs' }
 
     return {key: value for key, value in all_fields.items() if key not in ignore_fields and value is not None}
 # ----------------------------------------------------------------------------
@@ -133,8 +134,16 @@ class CondorJob:
         """
         Constructs a CondorJob instance.
         """
-        # Group blocks of 100 runnumbers together to control directory size
-        rungroup=cls.job_config.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
+        rungroup_size = int(cls.job_config.rungroup_size)
+        if rungroup_size < 1:
+            raise ValueError(f"rungroup_size must be positive, got {rungroup_size}")
+        if rungroup_size == 1:
+            # Single-run directories are bare, unpadded run numbers by convention.
+            rungroup = str(run)
+        else:
+            group_start = (run // rungroup_size) * rungroup_size
+            group_end = group_start + rungroup_size
+            rungroup = cls.job_config.rungroup_tmpl.format(a=group_start, b=group_end)
         arguments = cls.job_config.arguments_tmpl.format(
             outbase=outbase,
             logbase=logbase,

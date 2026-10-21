@@ -299,53 +299,33 @@ order by runnumber
         leafdirs = shell_command(leafdirs_cmd)
         CHATTY(f"Leaf directories: \n{pprint.pformat(leafdirs)}")
 
-        # Run groups that we're interested in
-        sorted_runlist = sorted(self.runlist_int)
-        def rungroup(run):
-            return self.rungroup_tmpl.format(a=100*math.floor(run/100), b=100*math.ceil((run+1)/100))
-        desirable_rungroups = { rungroup(run) for run in sorted_runlist }
-        runs_by_group = { group : [] for group in desirable_rungroups}
-        outidentifier=f'{self.dataset}_{self.outtriplet}'
-        for run in sorted_runlist:
-            # runs_by_group[rungroup(run)].append(str(run))
-            runstr=f'{outidentifier}-{run:{pRUNFMT}}'
-            ## could also add segment, runstr+=f'-{segment:{pSEGFMT}}'
-            runs_by_group[rungroup(run)].append(runstr)
+        # Directory names are not part of the output identity: a production may
+        # use legacy run groups or direct run-number directories. Filter the
+        # files found below every immediate child directory by their run token.
+        outidentifier=f"{self.dataset}_{self.outtriplet}"
+        run_tokens = [f"{outidentifier}-{run:{pRUNFMT}}" for run in self.runlist_int]
 
-        # INFO(f"Size of the filter dictionary is {sys.getsizeof(runs_by_group)} bytes")
-        # INFO(f"Length of the filter dictionary is {len(runs_by_group.keys())}")
-        # INFO(f"Size of one entry is {sys.getsizeof(runs_by_group['run_00072000_00072100'])} bytes")
-        # INFO(f"Size of one string is {sys.getsizeof(runs_by_group['run_00072000_00072100'][0])} bytes")
-        ## --> Negligible. << 1MB
-
-        ### Walk through leafs - assume rungroups may change between run groups
         ret=[]
-
         tstart=datetime.now()
         with open(dstlistname,"w") if dstlistname else nullcontext() as dstlistfile:
-            for leafdir in leafdirs :
-                available_rungroups = shell_command(rf"{find} {leafdir} -mindepth 1 -maxdepth 1 -name run_\* -type d ")
-                CHATTY(f"Resident Memory: {psutil.Process().memory_info().rss / 1024 / 1024:.0f} MB")
-                
-                # Want to have the subset of available rungroups where a desirable rungroup is a substring (cause the former have the full path)
-                rungroups = {rg for rg in available_rungroups if any( drg in rg for drg in desirable_rungroups) }
-                CHATTY(f"For {leafdir}, we have {len(rungroups)} run groups to work on")                
-                for rungroup in rungroups:
-                    runs_str=runs_by_group[Path(rungroup).name]
-                    if 'lfs' in lfind:
-                        find_command=f"{lfind} {rungroup} -type f -name {filemask}  --mtime +{min_age_minutes}m"
-                    else:
-                        find_command=f"{lfind} {rungroup} -type f -name {filemask} -mmin +{min_age_minutes}"
-                    find_command=f"{lfind} {rungroup} -type f -name {filemask}"
+            for leafdir in leafdirs:
+                output_dirs = shell_command(
+                    rf"{find} {leafdir} -mindepth 1 -maxdepth 1 -type d"
+                )
+                CHATTY(f"For {leafdir}, examining {len(output_dirs)} output directories")
+                for output_dir in output_dirs:
+                    find_command=f"{lfind} {output_dir} -type f -name {filemask}"
                     CHATTY(find_command)
-                    group_runs = shell_command(find_command)
-                    # Enforce run number constraint
-                    group_runs = [ run for run in group_runs if any( dr in run for dr in runs_str) ]
+                    output_files = shell_command(find_command)
+                    selected_files = [
+                        filename for filename in output_files
+                        if any(token in filename for token in run_tokens)
+                    ]
                     if dstlistfile:
-                        for run in group_runs:
-                            dstlistfile.write(f"{run}\n")
+                        for filename in selected_files:
+                            dstlistfile.write(f"{filename}\n")
                     else:
-                        ret += group_runs
+                        ret += selected_files
         INFO(f"List creation took {(datetime.now() - tstart).total_seconds():.2f} seconds.")
         return ret
 
