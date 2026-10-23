@@ -8,7 +8,7 @@ fi
 MIN_ARG_COUNT=2
 MAX_ARG_COUNT=3
 stageout_copy_command=dd
-stageout_ddflags="bs=12MB"
+stageout_ddflags="bs=12MB oflag=nocache"
 stageout_args=()
 while [ $# -gt 0 ]; do
     case "$1" in
