@@ -113,7 +113,7 @@ class MatchConfig:
 
     # ------------------------------------------------
     def output_segment_for_input_segment(self, segment: int) -> int:
-        if self.dsttype == 'DST_TRKR_CLUSTER':
+        if self.dsttype in ('DST_TRKR_CLUSTER', 'DST_COMBINED'):
             return 10 * segment
         return segment
 
@@ -699,8 +699,8 @@ order by runnumber
                 DEBUG (f"Found {len(present_seb_files)} required SEB files in the catalog")
 
 
-            # TPC hardcoding
-            if 'TRKR_CLUSTER' in self.dsttype:
+            # TPC hardcoding. DST_COMBINED is the successor of DST_TRKR_CLUSTER and gets the same requirements.
+            if 'TRKR_CLUSTER' in self.dsttype or self.dsttype == 'DST_COMBINED':
                 # 1. require at least N=30 out of the 48 ebdc_[0-24]_[01] to be turned on in the run
                 #    This is an early breakpoint to see if the run can be used for tracking
                 #    CHANGE 08/21/2025: On request from jdosbo, change back to requiring all ebdcs.
