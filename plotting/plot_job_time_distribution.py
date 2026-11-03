@@ -19,7 +19,7 @@ from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ER
 
 def get_time_diffs_by_cpus(run_condition, dsttype, tag, dataset, constraint_clause):
     query = f"""
-    SELECT started, finished, request_cpus
+    SELECT runnumber, started, finished, request_cpus
     FROM production_jobs
     WHERE {run_condition}
       AND tag = '{tag}'
@@ -40,10 +40,11 @@ def get_time_diffs_by_cpus(run_condition, dsttype, tag, dataset, constraint_clau
 
     results = cursor.fetchall()
     if not results:
-        return {}
+        return {}, set()
 
     time_diffs_by_cpus = {}
-    for started, finished, request_cpus in results:
+    timed_runs = set()
+    for runnumber, started, finished, request_cpus in results:
         if isinstance(started, str):
             started = datetime.fromisoformat(started)
         if isinstance(finished, str):
@@ -51,8 +52,9 @@ def get_time_diffs_by_cpus(run_condition, dsttype, tag, dataset, constraint_clau
 
         cpu_key = int(request_cpus) if request_cpus is not None else None
         time_diffs_by_cpus.setdefault(cpu_key, []).append((finished - started).total_seconds())
+        timed_runs.add(int(runnumber))
 
-    return time_diffs_by_cpus
+    return time_diffs_by_cpus, timed_runs
 
 
 def flatten_time_diffs(time_diffs_by_cpus):
@@ -111,6 +113,44 @@ def pick_unit(time_diffs_seconds):
     return 'seconds'
 
 
+def time_summary_stats(time_diffs, unit):
+    conversions = {"hours": 3600, "minutes": 60, "seconds": 1}
+    values = np.asarray(time_diffs, dtype=float) / conversions[unit]
+    count = len(values)
+    sigma = np.std(values, ddof=1) if count > 1 else 0.0
+    return {
+        "count": count,
+        "mean": np.mean(values),
+        "min": np.min(values),
+        "max": np.max(values),
+        "sigma": sigma,
+        "total": np.sum(values),
+        "total_uncertainty": sigma * np.sqrt(count),
+    }
+
+
+def print_time_summary(time_diffs_by_cpus, label):
+    all_time_diffs = flatten_time_diffs(time_diffs_by_cpus)
+    if not all_time_diffs:
+        return
+
+    unit = pick_unit(all_time_diffs)
+
+    def summary_line(group_label, time_diffs):
+        stats = time_summary_stats(time_diffs, unit)
+        INFO(
+            f"  {group_label}: n={stats['count']:,}, "
+            f"mean={stats['mean']:.3f} {unit}, min={stats['min']:.3f}, "
+            f"max={stats['max']:.3f}, sigma={stats['sigma']:.3f}, "
+            f"total={stats['total']:.3f} +/- {stats['total_uncertainty']:.3f} {unit}"
+        )
+
+    INFO(f"Timing summary for {label} ({unit}):")
+    summary_line("all finished jobs", all_time_diffs)
+    for cpu_count in sorted(time_diffs_by_cpus, key=cpu_sort_key):
+        summary_line(cpu_label(cpu_count), time_diffs_by_cpus[cpu_count])
+
+
 def plot_histogram(ax, time_diffs_by_cpus, title, time_unit='hours'):
     """
     Plots wall-time histograms grouped by request_cpus with an overflow bin.
@@ -148,7 +188,7 @@ def plot_histogram(ax, time_diffs_by_cpus, title, time_unit='hours'):
             bins=bins,
             histtype='step',
             linewidth=2,
-            label=f'{cpu_label(cpu_count)} (n={len(time_diffs)}, avg={avg_time:.2f} {cfg["label"]})',
+            label=f'{cpu_label(cpu_count)} (n={len(time_diffs):,})',
         )
 
     ax.set_title(title)
@@ -170,14 +210,22 @@ def plot_histogram(ax, time_diffs_by_cpus, title, time_unit='hours'):
     ax.set_xticklabels(xticklabels)
 
 
-def add_status_box(ax, status_counts):
-    if status_counts is None:
+def add_timing_summary_box(ax, time_diffs_by_cpus, status_counts, run_count=1):
+    all_time_diffs = flatten_time_diffs(time_diffs_by_cpus)
+    if not all_time_diffs:
         return
 
+    unit = pick_unit(all_time_diffs)
+    stats = time_summary_stats(all_time_diffs, unit)
     rows = [
-        ("finished:", status_counts["finished"], "black"),
-        ("failed:", status_counts["failed"], "red"),
-        ("total:", status_counts["total"], "black"),
+        ("finished:", f"{status_counts['finished']:,}" if status_counts else "-", "black"),
+        ("failed:", f"{status_counts['failed']:,}" if status_counts else "-", "red"),
+        ("timed jobs:", f"{stats['count']:,}", "black"),
+        ("mean:", f"{stats['mean']:.3f} {unit}", "black"),
+        ("sigma:", f"{stats['sigma']:.3f} {unit}", "black"),
+        ("min / max:", f"{stats['min']:.3f} / {stats['max']:.3f} {unit}", "black"),
+        ("total wall:", f"{stats['total']:,.1f} +/- {stats['total_uncertainty']:,.1f} {unit}", "black"),
+        ("wall / selected run:", f"{stats['total'] / max(run_count, 1):,.1f} {unit}", "black"),
     ]
 
     label_column = VPacker(
@@ -191,14 +239,14 @@ def add_status_box(ax, status_counts):
     )
     value_column = VPacker(
         children=[
-            TextArea(f"{value}", textprops={"color": color, "ha": "right"})
+            TextArea(value, textprops={"color": color, "ha": "right"})
             for _, value, color in rows
         ],
         align="right",
         pad=0,
         sep=2,
     )
-    status_box = HPacker(
+    summary_box = HPacker(
         children=[label_column, value_column],
         align="baseline",
         pad=0,
@@ -207,7 +255,7 @@ def add_status_box(ax, status_counts):
 
     anchored_box = AnchoredOffsetbox(
         loc="upper right",
-        child=status_box,
+        child=summary_box,
         bbox_to_anchor=(0.98, 0.95),
         bbox_transform=ax.transAxes,
         frameon=True,
@@ -261,11 +309,12 @@ def main():
             for run in rule.runlist_int:
                 INFO(f"Processing run: {run}")
                 run_condition = list_to_condition([run], name="runnumber")
-                time_diffs_by_cpus = get_time_diffs_by_cpus(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
+                time_data = get_time_diffs_by_cpus(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
                 status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
 
-                if time_diffs_by_cpus is None:
+                if time_data is None:
                     sys.exit(1)
+                time_diffs_by_cpus, timed_runs = time_data
                 all_time_diffs = flatten_time_diffs(time_diffs_by_cpus)
                 if not all_time_diffs:
                     INFO(f"No finished jobs found for run {run}.")
@@ -276,20 +325,22 @@ def main():
 
                 title = f'Job Time Distribution for {args.rulename} (Run: {run})'
                 plot_histogram(ax, time_diffs_by_cpus, title, time_unit=pick_unit(all_time_diffs))
-                add_status_box(ax, status_counts)
+                add_timing_summary_box(ax, time_diffs_by_cpus, status_counts, run_count=len(timed_runs))
 
                 plt.tight_layout()
                 pdf.savefig(fig)
                 plt.close(fig)
+                print_time_summary(time_diffs_by_cpus, f"{args.rulename} (run {run})")
 
             INFO(f"Saved multi-page PDF to {output_pdf_path}")
 
     else:
         run_condition = list_to_condition(rule.runlist_int, name="runnumber")
-        time_diffs_by_cpus = get_time_diffs_by_cpus(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
+        time_data = get_time_diffs_by_cpus(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
         status_counts = get_status_counts(run_condition, rule.dsttype, rule.outtriplet, rule.dataset, constraint_clause)
-        if time_diffs_by_cpus is None:
+        if time_data is None:
             sys.exit(1)
+        time_diffs_by_cpus, timed_runs = time_data
         all_time_diffs = flatten_time_diffs(time_diffs_by_cpus)
         if not all_time_diffs:
             INFO("No finished jobs found for the specified runs.")
@@ -306,13 +357,16 @@ def main():
         plt.style.use('seaborn-v0_8-deep')
 
         plot_histogram(ax, time_diffs_by_cpus, base_title, time_unit=unit)
-        add_status_box(ax, status_counts)
+        add_timing_summary_box(
+            ax, time_diffs_by_cpus, status_counts, run_count=len(timed_runs)
+        )
 
         plt.tight_layout()
         output_file = f'job_time_distribution_{args.rulename}.png'
         plt.savefig(output_file)
         INFO(f"Saved plot to {output_file}")
         plt.close(fig)
+        print_time_summary(time_diffs_by_cpus, args.rulename)
 
 
 if __name__ == '__main__':
