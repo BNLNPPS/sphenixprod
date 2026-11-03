@@ -11,6 +11,7 @@ from sphenixprodrules import RuleConfig # New import
 from sphenixmatching import MatchConfig
 from sphenixmisc import setup_rot_handler, should_I_quit, shell_command # Modified import
 import htcondor2 as htcondor  # type: ignore
+import classad2 as classad
 
 _common_runscript_arg_count = None
 
@@ -164,22 +165,30 @@ def monitor_condor_jobs_by_ids(condor_ids, dryrun: bool=True) -> dict:
 
 # ============================================================================================
 def get_queued_jobs(rule: RuleConfig):
-    """
-    Determines the number of jobs currently in the condor queue for a given rule.
-    """
-    # Determine what's already in "idle"
-    # Note: For this, we cannot use runnumber cuts, too difficult (and expensive) to get from condor.
-    # Bit of a clunky method. But it works and doesn't get called all that often.
-    cq_query  =  'condor_q'
-    cq_query += f" -constraint \'JobBatchName==\"{rule.job_config.batch_name}\"' "  # Select our batch
-    cq_query +=  ' -format "%d." ClusterId -format "%d\\n" ProcId'                  # any kind of one-line-per-job output. e.g. 6398.10
-
+    """Count live and not-yet-materialized jobs in this batch."""
+    batch_name = rule.job_config.batch_name
     try:
-        all_procs = shell_command(cq_query, raise_on_error=True)
-    except subprocess.CalledProcessError as e:
-        CRITICAL(f"condor_q failed (exit {e.returncode}) — condor infrastructure problem. Command: {cq_query.strip()}")
+        ads = htcondor.Schedd().query(
+            constraint=f"JobBatchName == {classad.quote(batch_name)}",
+            projection=['ProcId', 'TotalSubmitProcs', 'JobMaterializeNextProcId'],
+            opts=htcondor.QueryOpt.IncludeClusterAd,
+        )
+        total = 0
+        for ad in ads:
+            proc_id = ad.get('ProcId')
+            if isinstance(proc_id, int) and proc_id >= 0:
+                total += 1  # A materialized job still in the queue, whatever its status.
+            elif ad.get('JobMaterializeNextProcId') is not None:
+                # The cluster ad persists while the factory has unmaterialized work.
+                submitted = ad.get('TotalSubmitProcs')
+                next_proc = ad['JobMaterializeNextProcId']
+                if submitted is None or submitted < next_proc:
+                    raise ValueError(f"Incomplete factory count for batch {batch_name}")
+                total += submitted - next_proc
+        return total
+    except Exception as e:
+        CRITICAL(f"Condor queue query failed for batch {batch_name}: {e}")
         return -1
-    return len(all_procs)
 
 # ============================================================================================
 

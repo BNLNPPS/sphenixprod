@@ -7,6 +7,9 @@ import pstats
 import subprocess
 import sys
 import re
+import fcntl
+import hashlib
+import os
 
 import pprint # noqa F401
 
@@ -16,6 +19,7 @@ from sphenixmisc import setup_rot_handler, should_I_quit
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
 from sphenixprodrules import RuleConfig
 from sphenixdbutils import cnxn_string_map, dbQuery
+from sphenixcondortools import get_queued_jobs
 
 
 # ============================================================================================
@@ -48,6 +52,18 @@ def locate_submitfiles(rule: RuleConfig, args: argparse.Namespace, allruns: bool
 
 # ============================================================================================
 def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool=False):
+    """Serialize submissions to the same batch on this host."""
+    batch_key = hashlib.sha256(rule.job_config.batch_name.encode()).hexdigest()
+    lock_path = Path(f"/tmp/sphenixprod_submit_{os.getuid()}_{batch_key}.lock")
+    with lock_path.open('a') as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            return _execute_submission_locked(rule, args, allruns)
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
+def _execute_submission_locked(rule: RuleConfig, args: argparse.Namespace, allruns: bool=False):
     """ Look for job files and submit condor jobs if the current load is acceptable.
     Update production database to "submitted".
     Locking and deleting is used to avoid double-submission.
@@ -58,12 +74,23 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool
         INFO("No submission files found.")
 
     submitted_jobs=0
+    max_queued_jobs = rule.job_config.max_queued_jobs
+    currently_queued_jobs = 0
+    if sub_files and max_queued_jobs > 0 and not args.dryrun:
+        # This query runs under the batch lock. Account for each successful
+        # submission locally while processing the remaining run files.
+        currently_queued_jobs = get_queued_jobs(rule)
+        if currently_queued_jobs < 0:
+            ERROR(f"Cannot count jobs for {rule.job_config.batch_name}; leaving submission files pending.")
+            return
+
     for sub_file in sub_files:
         in_file=re.sub(r".sub$",".in",str(sub_file))
         ### Catch problems or skipped runs
         if not Path(in_file).is_file():
             WARN(f"Deleting {sub_file} as it doesn't have a corresponding .in file")
             Path(sub_file).unlink()
+            continue
 
         ### Update production database
         # Extract dbids and filenames
@@ -84,6 +111,13 @@ def execute_submission(rule: RuleConfig, args: argparse.Namespace, allruns: bool
         except Exception as e:
             ERROR(f"Error while parsing {in_file}:\n{e}")
             exit(2)
+        # Generated files can outlive a creation pass. Check each one against
+        # the count obtained under the lock plus jobs submitted in this pass.
+        if max_queued_jobs > 0 and not args.dryrun:
+            if currently_queued_jobs + len(dbids) > max_queued_jobs:
+                INFO(f"Leaving {sub_file} pending: {currently_queued_jobs} + {len(dbids)} exceeds {max_queued_jobs} jobs.")
+                continue
+
         dbids_str=", ".join(dbids)
         now_str=str(datetime.now().replace(microsecond=0))
         # Update production_jobs (primary) before condor_submit to mark as submitted
@@ -115,6 +149,7 @@ WHERE id in
                         if match:
                             cluster = int(match.group(1))
                 DEBUG(f"Submitted {sub_file} to cluster {cluster}")
+                currently_queued_jobs += len(dbids)
 
                 # Cleanup files
                 Path(sub_file).unlink()

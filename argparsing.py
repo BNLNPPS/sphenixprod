@@ -103,7 +103,7 @@ def submission_args(allow_runs=True, allow_sql_constraint=False):
     parser.add_argument('--mem', help="Override memory allocated for a job", default=None)
     parser.add_argument('--priority', help="Override condor priority for this job (more is higher)", default=None)
     parser.add_argument('--maxjobs', dest="maxjobs", help="Maximum number of jobs to create in one pass", default=0, type=int)
-    parser.add_argument('--maxqueued', dest="maxqueued", help="Maximum number of jobs to have waiting for submission", default=70000, type=int)
+    parser.add_argument('--maxqueued', dest="maxqueued", help="Maximum live or unmaterialized jobs per batch", default=70000, type=int)
     parser.add_argument('--chunk-size', dest="chunk_size", help="Process runs in chunks of this size (0 = process all at once)", default=0, type=int)
     parser.add_argument('--docstring', default=None, help="Appends a documentation string to the log entry")
     parser.add_argument('--ratio-cut', dest='ratio_cut', default=0.95, type=float,

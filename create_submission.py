@@ -146,6 +146,10 @@ def main():
         if not lock_file(lock_file_path, args.dryrun):
             exit(0)
 
+        # A previous pass may have left run files pending while the batch was full.
+        if args.andgo and not args.dryrun:
+            execute_submission(rule, args, True)
+
         max_queued_jobs=rule.job_config.max_queued_jobs
         currently_queued_jobs = get_queued_jobs(rule)
         if currently_queued_jobs < 0:
@@ -249,21 +253,25 @@ def main():
             # if existing_jobs>0:
             #     INFO(f"We already have {existing_jobs} jobs waiting for submission.")
 
-            ## Instead, matching has limited the number of jobs to max_jobs 
-            ## Here, we further make sure we don't exceed the number of already queued jobs
-            ## Note: currently_queued_jobs is tracked across all chunks to avoid exceeding max_queued_jobs
-            
-            DEBUG(f"Currently queued/pending jobs (including previous chunks): {currently_queued_jobs}")
+            # Reserve room for live and unmaterialized jobs across this batch.
+            # Keep the last run partial when it would otherwise cross the cap.
+            DEBUG(f"Currently live/unmaterialized jobs (including previous chunks): {currently_queued_jobs}")
             for submit_run in submittable_runs:
                 if max_queued_jobs > 0 and currently_queued_jobs >= max_queued_jobs:
-                    WARN(f"Reached maximum of {max_queued_jobs} queued, held, or running jobs, stopping here.")
+                    WARN(f"Reached maximum of {max_queued_jobs} live or unmaterialized jobs, stopping here.")
                     should_stop_processing_chunks = True
                     break
 
-                matches=matches_by_run[submit_run]
-                INFO(f"Creating {len(matches)} submission files for run {submit_run}.")
+                matches = matches_by_run[submit_run]
+                if max_queued_jobs > 0:
+                    remaining = max_queued_jobs - currently_queued_jobs
+                    if len(matches) > remaining:
+                        INFO(f"Limiting run {submit_run} to {remaining} jobs to stay within the batch cap.")
+                        matches = matches[:remaining]
+                        should_stop_processing_chunks = True
+                INFO(f"Creating {len(matches)} jobs for run {submit_run}.")
                 currently_queued_jobs += len(matches)
-                INFO(f"Total jobs waiting for submission: {currently_queued_jobs}")
+                INFO(f"Total live/unmaterialized jobs reserved: {currently_queued_jobs}")
 
                 condor_subfile=f'{submitdir}/{subbase}_{submit_run}.sub'
                 condor_infile =f'{submitdir}/{subbase}_{submit_run}.in'
@@ -276,6 +284,7 @@ def main():
                             f.write(f"{key} = {value}\n")
                         f.write(
         f"""
+        max_idle = 20000
         log = $(log)
         output = $(output)
         error = $(error)
@@ -367,6 +376,9 @@ def main():
                 if not args.dryrun : #  and keep_this_run:
                     with open(condor_infile, "a") as f:
                         f.writelines(row+'\n' for row in condor_rows)
+
+                if should_stop_processing_chunks:
+                    break
 
             # After processing this chunk, optionally submit if --andgo is specified
             if args.andgo:
