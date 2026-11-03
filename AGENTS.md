@@ -8,7 +8,7 @@ Read `../prodmacros/AGENTS.md` before working here; Claude Code imports it throu
 
 - From this repository, source `./this_sphenixprod.sh` before running its commands. It sets `ODBCINI=./.odbc.ini`, so the file must be in the current working directory for database access.
 - `create_submission.py` parses a rule YAML through `sphenixprodrules.py`, matches inputs through `sphenixmatching.py`, creates `sphenixcondorjobs.py` jobs, and optionally submits them via `execute_condorsubmission.py` when `--andgo` is set. The argument parser uses `--rulename` for a direct rule selection.
-- `master_production_control.sh` invokes `dispatch_productions.py` for each active pilot. `production_control.py` selects the pilot's hostname entry and launches submission and spiders according to its flags. Check the current parser and pilot before using a placeholder or option.
+- `master_production_control.sh` calls `dispatch_productions.py` once with the active-production list; the dispatcher starts one `production_control.py` per listed pilot, staggered. `production_control.py` selects the pilot's hostname entry and launches submission and spiders according to its flags. Check the current parser and pilot before using a placeholder or option.
 - `dstspider.py` and `histspider.py` register finished outputs in FileCatalog. `resubmit_to_condor.py`, `custom_resubmit.py`, `find_stale_jobs.py`, `check_downstream.py`, and `dst_deleter.py` handle later job inspection or maintenance. Consult each command's help and source before using a write or delete action.
 
 ## Code and data
@@ -19,4 +19,5 @@ Read `../prodmacros/AGENTS.md` before working here; Claude Code imports it throu
 
 ## Legacy
 
-- `production_status` and the pilot's `finishmon` / `monitor_finish.py` path remain for legacy use. Current job tracking uses `production_jobs`; do not treat those legacy paths as part of a normal new production.
+- `production_status` is the legacy job table, consulted only on request; current job tracking uses `production_jobs`.
+- The pilot `finishmon` flag and `monitor_finish.py` are retired: they still run against `production_jobs` but have no role in current or new productions. Do not enable them in a new pilot.
