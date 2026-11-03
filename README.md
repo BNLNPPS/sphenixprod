@@ -17,7 +17,7 @@ Run a submission with `create_submission.py`. It requires a config yaml, a rule 
 ```bash
 create_submission.py \
   --config path/to/config.yaml \
-  --rule DST_TRIGGERED_EVENT_run3physics \
+  --rulename DST_TRIGGERED_EVENT_run3physics \
   --runs 69600 72000 \
   -vv -n
 ```
