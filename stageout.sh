@@ -8,6 +8,7 @@ fi
 MIN_ARG_COUNT=2
 MAX_ARG_COUNT=3
 stageout_copy_command=dd
+stageout_keep_local=0
 stageout_ddflags="bs=12MB oflag=nocache"
 stageout_args=()
 while [ $# -gt 0 ]; do
@@ -18,6 +19,10 @@ while [ $# -gt 0 ]; do
             ;;
         --use-dd|--dd)
             stageout_copy_command=dd
+            shift
+            ;;
+        --keep-local)
+            stageout_keep_local=1
             shift
             ;;
         --ddflags=*)
@@ -45,8 +50,9 @@ read -r -a stageout_dd_args <<< "${stageout_ddflags}"
 if [ "$#" -lt "$MIN_ARG_COUNT" ] || [ "$#" -gt "$MAX_ARG_COUNT" ] ; then
     echo "Unsupported call:"
     echo "$0 $*"
-    echo "Usage: $0 <filename> <destination> [dbid] [--use-dd|--use-cp] [--ddflags FLAGS]"
+    echo "Usage: $0 <filename> <destination> [dbid] [--use-dd|--use-cp] [--ddflags FLAGS] [--keep-local]"
     echo "Supported copy flags: --use-dd (default), --use-cp"
+    echo "Local file: removed after successful copy by default; --keep-local preserves it"
     echo "Supported dd flags: --ddflags FLAGS (default: ${stageout_ddflags})"
     echo Abort.
     status_f4a=2
@@ -186,7 +192,9 @@ for try in $(seq 1 ${max_tries}); do
     fi
 done
 
-rm -v "${filename}"
+if [ "${stageout_keep_local}" -eq 0 ]; then
+    rm -v "${filename}"
+fi
 
 _stageout_end=$(date +%s.%N)
 _stageout_dt=$(awk "BEGIN {print ${_stageout_end} - ${_stageout_start}}")
