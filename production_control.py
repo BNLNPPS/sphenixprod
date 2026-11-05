@@ -15,7 +15,7 @@ from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 import logging
 from pathlib import Path
 from datetime import datetime
-from sphenixprodrules import check_params
+from sphenixprodrules import VERFMT, check_params
 
 from collections import namedtuple
 SubmitDstHist = namedtuple('SubmitDstHist', ['submit', 'dstspider', 'histspider', 'finishmon'])
@@ -148,6 +148,18 @@ def main():
 
 
 # ============================================================================================
+def base_batch_name_from_config(config: str, rule: str) -> str:
+    """Resolve the rule's configured batch name without loading its run data."""
+    with open(config, "r") as yamlstream:
+        rule_data = yaml.safe_load(yamlstream)[rule]
+    params = rule_data["params"]
+    outtriplet = f'{params["build"].replace(".", "")}_{params["dbtag"]}_v{params["version"]:{VERFMT}}'
+    return rule_data["job"]["batch_name"].format(
+        rule_name=rule, outtriplet=outtriplet, **params
+    )
+
+
+# ============================================================================================
 def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: str, dryrun: bool ) -> Tuple[str,str,SubmitDstHist]:
     rule_data=host_data[rule]
     check_params(  rule_data
@@ -165,8 +177,6 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     ### Local file location changes?
     prodbase=rule_data.get("prodbase",defaultlocations["prodbase"])
     configbase=rule_data.get("configbase",defaultlocations["configbase"])
-    submitdir=rule_data.get("submitdir",defaultlocations["submitdir"])
-    submitdir=submitdir.format(rule=rule)
 
     ### location of the this_sphenixprod script
     thisprod=f"{prodbase}/this_sphenixprod.sh"
@@ -184,6 +194,12 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
         exit(2)
     ruleargs += f" --config {config}"
 
+    submitdir_template = rule_data.get("submitdir", defaultlocations["submitdir"])
+    if "{batch_name}" in submitdir_template:
+        batch_name = base_batch_name_from_config(config, rule)
+        submitdir = submitdir_template.format(rule=rule, batch_name=batch_name)
+    else:
+        submitdir = submitdir_template.format(rule=rule)
     if not dryrun:
         Path(submitdir).mkdir( parents=True, exist_ok=True )
     ruleargs += f" --submitdir {submitdir}"
