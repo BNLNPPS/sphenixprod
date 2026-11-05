@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS production_jobs (
     dataset               TEXT                    NOT NULL,
     dsttype               TEXT                    NOT NULL,
     filename              TEXT,
+    qa_tag                TEXT,
+    qa_filename           TEXT,
+    qa_status             TEXT CHECK (qa_status IN ('pending', 'succeeded', 'failed', 'missing')),
+    qa_exit_code          INT,
     runnumber             INT                     NOT NULL,
     segment               INT,
     status                prodstate                NOT NULL DEFAULT 'submitting',
@@ -70,6 +74,10 @@ COMMENT ON COLUMN production_jobs.tag IS 'The output triplet (e.g., new_2025p000
 COMMENT ON COLUMN production_jobs.dataset IS 'The dataset identifier (e.g., run3auau or run3cosmics).';
 COMMENT ON COLUMN production_jobs.dsttype IS 'The type of data being produced (e.g., DST_CALOFITTING).';
 COMMENT ON COLUMN production_jobs.filename IS 'The name of the output file (dstfile).';
+COMMENT ON COLUMN production_jobs.qa_tag IS 'Optional QA output triplet derived from qadbtag.';
+COMMENT ON COLUMN production_jobs.qa_filename IS 'Expected QA histogram logical filename.';
+COMMENT ON COLUMN production_jobs.qa_status IS 'Outcome of the optional QA step, independent of the primary job status.';
+COMMENT ON COLUMN production_jobs.qa_exit_code IS 'Exit code of the optional QA step.';
 COMMENT ON COLUMN production_jobs.runnumber IS 'The run number being processed.';
 COMMENT ON COLUMN production_jobs.segment IS 'The segment number of the data file being processed.';
 COMMENT ON COLUMN production_jobs.status IS 'The production status of the job.';

@@ -17,7 +17,7 @@ import pprint # noqa F401
 from argparsing import submission_args
 from sphenixmisc import setup_rot_handler, should_I_quit, shell_command
 from simpleLogger import slogger, CustomFormatter, CHATTY, DEBUG, INFO, WARN, ERROR, CRITICAL  # noqa: F401
-from sphenixprodrules import RuleConfig
+from sphenixprodrules import RuleConfig, qa_output_rule
 from sphenixmatching import parse_lfn, parse_spiderstuff
 from sphenixdbutils import long_filedb_info, filedb_info, full_db_info, upsert_filecatalog, update_proddb  # noqa: F401
 from sphenixmisc import binary_contains_bisect
@@ -37,7 +37,7 @@ def stat_size_with_retry(path, retries=3, delay=0.5):
 
 def main():
     ### digest arguments
-    args = submission_args()
+    args = submission_args(allow_qa_output=True)
 
     # Set up submission logging before going any further
     sublogdir=setup_rot_handler(args)

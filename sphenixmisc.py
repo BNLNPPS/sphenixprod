@@ -119,7 +119,7 @@ def should_I_quit(args, myname) -> bool:
     # to check for other running instances with the same parameters.
     count_already_running = 0
     for psline in stdout_str.splitlines():
-        if myname in psline and args.config in psline and args.rulename in psline:
+        if myname in psline and args.config in psline and args.rulename in psline and ('--qa-output' in psline) == bool(getattr(args, 'qa_output', False)):
             count_already_running += 1
 
     CHATTY ( f"Found {count_already_running} instance(s) of {myname} with config {args.config} and rulename {args.rulename} in the process list.")

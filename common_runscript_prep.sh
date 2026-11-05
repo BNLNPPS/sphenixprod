@@ -49,6 +49,15 @@ condor_rsync="$1"; shift       # Corresponds to {payload}
 dbid=${1:--1};shift            # for prod db, -1 means no dbid (should produce an error soon)
 export PRODDB_DBID=$dbid
 
+# Optional QA output identity, supplied by rules with params.qadbtag.
+if [[ -n ${QA_OUTTRIPLET:-} ]]; then
+    qadbtag=${QA_DBTAG}
+    qaouttriplet=${QA_OUTTRIPLET}
+    qaoutfile="HIST_${logbase/${PRIMARY_OUTTRIPLET}/${QA_OUTTRIPLET}}.root"
+    qahistdir=${histdir/${PRIMARY_OUTTRIPLET}/${QA_OUTTRIPLET}}
+    qaoutdir=${outdir/${PRIMARY_OUTTRIPLET}/${QA_OUTTRIPLET}}
+fi
+
 # Variables for all run scripts
 echo "---------------------------------------------"
 echo "Processing job with the following parameters:"

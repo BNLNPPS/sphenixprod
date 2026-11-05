@@ -58,7 +58,7 @@ def _base_arguments(parser, allow_runs=True, require_run_selection=False):
     return parser
 
 # ============================================================================================
-def submission_args(allow_runs=True, allow_sql_constraint=False):
+def submission_args(allow_runs=True, allow_sql_constraint=False, allow_qa_output=False):
     """Handle command line tedium for submitting jobs."""
     parser = argparse.ArgumentParser(description='Prepare and submit sPHENIX production jobs to the HTCondor batch system.')
     parser = _base_arguments(parser, allow_runs=allow_runs, require_run_selection=True)
@@ -66,6 +66,8 @@ def submission_args(allow_runs=True, allow_sql_constraint=False):
     parser.add_argument('--print-query', dest='printquery', help="Print the query after parameter substitution and exit",
                         action="store_true")
     parser.add_argument('--andgo', dest='andgo', help="Submit condor jobs at the end", action="store_true")
+    if allow_qa_output:
+        parser.add_argument('--qa-output', action="store_true", help="Spider only the optional QA output triplet")
 
     if allow_sql_constraint:
         parser.add_argument(

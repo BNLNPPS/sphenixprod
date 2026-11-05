@@ -96,3 +96,34 @@ create_submission.py --config config.yaml --rulename RULE --runlist runs.txt --c
 3. **Incremental Progress**: See results from earlier chunks while later chunks are still processing
 4. **Easier Debugging**: Smaller chunks make it easier to identify and fix issues
 
+
+### Optional QA output tag
+
+A rule may set `params.qadbtag` alongside its primary `params.dbtag`. The primary
+triplet and DST filename still decide whether a job needs to run. The QA triplet
+uses the same build and version with `qadbtag` in place of `dbtag`; changing only
+`qadbtag` does not resubmit a finished primary job.
+
+For a rule producing `DST_CALOFITTING`, the expected QA histogram is
+`HIST_DST_CALOFITTING_<dataset>_<build>_<qadbtag>_<version>-<run>-<seg>.root`.
+The worker environment supplies `QA_DBTAG`, `PRIMARY_OUTTRIPLET`, and
+`QA_OUTTRIPLET`. After sourcing `common_runscript_prep.sh`, scripts also have
+`qadbtag`, `qaouttriplet`, `qaoutfile`, `qahistdir`, and `qaoutdir`. A QA macro
+should receive `qadbtag` and `qaoutfile`, and stage the result to `qahistdir`.
+The same tag-specific `qaoutdir` can hold a future QA DST.
+
+Both spiders scan the QA triplet when `--qa-output` is passed; production control
+starts that pass automatically for rules with `qadbtag`. QA outputs are entered
+in FileCatalog with the QA triplet. The production job row retains the primary
+triplet and filename, plus `qa_tag`, `qa_filename`, `qa_status`, and
+`qa_exit_code`. A worker script can record the optional outcome with
+`python ${SPHENIXPROD_SCRIPT_PATH}/sphenixdbutils.py qastep --status succeeded`
+(or `failed --exit-code N`). `qastep` does not change the primary job status.
+A `pending` QA result becomes `missing` when the job ends without a QA report.
+
+Apply `add_qa_job_columns.sql` to an existing production DB before deploying
+this framework revision; job completion and resubmission now update the QA columns.
+The migration adds the QA status check as NOT VALID to avoid a full scan while
+holding the initial table lock. Validate it later using the separate statement
+in the migration file. The new columns are also in `create_jobs_table.sql` for
+new databases. These schema files are not applied automatically.

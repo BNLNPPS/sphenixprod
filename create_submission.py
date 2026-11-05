@@ -320,12 +320,16 @@ def main():
                     # print( eventsinrun, neventsper, maxjobsexpected )
                     # exit(1)
 
-                    prod_jobs_rows.append("('{rulename}', '{tag}', '{dataset}', '{dsttype}', '{filename}', {run}, {segment}, '{status}', '{submitted}', '{host}', '{log}', '{err}', '{out}', '{intriplet}', '{indsttype_str}', {xferslots}, {request_memory}, {request_disk}, {request_cpus}, {neventsper}, {eventsinrun}, {maxjobsexpected})".format(
+                    qa_filename = ("HIST_" + out_file.replace(f"_{rule.outtriplet}-", f"_{rule.qa_outtriplet}-")) if rule.qa_outtriplet else None
+                    prod_jobs_rows.append("('{rulename}', '{tag}', '{dataset}', '{dsttype}', '{filename}', {qa_tag}, {qa_filename}, {qa_status}, {run}, {segment}, '{status}', '{submitted}', '{host}', '{log}', '{err}', '{out}', '{intriplet}', '{indsttype_str}', {xferslots}, {request_memory}, {request_disk}, {request_cpus}, {neventsper}, {eventsinrun}, {maxjobsexpected})".format(
                         rulename=args.rulename,
                         tag=rule.outtriplet,
                         dataset=rule.dataset,
                         dsttype=dsttype,
                         filename=dstfile,
+                        qa_tag=f"'{rule.qa_outtriplet}'" if rule.qa_outtriplet else "NULL",
+                        qa_filename=f"'{qa_filename}'" if qa_filename else "NULL",
+                        qa_status="'pending'" if qa_filename else "NULL",
                         run=run,
                         segment=seg,
                         status='submitting',
@@ -349,7 +353,7 @@ def main():
                 comma_prod_jobs_rows=',\n'.join(prod_jobs_rows)
                 insert_prod_jobs = f"""
         insert into production_jobs
-        ( rulename, tag, dataset, dsttype, filename, runnumber, segment, status, submitted, submission_host, log, err, out, intriplet, indsttype_str, xferslots, request_memory, request_disk, request_cpus, neventsper, eventsinrun, maxjobsexpected )
+        ( rulename, tag, dataset, dsttype, filename, qa_tag, qa_filename, qa_status, runnumber, segment, status, submitted, submission_host, log, err, out, intriplet, indsttype_str, xferslots, request_memory, request_disk, request_cpus, neventsper, eventsinrun, maxjobsexpected )
         values
         {comma_prod_jobs_rows}
         returning id

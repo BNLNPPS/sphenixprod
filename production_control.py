@@ -18,7 +18,7 @@ from datetime import datetime
 from sphenixprodrules import VERFMT, check_params
 
 from collections import namedtuple
-SubmitDstHist = namedtuple('SubmitDstHist', ['submit', 'dstspider', 'histspider', 'finishmon'])
+SubmitDstHist = namedtuple('SubmitDstHist', ['submit', 'dstspider', 'histspider', 'finishmon', 'qaoutput'])
 _production_control_log_rule = "-"
 
 
@@ -106,19 +106,17 @@ def main():
         ### Go from fast to slow processes.
         ### They'll overlap anyway.
         INFO(f"sdh_tuple is {pprint.pformat(sdh_tuple)}")
-        if sdh_tuple.histspider:
-            procline=f"histspider.py {ruleargs}"
-            execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
-            DEBUG(f"Executing\n{execline}")
-            if not args.dryrun:
-                subprocess.Popen(f"{execline}",shell=True)
-
-        if sdh_tuple.dstspider:
-            procline=f"dstspider.py {ruleargs}"
-            execline=f"{envline}  &>/dev/null && {procline} &>/dev/null"
-            DEBUG(f"Executing\n{execline}")
-            if not args.dryrun:
-                subprocess.Popen(f"{execline}",shell=True)
+        for enabled, spider in ((sdh_tuple.histspider, "histspider.py"),
+                                (sdh_tuple.dstspider, "dstspider.py")):
+            if not enabled:
+                continue
+            for qa_output in (False, True) if sdh_tuple.qaoutput else (False,):
+                qa_arg = " --qa-output" if qa_output else ""
+                procline = f"{spider} {ruleargs}{qa_arg}"
+                execline = f"{envline}  &>/dev/null && {procline} &>/dev/null"
+                DEBUG(f"Executing\n{execline}")
+                if not args.dryrun:
+                    subprocess.Popen(execline, shell=True)
 
         if sdh_tuple.submit:
             procline=f"create_submission.py {ruleargs}"
@@ -193,6 +191,9 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
         ERROR(f"Cannot find config file {config}")
         exit(2)
     ruleargs += f" --config {config}"
+    with open(config) as config_file:
+        config_data = yaml.safe_load(config_file)
+    qaoutput = bool(config_data.get(rule, {}).get("params", {}).get("qadbtag"))
 
     submitdir_template = rule_data.get("submitdir", defaultlocations["submitdir"])
     if "{batch_name}" in submitdir_template:
@@ -246,7 +247,8 @@ def collect_yaml_data( host_data: Dict[str, Any], rule: str, defaultlocations: s
     sdh_tuple=SubmitDstHist(submit=rule_data.get("submit", False),
                             dstspider=rule_data.get("dstspider", True),
                             histspider=rule_data.get("histspider", rule_data.get("dstspider", True)),
-                            finishmon=rule_data.get("finishmon", False)
+                            finishmon=rule_data.get("finishmon", False),
+                            qaoutput=qaoutput
                             )
     ## sanity
     for k,v in sdh_tuple._asdict().items():

@@ -2,7 +2,7 @@ import yaml
 import re
 import glob
 from typing import Dict, List, Tuple, Any, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from pathlib import Path
 import stat
 import subprocess
@@ -127,6 +127,8 @@ class RuleConfig:
     build_string: str   # ana472, new
     version_string: str # v000
     outtriplet: str     # new_2025p000_v000
+    qadbtag: Optional[str] # conditions tag for an optional QA output
+    qa_outtriplet: Optional[str]
     runlist_int: List[int] # name chosen to differentiate it from --runlist which points to a text file
     run_selection_is_range: bool # True only for --runs MIN MAX; these keep DAQ quality filtering
     
@@ -182,7 +184,7 @@ class RuleConfig:
         params_data = rule_data.get("params", {})
         check_params(params_data
                     , required=["dsttype", "period","build", "dbtag", "version"]
-                    , optional=["dataset", "physicsmode"] )
+                    , optional=["dataset", "physicsmode", "qadbtag"] )
 
         ### Verify build tag exists on cvmfs before going further
         build_tag = params_data["build"]
@@ -202,6 +204,12 @@ class RuleConfig:
         build_string=params_data["build"].replace(".","")
         version_string = f'v{params_data["version"]:{VERFMT}}'
         outtriplet = f'{build_string}_{params_data["dbtag"]}_{version_string}'
+        qadbtag = params_data.get("qadbtag")
+        if qadbtag is not None and (not isinstance(qadbtag, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", qadbtag)):
+            raise ValueError("qadbtag must be a nonempty tag containing only letters, digits, dots, underscores, or hyphens")
+        qa_outtriplet = f"{build_string}_{qadbtag}_{version_string}" if qadbtag else None
+        if qa_outtriplet == outtriplet:
+            raise ValueError("qadbtag must differ from the primary dbtag")
 
         ### Which runs to process?
         runs=param_overrides.get("runs")
@@ -475,7 +483,13 @@ class RuleConfig:
             )
             job_data[field] = subsval
             DEBUG(f"After substitution, {field} is {subsval}")
+        # Pass optional QA metadata through the environment so existing worker
+        # scripts keep the same positional arguments and common prep parsing.
+        # HTCondor legacy environment syntax separates variables with semicolons;
+        # spaces become part of SPHENIXPROD_SCRIPT_PATH and break sourced scripts.
         environment=f'SPHENIXPROD_SCRIPT_PATH={param_overrides.get("script_path","None")}'
+        if qadbtag:
+            environment += f";PRIMARY_OUTTRIPLET={outtriplet};QA_DBTAG={qadbtag};QA_OUTTRIPLET={qa_outtriplet}"
         job_data["environment"]=environment
 
         # catch different production branches - prepend by branch if not main
@@ -546,6 +560,8 @@ class RuleConfig:
             build_string=build_string,
             version_string=version_string,
             outtriplet=outtriplet,
+            qadbtag=qadbtag,
+            qa_outtriplet=qa_outtriplet,
             runlist_int=runlist_int,
             run_selection_is_range=run_selection_is_range,
             runlist=runlist_filename or "",
@@ -602,3 +618,14 @@ def parse_spiderstuff(filename: str) -> Tuple[str,...] :
     return lfn,int(nevents),int(first),int(last),md5,int(size),int(ctime),int(dbid)
 
 # ============================================================================
+
+
+def qa_output_rule(rule: RuleConfig) -> RuleConfig:
+    """Return the catalog view for a QA output of the same production job."""
+    if not rule.qa_outtriplet:
+        raise ValueError("Rule has no qadbtag")
+    filesystem = {key: value.replace(rule.outtriplet, rule.qa_outtriplet)
+                  for key, value in rule.job_config.filesystem.items()}
+    job_config = replace(rule.job_config, filesystem=filesystem)
+    return replace(rule, dbtag=rule.qadbtag, outtriplet=rule.qa_outtriplet,
+                   job_config=job_config)

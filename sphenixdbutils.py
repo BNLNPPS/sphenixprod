@@ -37,6 +37,12 @@ def get_parser():
     parser_jobended.add_argument('--stageout-wall-sec', required=False, type=float, default=None, help='Aggregate stage-out wall time (seconds).')
     parser_jobended.add_argument('-n','--dryrun', action='store_true', help='Do not perform database updates.')
 
+    parser_qastep = subparsers.add_parser('qastep', help='Record optional QA outcome without changing the primary job status')
+    parser_qastep.add_argument('--dbid', type=int, default=None, help='Database ID of the job. Defaults to $PRODDB_DBID.')
+    parser_qastep.add_argument('--status', required=True, choices=('succeeded', 'failed', 'missing'))
+    parser_qastep.add_argument('--exit-code', type=int, default=None)
+    parser_qastep.add_argument('-n', '--dryrun', action='store_true')
+
     return parser.parse_args()
 
 filedb_info = namedtuple('filedb_info', ['dsttype','run','seg','lfn','nevents','first','last','md5','size','ctime'])
@@ -340,6 +346,7 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False,
         f"status = '{status}'",
         f"finished = '{now}'",
         f"ExitCode = {exit_code}",
+        "qa_status = CASE WHEN qa_status = 'pending' THEN 'missing' ELSE qa_status END",
     ]
     # Prefer /usr/bin/time values over the (always-stale) job ad CPU fields
     if user_cpu is not None:
@@ -396,6 +403,25 @@ def jobended(dbid: int, exit_code: int, dryrun: bool = False,
             ERROR(f"Failed to update production_jobs for id={dbid} in database {dbstring}")
             # Do not exit, as we want to avoid causing further issues at the end of a job.
 
+def record_qa_result(dbid: int, status: str, exit_code: int = None, dryrun: bool = False):
+    """Update only the optional QA outcome for an existing production job."""
+    if status not in ('succeeded', 'failed', 'missing'):
+        raise ValueError(f"Invalid QA status: {status}")
+    code = 'NULL' if exit_code is None else str(int(exit_code))
+    query = f"""UPDATE production_jobs
+        SET qa_status = '{status}', qa_exit_code = {code}
+        WHERE id = {int(dbid)} AND qa_tag IS NOT NULL;"""
+    CHATTY(query)
+    if dryrun:
+        return True
+    cursor = dbQuery(cnxn_string_map['statw'], query, maintenance_wait=1500)
+    if not cursor or cursor.rowcount == 0:
+        ERROR(f"No QA-enabled production_jobs row found for id={dbid}")
+        return False
+    cursor.commit()
+    return True
+
+
 def mark_resubmitted(dbid: int, cluster_id: int, request_memory: int, dryrun: bool = False):
     """
     Mark a production job row as queued again after Condor resubmission.
@@ -421,6 +447,8 @@ def mark_resubmitted(dbid: int, cluster_id: int, request_memory: int, dryrun: bo
             MemoryProvisioned = NULL,
             DiskUsage = NULL,
             ExitCode = NULL,
+            qa_status = CASE WHEN qa_tag IS NOT NULL THEN 'pending' ELSE NULL END,
+            qa_exit_code = NULL,
             jobstarts = NULL,
             execution_node = NULL,
             request_memory = ARRAY[{request_memory}]
@@ -613,6 +641,9 @@ def main():
                  exec_cpu_percent=args.exec_cpu_percent,
                  stagein_wall_sec=args.stagein_wall_sec,
                  stageout_wall_sec=args.stageout_wall_sec)
+    elif args.command == 'qastep':
+        if not record_qa_result(dbid, args.status, args.exit_code, args.dryrun):
+            exit(1)
 
 
 if __name__ == '__main__':
