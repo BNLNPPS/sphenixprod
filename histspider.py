@@ -82,6 +82,8 @@ def main():
     #################### Load specific rule from the given yaml file.
     try:
         rule =  RuleConfig.from_yaml_file( yaml_file=args.config, rule_name=args.rulename, param_overrides=param_overrides )
+        if args.qa_output:
+            rule = qa_output_rule(rule)
         INFO(f"Successfully loaded rule configuration: {args.rulename}")
     except (ValueError, FileNotFoundError) as e:
         ERROR(f"Error: {e}")
