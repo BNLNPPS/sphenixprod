@@ -676,7 +676,7 @@ order by runnumber
             if required_seb:
                 # 1. How many required SEB hosts are turned on in this run according to the daq db?
                 available_required_seb = available_seb.intersection(required_seb)
-                if len(available_required_seb) < min_seb and not self.physicsmode=='cosmics':
+                if len(available_required_seb) < min_seb:
                     WARN(f"Skip run {runnumber}. Only {len(available_required_seb)} required SEB hosts turned on in the run.")
                     missing_hosts = sorted(required_seb.difference(available_required_seb))
                     if missing_hosts:
@@ -690,7 +690,7 @@ order by runnumber
                         if required in host:
                             present_seb_files.add(required)
                             continue
-                if len(present_seb_files) < min_seb and not self.physicsmode=='cosmics':
+                if len(present_seb_files) < min_seb:
                     WARN(f"Skip run {runnumber}. Only {len(present_seb_files)} required SEB detectors are currently available.")
                     missing_hosts = sorted(required_seb.difference(present_seb_files))
                     if missing_hosts:
