@@ -170,7 +170,7 @@ def _build_query(args) -> str:
 
     where = '\n  AND '.join(conditions)
     return (
-        "SELECT ClusterId, ProcId, submission_host, started, out, MemoryProvisioned, dataset, dsttype, runnumber"
+        "SELECT id, ClusterId, ProcId, submission_host, started, out, MemoryProvisioned, dataset, dsttype, runnumber"
         " FROM production_jobs"
         f"\nWHERE {where}"
         "\nORDER BY started ASC;"
@@ -206,7 +206,7 @@ def main():
 
     counts = {'STALE': 0, 'ACTIVE': 0, 'MISSING': 0}
     stale_lines = []
-    for cluster_id, proc_id, submission_host, started, out, mem_prov, dataset, dsttype, runnumber in rows:
+    for dbid, cluster_id, proc_id, submission_host, started, out, mem_prov, dataset, dsttype, runnumber in rows:
         condor_id = f"{cluster_id}.{proc_id}" if cluster_id is not None else "?.?"
         submit_host = submission_host or '?'
         running_age = _age_hours(started)
@@ -215,7 +215,7 @@ def main():
         line = f"[{label:7s}]  running {running_age:6.1f} h ago  {detail:30s}  {out}"
         if label == 'STALE':
             ERROR(line)
-            stale_lines.append((condor_id, submit_host, running_age, detail, mem_prov, dataset, dsttype, out, runnumber))
+            stale_lines.append((condor_id, submit_host, running_age, detail, mem_prov, dataset, dsttype, out, runnumber, dbid))
         elif label == 'MISSING':
             WARN(line)
         else:
@@ -236,7 +236,7 @@ def main():
         if args.show_out:
             header += "  OUT"
         print(f"\nStale jobs:\n{header}")
-        for condor_id, submit_host, running_age, detail, mem_prov, dataset, dsttype, out, runnumber in stale_lines:
+        for condor_id, submit_host, running_age, detail, mem_prov, dataset, dsttype, out, runnumber, dbid in stale_lines:
             prov_s = f"{mem_prov:>8}" if mem_prov is not None else f"{'?':>8}"
             row = (f"{condor_id:<{cid_w}}  {submit_host:<{host_w}}"
                    f"  {running_age:>10.1f}h  {detail:<{mtime_w}}"
@@ -247,13 +247,44 @@ def main():
             print(row)
 
         dsttypes_by_run = {}
-        for _, _, _, _, _, _, dsttype, _, runnumber in stale_lines:
+        for _, _, _, _, _, _, dsttype, _, runnumber, _ in stale_lines:
             dsttypes_by_run.setdefault(runnumber, set()).add(dsttype)
 
         print("\nStale dsttypes by runnumber:")
         for runnumber in sorted(dsttypes_by_run):
             dsttypes = ",".join(sorted(dsttypes_by_run[runnumber]))
             print(f"{runnumber} {dsttypes}")
+
+        jobs_by_host = {}
+        dbids = []
+        skipped = []
+        for condor_id, submit_host, _, _, _, _, _, _, _, dbid in stale_lines:
+            if submit_host == '?' or condor_id == '?.?':
+                skipped.append((condor_id, submit_host, dbid))
+                continue
+            jobs_by_host.setdefault(submit_host, []).append(condor_id)
+            dbids.append(dbid)
+
+        if jobs_by_host:
+            print("\nTo remove these stale jobs, run each command on its submission host:")
+            for host, condor_ids in sorted(jobs_by_host.items()):
+                print(f"# On {host}")
+                print(f"condor_rm {' '.join(condor_ids)}")
+
+            status_sql = args.status.replace("'", "''")
+            ids_sql = ', '.join(str(dbid) for dbid in dbids)
+            print("\nAfter the Condor removals succeed, run this on a host with Production DB access:")
+            print("psql -d Production -h sphnxproddbmaster.sdcc.bnl.gov -U argouser <<'SQL'")
+            print("UPDATE production_jobs")
+            print("SET status = 'failed', ExitCode = 51, finished = NOW()")
+            print(f"WHERE id IN ({ids_sql}) AND status = '{status_sql}'")
+            print("RETURNING id, ClusterId, ProcId, status, ExitCode;")
+            print("SQL")
+
+        if skipped:
+            print("\nNo removal command was generated for jobs missing a Condor ID or submission host:")
+            for condor_id, submit_host, dbid in skipped:
+                print(f"  DB id={dbid}  Condor ID={condor_id}  submission host={submit_host}")
 
 # ============================================================================
 # Argument parsing
