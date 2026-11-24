@@ -176,6 +176,7 @@ def main():
     chunksize=2000
     fmax=len(mvfiles_info)
 
+    max_size_mismatch_age_seconds = 10 * 60 * 60
     chunked_mvfiles = make_chunks(mvfiles_info, chunksize)
     for i, chunk in enumerate(chunked_mvfiles):
         now = datetime.now()
@@ -234,6 +235,16 @@ def main():
                 continue
 
             incoming_size_ok = fullinfo.size < 0 or orig_size == fullinfo.size
+            if not incoming_size_ok:
+                try:
+                    age_seconds = time.time() - orig_path.stat().st_mtime
+                except OSError as e:
+                    WARN(f"Could not determine age of mismatched file {orig_path}: {e}; leaving it for a future scan")
+                    continue
+                if age_seconds < max_size_mismatch_age_seconds:
+                    WARN(f"Incoming size wrong ({orig_size} != {fullinfo.size}) for {orig_path}; "
+                         f"file is {age_seconds / 3600:.1f} hours old, leaving it for a future scan")
+                    continue
 
             if final_path.exists():
                 if not incoming_size_ok:
