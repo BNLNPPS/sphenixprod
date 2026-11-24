@@ -115,8 +115,11 @@ def main():
     ### Finally, run over all HIST files in those directories
     # They too have dbinfo and need to be registered and renamed
     foundhists=[]
+    min_age_minutes = 20
     for hdir in allhistdirs:
-        tmpfound = shell_command(rf"{find} {hdir} -type f -name HIST\*root:\* -o -name CALIB\*")
+        tmpfound = shell_command(
+            rf"{find} {hdir} -type f \( -name HIST\*root:\* -o -name CALIB\* \) -mmin +{min_age_minutes - 1}"
+        )
 
         # Remove files that already end in ".root" - they're already registered
         foundhists += [ file for file in tmpfound if not file.endswith(".root") ]
