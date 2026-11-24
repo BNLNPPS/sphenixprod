@@ -268,9 +268,10 @@ order by runnumber
         ### Which find command to use for lustre?
         find=shutil.which('find')
         lfind = shutil.which('lfs')
-        if lfind is None:
+        using_lfs = lfind is not None
+        if not using_lfs:
             WARN("'lfs find' not found")
-            lfind = shutil.which('find')
+            lfind = find
         else:
             lfind = f'{lfind} find'
             INFO(f'Using find={find} and lfind={lfind}.')
@@ -315,6 +316,11 @@ order by runnumber
                 CHATTY(f"For {leafdir}, examining {len(output_dirs)} output directories")
                 for output_dir in output_dirs:
                     find_command=f"{lfind} {output_dir} -type f -name {filemask}"
+                    if min_age_minutes > 0:
+                        if using_lfs:
+                            find_command += f" -mtime +{min_age_minutes}m"
+                        else:
+                            find_command += f" -mmin +{min_age_minutes - 1}"
                     CHATTY(find_command)
                     output_files = shell_command(find_command)
                     selected_files = [
