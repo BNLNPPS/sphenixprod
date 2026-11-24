@@ -40,6 +40,7 @@ All job scripts report a final exit code via `common_runscript_finish.sh`, which
 | 0 | — | Success |
 | 2 | Setup | Bad arguments or configuration error |
 | 3 | Setup | Unsupported OS / environment setup failed |
+| 4 | Setup | `OFFLINE_MAIN` does not contain the requested build argument after sPHENIX setup |
 | 10 | Input | No input files found (DB query returned empty) |
 | 11 | Input | Remote file health check failed (missing or wrong size) |
 | 20 | Stage-in | Input file copy failed (dd retries exhausted or source missing) |

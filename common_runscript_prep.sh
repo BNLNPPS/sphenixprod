@@ -125,7 +125,11 @@ else
     # Set up environment
     if [[ $OS =~ "AlmaLinux" ]]; then
         echo "Setting up Production software for ${OS}"
-        source /opt/sphenix/core/bin/sphenix_setup.sh -n $buildarg
+        source /opt/sphenix/core/bin/sphenix_setup.sh -n "$buildarg"
+        if [[ -z $buildarg || ${OFFLINE_MAIN:-} != *"$buildarg"* ]]; then
+            echo "Error: sPHENIX setup for build '$buildarg' produced OFFLINE_MAIN='${OFFLINE_MAIN:-}'."
+            exit 4
+        fi
     else
 	echo "Unsupported OS $OS"
 	exit 3
