@@ -123,9 +123,7 @@ if [[ $OS == "" ]]; then
     echo "Unable to determine OS version."
 else
     # Set up environment
-    if [[ "$_CONDOR_JOB_IWD" =~ "/Users/eickolja" ]]; then
-        source /Users/eickolja/sphenix/sphenixprod/mac_this_sphenixprod.sh
-    elif [[ $OS =~ "AlmaLinux" ]]; then
+    if [[ $OS =~ "AlmaLinux" ]]; then
         echo "Setting up Production software for ${OS}"
         source /opt/sphenix/core/bin/sphenix_setup.sh -n $buildarg
     else

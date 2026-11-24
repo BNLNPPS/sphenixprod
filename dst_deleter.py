@@ -98,12 +98,8 @@ ERROR  = _log.error
 # ============================================================================
 # DB connection strings  (mirrors sphenixdbutils.py)
 # ============================================================================
-if os.uname().sysname == 'Darwin':
-    _FCW = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=filecatalogdb;UID=eickolja'
-    _FCR = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=filecatalogdb;READONLY=True;UID=eickolja'
-else:
-    _FCW = 'DSN=FileCatalog;UID=phnxrc'
-    _FCR = 'DSN=FileCatalog;READONLY=True;UID=phnxrc'
+_FCW = 'DSN=FileCatalog;UID=phnxrc'
+_FCR = 'DSN=FileCatalog;READONLY=True;UID=phnxrc'
 
 # ============================================================================
 # DB query helper  (mirrors sphenixdbutils.dbQuery)

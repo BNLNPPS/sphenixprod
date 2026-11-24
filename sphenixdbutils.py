@@ -77,27 +77,6 @@ cnxn_string_map = {
 
 }
 
-# Hack to test locally on Mac
-if os.uname().sysname=='Darwin' :
-    cnxn_string_map = {
-        'fcw'         : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=filecatalogdb;UID=eickolja',
-        'fcr'         : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=filecatalogdb;READONLY=True;UID=eickolja',
-        'statr'       : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=productiondb;READONLY=True;UID=eickolja',
-        'statw'       : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=productiondb;UID=eickolja',
-        'rawr'        : 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=rawdatacatalogdb;READONLY=True;UID=eickolja',
-    }
-
-# # Hack to use local PostgreSQL database from inside a docker container
-# if Path('/.dockerenv').exists() :
-#     driverstring='DRIVER=PostgreSQL;SERVER=host.docker.internal;'
-#     cnxn_string_map = {
-#         'fcw'         : f'{driverstring}DATABASE=filecatalogdb;UID=eickolja',
-#         'fcr'         : f'{driverstring}DATABASE=filecatalogdb;READONLY=True;UID=eickolja',
-#         'statr'       : f'{driverstring}DATABASE=productiondb;READONLY=True;UID=eickolja',
-#         'statw'       : f'{driverstring}DATABASE=productiondb;UID=eickolja',
-#         'rawr'        : f'{driverstring}DATABASE=rawdatacatalogdb;READONLY=True;UID=eickolja',
-#     }
-
 # ============================================================================================
 def full_db_info(origfile: str, info: filedb_info, lfn: str, full_file_path: str, dataset: str, tag: str) -> long_filedb_info:
     return long_filedb_info(

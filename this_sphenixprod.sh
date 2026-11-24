@@ -54,35 +54,3 @@ alias cs='condor_submit'
 alias gristory='history | grep -v istory| grep $@'
 alias rehash='hash -r'
 
-# Specialized settings for individual users of sphnxpro
-# Identified from ssh agent forwarding
-if [[ `ssh-add -l` =~ "eickolja" ]] ; then
-    echo "Hello Kolja"
-    export GIT_CONFIG_GLOBAL=/sphenix/u/sphnxpro/.gitconfig.kolja
-    git config --global user.name "Kolja Kauder"
-    git config --global user.email "kkauder@gmail.com"
-    #git config --global push.default simple
-    git config --global push.autoSetupRemote true
-
-    ## For codex, claude
-    export PATH="$HOME/.local/bin:$PATH"
-    export CODEX_HOME="$HOME/.local/dotcodex-kolja"
-    npm config set prefix '~/.local'
-
-
-    # if [[ -n "$_CONDOR_SCRATCH_DIR" ]]; then
-	# echo "_CONDOR_SCRATCH_DIR = $_CONDOR_SCRATCH_DIR"
-    # else
-	# echo "_CONDOR_SCRATCH_DIR is not defined."
-	# export _CONDOR_SCRATCH_DIR=~/devkolja/condorscratch
-	# echo " ... now set to $_CONDOR_SCRATCH_DIR"
-    # fi
-
-    # zsh-style history search
-    bind '"\e[A": history-search-backward'
-    bind '"\e[B": history-search-forward'
-
-    # Turn off paging for psql
-    alias psql='psql -P pager=off'
-
-fi

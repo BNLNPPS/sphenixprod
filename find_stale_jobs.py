@@ -17,7 +17,6 @@ Does NOT depend on any other module in this project.
 
 import argparse
 import logging
-import os
 import random
 import sys
 import time
@@ -86,10 +85,7 @@ ERROR  = _log.error
 # ============================================================================
 # DB connection strings
 # ============================================================================
-if os.uname().sysname == 'Darwin':
-    _STATR = 'DRIVER=PostgreSQL Unicode;SERVER=localhost;DATABASE=productiondb;READONLY=True;UID=eickolja'
-else:
-    _STATR = 'DSN=Production_read;READONLY=True;UID=argouser'
+_STATR = 'DSN=Production_read;READONLY=True;UID=argouser'
 
 _RETRYABLE = {'40001', '53300', '57P03', '08006', '08001'}
 
